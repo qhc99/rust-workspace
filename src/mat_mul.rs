@@ -101,12 +101,12 @@ fn mul_mat_block(
 }
 
 pub fn mat_mul_profile_demo() {
-    const SIZE_A: usize = 1400;
+    const SIZE_A: usize = 1300;
     const SIZE_B: usize = 1300;
-    const SIZE_C: usize = 1400;
-    let mut arr1 = vec![vec![0.; SIZE_A]; SIZE_B];
-    let mut arr2 = vec![vec![0.; SIZE_B]; SIZE_C];
-    let mut arr_res = vec![vec![0.; SIZE_A]; SIZE_C];
+    const SIZE_C: usize = 1300;
+    let mut arr1 = vec![vec![0.; SIZE_B]; SIZE_A];
+    let mut arr2 = vec![vec![0.; SIZE_C]; SIZE_B];
+    let mut arr_res = vec![vec![0.; SIZE_C]; SIZE_A];
 
     reset_mat(&mut arr1, &mut arr2);
 
@@ -164,8 +164,4 @@ pub fn mat_mul_profile_demo() {
     }
     println!("space locality: time elapsed {:?}", duration);
     println!("ans = {:}", ans);
-
-
-
-
 }
