@@ -1,4 +1,4 @@
-use std::{rc::{Rc, Weak}, cell::RefCell};
+use std::{rc::{Rc, Weak}, cell::RefCell, ops::{DerefMut, Deref}};
 
 
 struct SharedList<T> {
@@ -8,9 +8,9 @@ struct SharedList<T> {
 
 
 struct DList<T> {
-    val: T,
-    prev_w: WeakLink<T>,
-    next: Link<T>,
+    pub val: T,
+    pub prev_w: WeakLink<T>,
+    pub next: Link<T>,
 }
 
 impl<T> DList<T> {
@@ -23,6 +23,8 @@ impl<T> DList<T> {
     }
 }
 
+
+
 type Link<T> = Option<Rc<RefCell<DList<T>>>>;
 type WeakLink<T> = Option<Weak<RefCell<DList<T>>>>;
 
@@ -31,8 +33,10 @@ pub fn shared_list_demo(){
 }
 
 pub fn double_link_list_demo(){
-    let mut head: Rc<DList<i32>>;
-    head = Rc::new(DList {val: 1, prev_w: None, next: None});
     
+    let head = Rc::new(RefCell::new(DList{val: 0, prev_w: None, next: None}));
+    head.borrow_mut().prev_w = Some(Rc::downgrade(&head.to_owned()));
+    head.borrow_mut().next = Some(head.to_owned());
 
+    let node_1 = Rc::new(RefCell::new(DList{val: 1, prev_w: None, next: None}));
 }

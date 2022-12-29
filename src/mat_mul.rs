@@ -1,8 +1,8 @@
 use rand::Rng;
 
+use std::cmp;
 use std::ops::Deref;
 use std::time::Instant;
-use std::cmp;
 
 /// A container for values that can only be deref'd immutably.
 struct Immutable<T> {
@@ -11,7 +11,7 @@ struct Immutable<T> {
 
 impl<T> Immutable<T> {
     pub fn new(value: T) -> Self {
-        return Immutable { value }
+        return Immutable { value };
     }
 }
 
@@ -19,7 +19,7 @@ impl<T> Deref for Immutable<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        return &self.value
+        return &self.value;
     }
 }
 
@@ -90,14 +90,23 @@ fn mul_mat_block(
     m3: &mut Vec<Vec<f32>>,
     m3r: &MatBlock,
 ) {
+    let mut cache: Vec<Vec<f32>> = vec![vec![0.;m3r.c2-m3r.c1];m3r.r2-m3r.r1];
     for i in 0..m3r.r2 - m3r.r1 {
         for j in 0..m3r.c2 - m3r.c1 {
             for k in 0..m2r.r2 - m2r.r1 {
-                m3[i + m3r.r1][j + m3r.c1] +=
+                cache[i][j] +=
                     m1[i + m1r.r1][k + m1r.c1] * m2[k + m2r.r1][j + m2r.c1];
             }
         }
     }
+
+    for i in 0..m3r.r2 - m3r.r1 {
+        for j in 0..m3r.c2 - m3r.c1 {
+            m3[i + m3r.r1][j + m3r.c1] += cache[i][j];
+        }
+    }
+
+    
 }
 
 pub fn mat_mul_profile_demo() {
@@ -129,28 +138,33 @@ pub fn mat_mul_profile_demo() {
     println!("native: time elapsed {:?}", duration);
     println!("ans = {:}", ans);
 
-
-    let w_s = 32;
+    let w_s = 64;
     let p1 = MatPartition::new(&arr1, w_s);
     let p2 = MatPartition::new(&arr2, w_s);
     let p3 = MatPartition::new(&arr_res, w_s);
 
     reset_mat(&mut arr1, &mut arr2);
 
-
     let start = Instant::now();
-    for i in 0..*p3.rows_ptr{
+    for i in 0..*p3.rows_ptr {
         for j in 0..*p3.cols_ptr {
-            let m3r = p3.at(i, j);
-            for p in 0..m3r.r2-m3r.r1 {
-                for q in 0..m3r.c2-m3r.c1 {
-                    arr_res[p + m3r.r1][q + m3r.c1] = 0.;
+            let arr3_block = p3.at(i, j);
+            for p in 0..arr3_block.r2 - arr3_block.r1 {
+                for q in 0..arr3_block.c2 - arr3_block.c1 {
+                    arr_res[p + arr3_block.r1][q + arr3_block.c1] = 0.;
                 }
             }
             for k in 0..*p1.cols_ptr {
-                let m1r = p1.at(i, k);
-                let m2r = p2.at(k, j);
-                mul_mat_block(&mut arr1, &m1r, &mut arr2, &m2r, &mut arr_res, &m3r);
+                let arr1_block = p1.at(i, k);
+                let arr2_block = p2.at(k, j);
+                mul_mat_block(
+                    &mut arr1,
+                    &arr1_block,
+                    &mut arr2,
+                    &arr2_block,
+                    &mut arr_res,
+                    &arr3_block,
+                );
             }
         }
     }
