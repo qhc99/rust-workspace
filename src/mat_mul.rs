@@ -109,6 +109,7 @@ fn mul_mat_block(
     
 }
 
+#[allow(dead_code)]
 pub fn mat_mul_profile_demo() {
     const SIZE_A: usize = 1300;
     const SIZE_B: usize = 1300;
