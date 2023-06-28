@@ -156,5 +156,5 @@ pub fn double_link_list_demo() {
     l.insert_tail(5);
     l.insert_tail(6);
 
-    println!("exit")
+    println!("exit function")
 }
