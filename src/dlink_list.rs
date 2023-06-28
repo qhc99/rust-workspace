@@ -1,7 +1,5 @@
-use crate::rc_refcell_option::{create_nullable_ptr, mut_ref_data, unwrap_copy_ptr, NullablePtr};
-use std::{borrow::BorrowMut, ops::Deref, rc::Rc};
-
-use crate::rc_refcell_option::Pointer;
+use crate::nullable_ptr::NullablePtr;
+use crate::nullable_ptr::Pointer;
 
 struct DNode<T>
 where
@@ -12,6 +10,7 @@ where
     pub next: NullablePtr<DNode<T>>,
 }
 
+#[allow(dead_code)]
 impl<T> DNode<T>
 where
     T: std::fmt::Debug,
@@ -19,24 +18,24 @@ where
     fn new(val: T) -> Self {
         Self {
             val: Some(val),
-            prev: None,
-            next: None,
+            prev: NullablePtr::<DNode<T>>::nullptr(),
+            next: NullablePtr::<DNode<T>>::nullptr(),
         }
     }
 
     fn empty() -> Self {
         Self {
             val: None,
-            prev: None,
-            next: None,
+            prev: NullablePtr::<DNode<T>>::nullptr(),
+            next: NullablePtr::<DNode<T>>::nullptr(),
         }
     }
 
     fn detach(&mut self) {
-        let p = unwrap_copy_ptr(&self.prev);
-        let n = unwrap_copy_ptr(&self.next);
-        p.deref().borrow_mut().next = Some(n.clone());
-        n.deref().borrow_mut().prev = Some(p);
+        let p = self.prev.unwrap();
+        let n = self.next.unwrap();
+        p.borrow_mut().next = NullablePtr::of(n.clone());
+        n.borrow_mut().prev = NullablePtr::of(p);
     }
 }
 
@@ -75,17 +74,17 @@ where
     T: std::fmt::Debug,
 {
     pub fn new() -> Self {
-        let head = create_nullable_ptr(DNode::empty());
-        let tail = create_nullable_ptr(DNode::empty());
+        let head = NullablePtr::new(DNode::empty());
+        let tail = NullablePtr::new(DNode::empty());
 
-        let h = unwrap_copy_ptr(&head);
-        let t = unwrap_copy_ptr(&tail);
+        let h = head.unwrap();
+        let t = tail.unwrap();
 
-        mut_ref_data(&h).next = tail.clone();
-        mut_ref_data(&t).next = head.clone();
+        h.borrow_mut().next = tail.clone();
+        t.borrow_mut().next = head.clone();
 
-        mut_ref_data(&h).prev = tail.clone();
-        mut_ref_data(&t).prev = head.clone();
+        h.borrow_mut().prev = tail.clone();
+        t.borrow_mut().prev = head.clone();
         return DLinkList { head, tail };
     }
 
@@ -95,30 +94,22 @@ where
 
     fn insert_after(&mut self, val: T, at: Pointer<DNode<T>>) {
         let in_node = DNode::new(val);
-        let in_node_ptr = create_nullable_ptr(in_node);
+        let in_node_ptr = NullablePtr::new(in_node);
 
         let n = at;
-        let n_next = n.deref().borrow().next.clone().unwrap();
+        let n_next = n.borrow().next.clone().unwrap();
 
-        mut_ref_data(&n).next = in_node_ptr.clone();
-        n_next.deref().borrow_mut().prev = in_node_ptr.clone();
+        n.borrow_mut().next = in_node_ptr.clone();
+        n_next.borrow_mut().prev = in_node_ptr.clone();
 
-        let node = unwrap_copy_ptr(&in_node_ptr);
-        let mut node = mut_ref_data(&node);
-        node.prev = Some(n);
-        node.next = Some(n_next);
+        let node = in_node_ptr.unwrap();
+        let mut node = node.borrow_mut();
+        node.prev = NullablePtr::of(n);
+        node.next = NullablePtr::of(n_next);
     }
 
     pub fn insert_tail(&mut self, val: T) {
-        let at = self
-            .tail
-            .clone()
-            .unwrap()
-            .deref()
-            .borrow()
-            .prev
-            .clone()
-            .unwrap();
+        let at = self.tail.unwrap().borrow().prev.unwrap();
         self.insert_after(val, at);
     }
 }
@@ -128,21 +119,20 @@ where
     Val: std::fmt::Debug,
 {
     fn drop(&mut self) {
-        let mut p = unwrap_copy_ptr(&self.head);
-        let mut p1 = unwrap_copy_ptr(&mut_ref_data(&p).prev);
-        println!("start drop dlink list");
+        let mut p = self.head.unwrap();
+        let mut p1 = p.borrow().prev.unwrap();
+        println!("---Drop dlink list---");
         loop {
-            mut_ref_data(&p1).next = None;
+            p1.borrow_mut().next = NullablePtr::<DNode<Val>>::nullptr();
             p1 = p.clone();
-            if p.deref().borrow().next == None {
+            if p.borrow().next.is_null() {
                 break;
             } else {
-                let t = unwrap_copy_ptr(&mut_ref_data(&p).next);
+                let t = p.borrow().next.unwrap();
                 p = t;
             }
         }
-        let p = unwrap_copy_ptr(&self.head);
-        mut_ref_data(&p).prev = None;
+        self.head.unwrap().borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
     }
 }
 
@@ -157,4 +147,19 @@ pub fn double_link_list_demo() {
     l.insert_tail(6);
 
     println!("exit function")
+}
+
+#[test]
+fn dlink_list_drop_test(){
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_head(1);
+    l.insert_head(2);
+    l.insert_head(3);
+
+    l.insert_tail(4);
+    l.insert_tail(5);
+    l.insert_tail(6);
+
+    println!("exit function");
+    assert_eq!(4, 4);
 }
