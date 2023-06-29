@@ -1,10 +1,10 @@
 use std::{cell::RefCell, rc::Rc, ops::Deref};
 
-pub type Pointer<Val> = Rc<RefCell<Val>>;
+pub type RcRefCell<Val> = Rc<RefCell<Val>>;
 
 #[derive(Debug)]
 pub struct NullablePtr<M> {
-    nullable: Option<Pointer<M>>,
+    nullable: Option<RcRefCell<M>>,
 }
 
 #[allow(dead_code)]
@@ -15,7 +15,7 @@ impl<M> NullablePtr<M> {
         }
     }
 
-    pub fn of(p: Pointer<M>) -> NullablePtr<M> {
+    pub fn of(p: RcRefCell<M>) -> NullablePtr<M> {
         NullablePtr { nullable: Some(p) }
     }
 
@@ -23,7 +23,8 @@ impl<M> NullablePtr<M> {
         NullablePtr { nullable: None }
     }
 
-    pub fn unwrap(&self) -> Pointer<M> {
+    /// Get Rc<Refcell<T>> with possible runtime nullptr error
+    pub fn unwrap(&self) -> RcRefCell<M> {
         self.nullable.as_ref().expect("null ptr.").clone()
     }
 
@@ -45,7 +46,7 @@ impl<M> Clone for NullablePtr<M> {
 }
 
 impl <M> Deref for NullablePtr<M> {
-    type Target = Pointer<M>;
+    type Target = RcRefCell<M>;
 
     fn deref(&self) -> &Self::Target {
         self.nullable.as_ref().expect("null ptr.")

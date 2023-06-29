@@ -1,6 +1,5 @@
-
 use crate::nullable_ptr::NullablePtr;
-use crate::nullable_ptr::Pointer;
+use crate::nullable_ptr::RcRefCell;
 
 struct DNode<T>
 where
@@ -32,7 +31,7 @@ where
         }
     }
 
-    fn unwrap_val(&self) -> Pointer<T> {
+    fn unwrap_val(&self) -> RcRefCell<T> {
         self.val.unwrap()
     }
 
@@ -55,17 +54,17 @@ where
         std::ptr::eq(&self.val as *const _, &other.val as *const _)
     }
 }
+
+#[cfg(debug_assertions)]
 impl<T> Drop for DNode<T>
 where
     T: std::fmt::Debug,
 {
     fn drop(&mut self) {
-        if cfg!(debug_assertions) {
-            if self.val.not_null() {
-                eprintln!("Drop val {:?}.", self.val.unwrap());
-            } else {
-                eprintln!("Drop head or tail.");
-            }
+        if self.val.not_null() {
+            eprintln!("Drop val {:?}.", self.val.unwrap());
+        } else {
+            eprintln!("Drop head or tail.");
         }
     }
 }
@@ -74,7 +73,7 @@ struct DLinkList<T>
 where
     T: std::fmt::Debug,
 {
-    size: i32,
+    size: usize,
     head: NullablePtr<DNode<T>>,
     tail: NullablePtr<DNode<T>>,
 }
@@ -103,51 +102,75 @@ where
         };
     }
 
+    pub fn get_first(&self) -> RcRefCell<T> {
+        if self.size > 0 {
+            self.head.borrow().next.borrow().unwrap_val().clone()
+        } else {
+            panic!("extract from empty list");
+        }
+    }
+
+    pub fn get_last(&self) -> RcRefCell<T> {
+        if self.size > 0 {
+            self.tail.borrow().prev.borrow().unwrap_val().clone()
+        } else {
+            panic!("extract from empty list");
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
     pub fn insert_first(&mut self, val: T) {
         self.size = self.size + 1;
-        self.insert_after(val, self.head.unwrap());
+        DLinkList::insert_after(val, self.head.unwrap());
     }
 
     pub fn insert_last(&mut self, val: T) {
         self.size = self.size + 1;
         let at = self.tail.borrow().prev.unwrap();
-        self.insert_after(val, at);
+        DLinkList::insert_after(val, at);
     }
 
-    pub fn remove_first(&mut self) -> Option<Pointer<T>> {
-        if self.size == 0 {
-            return None;
-        }
-        self.size = self.size - 1;
+    pub fn remove_first(&mut self) -> Option<RcRefCell<T>> {
         let n = self.head.borrow_mut().next.unwrap();
-        n.borrow_mut().detach();
-        return Some(n.borrow().unwrap_val());
-    }
-
-    pub fn remove_last(&mut self) -> Option<Pointer<T>> {
         if self.size == 0 {
             return None;
         }
         self.size = self.size - 1;
-        let n = self.tail.borrow_mut().prev.unwrap();
-        n.borrow_mut().detach();
-        return Some(n.borrow().unwrap_val());
+
+        return DLinkList::remove_node(n);
     }
 
-    fn insert_after(&mut self, val: T, at: Pointer<DNode<T>>) {
+    pub fn remove_last(&mut self) -> Option<RcRefCell<T>> {
+        let n = self.tail.borrow_mut().prev.unwrap();
+        if self.size == 0 {
+            return None;
+        }
+        self.size = self.size - 1;
+
+        return DLinkList::remove_node(n);
+    }
+
+    fn remove_node(n: RcRefCell<DNode<T>>) -> Option<RcRefCell<T>> {
+        n.borrow_mut().detach();
+        return Some(n.borrow().unwrap_val().clone());
+    }
+
+    fn insert_after(val: T, at: RcRefCell<DNode<T>>) {
         let in_node = DNode::new(val);
         let in_node_ptr = NullablePtr::new(in_node);
 
         let n = at;
-        let n_next = n.borrow().next.clone().unwrap();
-
-        n.borrow_mut().next = in_node_ptr.clone();
-        n_next.borrow_mut().prev = in_node_ptr.clone();
+        let n_next = n.borrow().next.unwrap();
 
         let node = in_node_ptr.unwrap();
-        let mut node = node.borrow_mut();
-        node.prev = NullablePtr::of(n);
-        node.next = NullablePtr::of(n_next);
+        node.borrow_mut().prev = NullablePtr::of(n.clone());
+        node.borrow_mut().next = NullablePtr::of(n_next.clone());
+
+        n.borrow_mut().next = in_node_ptr.clone();
+        n_next.borrow_mut().prev = in_node_ptr;
     }
 }
 
@@ -156,8 +179,8 @@ where
     Val: std::fmt::Debug,
 {
     fn drop(&mut self) {
-        let mut p = self.head.unwrap();
-        let mut p1 = p.borrow().prev.unwrap();
+        let mut p = self.head.unwrap().clone();
+        let mut p1 = p.borrow().prev.unwrap().clone();
         if cfg!(debug_assertions) {
             eprintln!("---Drop dlink list---");
         }
@@ -167,8 +190,8 @@ where
             if p.borrow().next.is_null() {
                 break;
             } else {
-                let t = p.borrow().next.unwrap();
-                p = t;
+                let temp = p.borrow().next.unwrap().clone();
+                p = temp;
             }
         }
         self.head.borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
@@ -181,54 +204,84 @@ pub fn double_link_list_demo() {
     l.insert_first(2);
     l.insert_first(3);
 
-    l.insert_last(4);
-    l.insert_last(5);
-    l.insert_last(6);
-
     println!("exit function")
 }
 
 #[test]
-fn dlink_list_drop_test_1() {
+fn dlink_list_drop_insert_test() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
     l.insert_first(3);
+
+    assert_eq!(3, l.len());
 
     l.insert_last(4);
     l.insert_last(5);
     l.insert_last(6);
 
-    println!("exit function");
-    assert_eq!(4, 4);
+    assert_eq!(6, l.len());
 }
 
 #[test]
-fn dlink_list_drop_test_2() {
+// Drop val RefCell { value: 1 }.
+// Drop val RefCell { value: 2 }.
+// Drop val RefCell { value: 3 }.
+// ---Drop dlink list---
+// Drop head or tail.
+// Drop head or tail.
+fn dlink_list_drop_remove_test() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
     l.insert_first(3);
 
+    assert_eq!(3, l.len());
+
     l.remove_last();
     l.remove_last();
     l.remove_last();
 
-    println!("exit function");
-    assert_eq!(4, 4);
+    assert_eq!(0, l.len());
 }
 
 #[test]
-fn dlink_list_drop_test_3() {
+// Drop val RefCell { value: 3 }.
+// Drop val RefCell { value: 2 }.
+// Drop val RefCell { value: 1 }.
+// ---Drop dlink list---
+// Drop head or tail.
+// Drop head or tail.
+fn dlink_list_drop_remove_reverse_test() {
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
+    assert_eq!(3, l.len());
+
+    l.remove_first();
+    l.remove_first();
+    l.remove_first();
+    assert_eq!(0, l.len());
+}
+
+#[test]
+///---Drop dlink list---
+// Drop head or tail.
+// Drop val RefCell { value: 1 }.
+// Drop val RefCell { value: 2 }.
+// Drop val RefCell { value: 0 }.
+// Drop head or tail.
+fn dlink_list_head_test() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
     l.insert_first(3);
 
-    l.remove_first();
-    l.remove_first();
-    l.remove_first();
+    let h = l.get_first();
+    let mut t = 1;
+    t = t + h.take();
 
-    println!("exit function");
-    assert_eq!(4, 4);
+    assert_eq!(4, t);
+    assert_eq!(0, h.borrow().clone());
 }
