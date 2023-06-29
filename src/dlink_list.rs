@@ -1,4 +1,3 @@
-use std::ops::Deref;
 
 use crate::nullable_ptr::NullablePtr;
 use crate::nullable_ptr::Pointer;
@@ -31,6 +30,10 @@ where
             prev: NullablePtr::<DNode<T>>::nullptr(),
             next: NullablePtr::<DNode<T>>::nullptr(),
         }
+    }
+
+    fn unwrap_val(&self) -> Pointer<T> {
+        self.val.unwrap()
     }
 
     fn detach(&mut self) {
@@ -76,6 +79,7 @@ where
     tail: NullablePtr<DNode<T>>,
 }
 
+#[allow(dead_code)]
 impl<T> DLinkList<T>
 where
     T: std::fmt::Debug,
@@ -101,12 +105,12 @@ where
 
     pub fn insert_first(&mut self, val: T) {
         self.size = self.size + 1;
-        self.insert_after(val, self.head.clone().unwrap());
+        self.insert_after(val, self.head.unwrap());
     }
 
     pub fn insert_last(&mut self, val: T) {
         self.size = self.size + 1;
-        let at = self.tail.unwrap().borrow().prev.unwrap();
+        let at = self.tail.borrow().prev.unwrap();
         self.insert_after(val, at);
     }
 
@@ -115,9 +119,9 @@ where
             return None;
         }
         self.size = self.size - 1;
-        let n = self.head.unwrap().borrow_mut().next.unwrap();
-        
-        return Some(DLinkList::<T>::extract_node(n));
+        let n = self.head.borrow_mut().next.unwrap();
+        n.borrow_mut().detach();
+        return Some(n.borrow().unwrap_val());
     }
 
     pub fn remove_last(&mut self) -> Option<Pointer<T>> {
@@ -125,17 +129,9 @@ where
             return None;
         }
         self.size = self.size - 1;
-        let n = self.tail.unwrap().borrow_mut().prev.unwrap();
-        
-        return Some(DLinkList::<T>::extract_node(n));
-    }
-
-    fn extract_node<V>(n: Pointer<DNode<V>>) -> Pointer<V>
-    where
-        V: std::fmt::Debug,
-    {
+        let n = self.tail.borrow_mut().prev.unwrap();
         n.borrow_mut().detach();
-        return n.borrow().val.unwrap();
+        return Some(n.borrow().unwrap_val());
     }
 
     fn insert_after(&mut self, val: T, at: Pointer<DNode<T>>) {
@@ -175,7 +171,7 @@ where
                 p = t;
             }
         }
-        self.head.unwrap().borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
+        self.head.borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
     }
 }
 

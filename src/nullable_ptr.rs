@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, ops::Deref};
 
 pub type Pointer<Val> = Rc<RefCell<Val>>;
 
@@ -24,7 +24,7 @@ impl<M> NullablePtr<M> {
     }
 
     pub fn unwrap(&self) -> Pointer<M> {
-        self.nullable.as_ref().unwrap().clone()
+        self.nullable.as_ref().expect("null ptr.").clone()
     }
 
     pub fn is_null(&self) -> bool {
@@ -41,5 +41,13 @@ impl<M> Clone for NullablePtr<M> {
         Self {
             nullable: self.nullable.clone(),
         }
+    }
+}
+
+impl <M> Deref for NullablePtr<M> {
+    type Target = Pointer<M>;
+
+    fn deref(&self) -> &Self::Target {
+        self.nullable.as_ref().expect("null ptr.")
     }
 }
