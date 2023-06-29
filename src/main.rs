@@ -2,6 +2,7 @@ mod mat_mul;
 mod shared_list;
 mod nullable_ptr;
 mod dlink_list;
+mod dlink_list_test;
 
 
 fn main() {
