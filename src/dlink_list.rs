@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::nullable_ptr::NullablePtr;
 use crate::nullable_ptr::Pointer;
 
@@ -5,7 +7,7 @@ struct DNode<T>
 where
     T: std::fmt::Debug,
 {
-    pub val: Option<T>,
+    pub val: NullablePtr<T>,
     pub prev: NullablePtr<DNode<T>>,
     pub next: NullablePtr<DNode<T>>,
 }
@@ -17,7 +19,7 @@ where
 {
     fn new(val: T) -> Self {
         Self {
-            val: Some(val),
+            val: NullablePtr::new(val),
             prev: NullablePtr::<DNode<T>>::nullptr(),
             next: NullablePtr::<DNode<T>>::nullptr(),
         }
@@ -25,7 +27,7 @@ where
 
     fn empty() -> Self {
         Self {
-            val: None,
+            val: NullablePtr::<T>::nullptr(),
             prev: NullablePtr::<DNode<T>>::nullptr(),
             next: NullablePtr::<DNode<T>>::nullptr(),
         }
@@ -36,6 +38,9 @@ where
         let n = self.next.unwrap();
         p.borrow_mut().next = NullablePtr::of(n.clone());
         n.borrow_mut().prev = NullablePtr::of(p);
+
+        self.next = NullablePtr::<DNode<T>>::nullptr();
+        self.prev = NullablePtr::<DNode<T>>::nullptr();
     }
 }
 
@@ -47,16 +52,17 @@ where
         std::ptr::eq(&self.val as *const _, &other.val as *const _)
     }
 }
-
 impl<T> Drop for DNode<T>
 where
     T: std::fmt::Debug,
 {
     fn drop(&mut self) {
-        if self.val.is_some() {
-            println!("Drop val {:?}.", self.val.as_ref().unwrap());
-        } else {
-            println!("Drop head or tail.");
+        if cfg!(debug_assertions) {
+            if self.val.not_null() {
+                eprintln!("Drop val {:?}.", self.val.unwrap());
+            } else {
+                eprintln!("Drop head or tail.");
+            }
         }
     }
 }
@@ -65,6 +71,7 @@ struct DLinkList<T>
 where
     T: std::fmt::Debug,
 {
+    size: i32,
     head: NullablePtr<DNode<T>>,
     tail: NullablePtr<DNode<T>>,
 }
@@ -85,11 +92,50 @@ where
 
         h.borrow_mut().prev = tail.clone();
         t.borrow_mut().prev = head.clone();
-        return DLinkList { head, tail };
+        return DLinkList {
+            head,
+            tail,
+            size: 0,
+        };
     }
 
-    pub fn insert_head(&mut self, val: T) {
+    pub fn insert_first(&mut self, val: T) {
+        self.size = self.size + 1;
         self.insert_after(val, self.head.clone().unwrap());
+    }
+
+    pub fn insert_last(&mut self, val: T) {
+        self.size = self.size + 1;
+        let at = self.tail.unwrap().borrow().prev.unwrap();
+        self.insert_after(val, at);
+    }
+
+    pub fn remove_first(&mut self) -> Option<Pointer<T>> {
+        if self.size == 0 {
+            return None;
+        }
+        self.size = self.size - 1;
+        let n = self.head.unwrap().borrow_mut().next.unwrap();
+        
+        return Some(DLinkList::<T>::extract_node(n));
+    }
+
+    pub fn remove_last(&mut self) -> Option<Pointer<T>> {
+        if self.size == 0 {
+            return None;
+        }
+        self.size = self.size - 1;
+        let n = self.tail.unwrap().borrow_mut().prev.unwrap();
+        
+        return Some(DLinkList::<T>::extract_node(n));
+    }
+
+    fn extract_node<V>(n: Pointer<DNode<V>>) -> Pointer<V>
+    where
+        V: std::fmt::Debug,
+    {
+        n.borrow_mut().detach();
+        return n.borrow().val.unwrap();
     }
 
     fn insert_after(&mut self, val: T, at: Pointer<DNode<T>>) {
@@ -107,11 +153,6 @@ where
         node.prev = NullablePtr::of(n);
         node.next = NullablePtr::of(n_next);
     }
-
-    pub fn insert_tail(&mut self, val: T) {
-        let at = self.tail.unwrap().borrow().prev.unwrap();
-        self.insert_after(val, at);
-    }
 }
 
 impl<Val> Drop for DLinkList<Val>
@@ -121,7 +162,9 @@ where
     fn drop(&mut self) {
         let mut p = self.head.unwrap();
         let mut p1 = p.borrow().prev.unwrap();
-        println!("---Drop dlink list---");
+        if cfg!(debug_assertions) {
+            eprintln!("---Drop dlink list---");
+        }
         loop {
             p1.borrow_mut().next = NullablePtr::<DNode<Val>>::nullptr();
             p1 = p.clone();
@@ -138,27 +181,57 @@ where
 
 pub fn double_link_list_demo() {
     let mut l: DLinkList<i32> = DLinkList::new();
-    l.insert_head(1);
-    l.insert_head(2);
-    l.insert_head(3);
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
 
-    l.insert_tail(4);
-    l.insert_tail(5);
-    l.insert_tail(6);
+    l.insert_last(4);
+    l.insert_last(5);
+    l.insert_last(6);
 
     println!("exit function")
 }
 
 #[test]
-fn dlink_list_drop_test(){
+fn dlink_list_drop_test_1() {
     let mut l: DLinkList<i32> = DLinkList::new();
-    l.insert_head(1);
-    l.insert_head(2);
-    l.insert_head(3);
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
 
-    l.insert_tail(4);
-    l.insert_tail(5);
-    l.insert_tail(6);
+    l.insert_last(4);
+    l.insert_last(5);
+    l.insert_last(6);
+
+    println!("exit function");
+    assert_eq!(4, 4);
+}
+
+#[test]
+fn dlink_list_drop_test_2() {
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
+
+    l.remove_last();
+    l.remove_last();
+    l.remove_last();
+
+    println!("exit function");
+    assert_eq!(4, 4);
+}
+
+#[test]
+fn dlink_list_drop_test_3() {
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
+
+    l.remove_first();
+    l.remove_first();
+    l.remove_first();
 
     println!("exit function");
     assert_eq!(4, 4);
