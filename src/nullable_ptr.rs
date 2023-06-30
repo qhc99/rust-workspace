@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, ops::Deref};
+use std::{cell::RefCell, ops::Deref, rc::Rc};
 
 pub type RcRefCell<Val> = Rc<RefCell<Val>>;
 
@@ -23,9 +23,15 @@ impl<M> NullablePtr<M> {
         NullablePtr { nullable: None }
     }
 
-    /// Get Rc<Refcell<T>> with possible runtime nullptr error
+    /// Prefer unwrap_ref. Use unwrap to add extra clone when borrow checker reports errors 
+    /// (e.g. error[E0716]: temporary value dropped while borrowed).
     pub fn unwrap(&self) -> RcRefCell<M> {
         self.nullable.as_ref().expect("null ptr.").clone()
+    }
+
+    /// Get Rc<Refcell<T>> with possible runtime nullptr error
+    pub fn unwrap_ref(&self) -> &RcRefCell<M> {
+        self.nullable.as_ref().expect("null ptr.")
     }
 
     pub fn is_null(&self) -> bool {
@@ -45,7 +51,7 @@ impl<M> Clone for NullablePtr<M> {
     }
 }
 
-impl <M> Deref for NullablePtr<M> {
+impl<M> Deref for NullablePtr<M> {
     type Target = RcRefCell<M>;
 
     fn deref(&self) -> &Self::Target {
