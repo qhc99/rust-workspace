@@ -3,13 +3,13 @@ use crate::dlink_list::DLinkList;
 
 #[test]
 // ---Drop dlink list---
-// Drop head or tail.
 // Drop val RefCell { value: 6 }.
 // Drop val RefCell { value: 5 }.
 // Drop val RefCell { value: 4 }.
 // Drop val RefCell { value: 1 }.
 // Drop val RefCell { value: 2 }.
 // Drop val RefCell { value: 3 }.
+// Drop head or tail.
 // Drop head or tail.
 fn dlink_list_drop_insert_test() {
     let mut l: DLinkList<i32> = DLinkList::new();
@@ -70,10 +70,10 @@ fn dlink_list_drop_remove_reverse_test() {
 
 #[test]
 ///---Drop dlink list---
-// Drop head or tail.
 // Drop val RefCell { value: 1 }.
 // Drop val RefCell { value: 2 }.
 // Drop val RefCell { value: 0 }.
+// Drop head or tail.
 // Drop head or tail.
 fn dlink_list_head_test() {
     let mut l: DLinkList<i32> = DLinkList::new();

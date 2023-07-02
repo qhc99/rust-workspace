@@ -55,7 +55,7 @@ where
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(test)]
 impl<T> Drop for DNode<T>
 where
     T: std::fmt::Debug,
@@ -91,9 +91,6 @@ where
         let t = tail.unwrap_ref();
 
         h.borrow_mut().next = tail.clone();
-        t.borrow_mut().next = head.clone();
-
-        h.borrow_mut().prev = tail.clone();
         t.borrow_mut().prev = head.clone();
         return DLinkList {
             head,
@@ -180,21 +177,20 @@ where
 {
     fn drop(&mut self) {
         let mut p = self.head.unwrap();
-        let mut p1 = p.borrow().prev.unwrap();
-        if cfg!(debug_assertions) {
+        if cfg!(test) {
             eprintln!("---Drop dlink list---");
         }
         loop {
-            p1.borrow_mut().next = NullablePtr::<DNode<Val>>::nullptr();
-            p1 = p.clone();
-            if p.borrow().next.is_null() {
+            let next = p.borrow().next.clone();
+            if next.is_null(){
                 break;
-            } else {
-                let temp = p.borrow().next.unwrap();
-                p = temp;
+            }
+            else{
+                p.borrow_mut().next = NullablePtr::<DNode<Val>>::nullptr();
+                p = next.unwrap();
             }
         }
-        self.head.borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
+        self.tail.borrow_mut().prev = NullablePtr::<DNode<Val>>::nullptr();
     }
 }
 
