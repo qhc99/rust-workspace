@@ -129,6 +129,7 @@ where
 
     pub fn insert_last(&mut self, val: T) {
         self.size = self.size + 1;
+        // cannot use unwrap because borrow() create a temporary object
         let at = self.tail.borrow().prev.unwrap();
         DLinkList::insert_after(val, &at);
     }
