@@ -3,20 +3,14 @@ use crate::nullable_ptr::RcRefCell;
 use std::fmt::Debug;
 
 #[derive(Debug)]
-struct DNode<Val>
-where
-    Val: Debug,
-{
+struct DNode<Val> {
     pub val: NullablePtr<Val>,
     pub prev: NullablePtr<DNode<Val>>,
     pub next: NullablePtr<DNode<Val>>,
 }
 
 #[allow(dead_code)]
-impl<Val> DNode<Val>
-where
-    Val: Debug,
-{
+impl<Val> DNode<Val> {
     fn new(val: Val) -> Self {
         Self {
             val: NullablePtr::new(val),
@@ -48,45 +42,22 @@ where
     }
 }
 
-impl<Val> PartialEq for DNode<Val>
-where
-    Val: Debug,
-{
+impl<Val> PartialEq for DNode<Val> {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(&self.val as *const _, &other.val as *const _)
     }
 }
 
-#[cfg(test)]
-impl<Val> Drop for DNode<Val>
-where
-    Val: Debug,
-{
-    fn drop(&mut self) {
-        if self.val.not_null() {
-            eprintln!("Drop val {:?}.", self.val.unwrap());
-        } else {
-            eprintln!("Drop head or tail.");
-        }
-    }
-}
-
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct DLinkList<Val>
-where
-    Val: Debug,
-{
+pub struct DLinkList<Val> {
     size: usize,
     head: NullablePtr<DNode<Val>>,
     tail: NullablePtr<DNode<Val>>,
 }
 
 #[allow(dead_code)]
-impl<Val> DLinkList<Val>
-where
-    Val: Debug,
-{
+impl<Val> DLinkList<Val> {
     pub fn new() -> Self {
         let head = NullablePtr::new(DNode::empty());
         let tail = NullablePtr::new(DNode::empty());
@@ -175,15 +146,9 @@ where
     }
 }
 
-impl<Val> Drop for DLinkList<Val>
-where
-    Val: Debug,
-{
+impl<Val> Drop for DLinkList<Val> {
     fn drop(&mut self) {
         let mut p = self.head.unwrap();
-        if cfg!(test) {
-            eprintln!("---Drop dlink list---");
-        }
         loop {
             let next = p.borrow().next.clone();
             if next.is_null() {
@@ -197,11 +162,7 @@ where
     }
 }
 
-// TODO fix into_iter result is none
-impl<V> IntoIterator for DLinkList<V>
-where
-    V: Debug,
-{
+impl<V> IntoIterator for DLinkList<V> {
     type Item = RcRefCell<V>;
 
     type IntoIter = DLinkListIter<V>;
@@ -216,18 +177,12 @@ where
 }
 
 #[derive(Debug)]
-pub struct DLinkListIter<Val>
-where
-    Val: Debug,
-{
+pub struct DLinkListIter<Val> {
     list: DLinkList<Val>,
     current: RcRefCell<DNode<Val>>,
 }
 
-impl<Val> Iterator for DLinkListIter<Val>
-where
-    Val: Debug,
-{
+impl<Val> Iterator for DLinkListIter<Val> {
     type Item = RcRefCell<Val>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -246,10 +201,7 @@ where
     }
 }
 
-impl<Val> DoubleEndedIterator for DLinkListIter<Val>
-where
-    Val: Debug,
-{
+impl<Val> DoubleEndedIterator for DLinkListIter<Val> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.current != self.list.head.unwrap() {
             let ans = self.current.borrow().val.clone();
