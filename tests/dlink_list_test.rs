@@ -89,7 +89,7 @@ fn dlink_list_head_test() {
 }
 
 #[test]
-fn dlink_list_iter() {
+fn dlink_list_iter_and_rev() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
@@ -97,8 +97,11 @@ fn dlink_list_iter() {
 
     let mut iter = l.into_iter();
 
-    dbg!(&iter);
-    assert_eq!(iter.next().unwrap().take(), 3);
-    assert_eq!(iter.next().unwrap().take(), 2);
-    assert_eq!(iter.next().unwrap().take(), 1);
+    assert_eq!(iter.next().unwrap().replace(3), 3);
+    assert_eq!(iter.next().unwrap().replace(2), 2);
+    assert_eq!(iter.next().unwrap().replace(1), 1);
+   
+    assert_eq!(iter.next_back().unwrap().replace(1), 1);
+    assert_eq!(iter.next_back().unwrap().replace(2), 2);
+    assert_eq!(iter.next_back().unwrap().replace(3), 3);
 }

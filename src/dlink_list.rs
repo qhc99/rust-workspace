@@ -1,6 +1,7 @@
 use crate::nullable_ptr::NullablePtr;
 use crate::nullable_ptr::RcRefCell;
 use std::fmt::Debug;
+use std::iter::Rev;
 
 #[derive(Debug)]
 struct DNode<Val>
@@ -70,6 +71,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct DLinkList<Val>
 where
     Val: Debug,
@@ -169,8 +171,6 @@ where
         n.borrow_mut().next = in_node_ptr.clone();
         n_next.borrow_mut().prev = in_node_ptr;
     }
-
-    
 }
 
 impl<Val> Drop for DLinkList<Val>
@@ -196,86 +196,77 @@ where
 }
 
 // TODO fix into_iter result is none
-impl<V> IntoIterator for DLinkList<V> where V: Debug{
+impl<V> IntoIterator for DLinkList<V>
+where
+    V: Debug,
+{
     type Item = RcRefCell<V>;
 
     type IntoIter = DLinkListIter<V>;
 
     fn into_iter(self) -> Self::IntoIter {
-        DLinkListIter{
-            head: self.head.clone().unwrap(),
-            current: self.head.borrow().next.unwrap(),
-            tail: self.tail.clone().unwrap()
+        let c = self.head.borrow().next.unwrap();
+        DLinkListIter {
+            current: c,
+            list: self,
         }
     }
 }
-
 
 #[derive(Debug)]
-pub struct DLinkListIter<Val> where Val : Debug{
-    head: RcRefCell<DNode<Val>>,
+pub struct DLinkListIter<Val>
+where
+    Val: Debug,
+{
+    list: DLinkList<Val>,
     current: RcRefCell<DNode<Val>>,
-    tail: RcRefCell<DNode<Val>>
 }
 
-impl<Val> DoubleEndedIterator for DLinkListIter<Val> where Val : Debug{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.current != self.head{
-            let ans = self.current.borrow().get_val();
-            let next = self.current.borrow().prev.unwrap();
-            self.current = next;
-            return Some(ans);
-        }
-        else{
-            return None;
-        }
-    }
-}
-
-
-impl<Val> Iterator for DLinkListIter<Val> where Val : Debug{
+impl<Val> Iterator for DLinkListIter<Val>
+where
+    Val: Debug,
+{
     type Item = RcRefCell<Val>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current != self.tail{
-            let ans = self.current.borrow().get_val();
-            dbg!(&self.head);
-            dbg!(&self.head.borrow().next);
-            dbg!(&self.head.borrow().next.borrow().next);
-            dbg!(&self.head.borrow().next.borrow().next.borrow().next);
+        return if self.current != self.list.tail.unwrap() {
+            let ans = self.current.borrow().val.clone();
             let next = self.current.borrow().next.unwrap();
             self.current = next;
-            return Some(ans);
-        }
-        else{
+            return if ans.is_null() {
+                None
+            } else {
+                Some(ans.unwrap())
+            };
+        } else {
+            None
+        };
+    }
+}
+
+impl<Val> DoubleEndedIterator for DLinkListIter<Val>
+where
+    Val: Debug,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.current != self.list.head.unwrap() {
+            let ans = self.current.borrow().val.clone();
+            let next = self.current.borrow().prev.unwrap();
+            self.current = next;
+            return if ans.is_null() {
+                None
+            } else {
+                Some(ans.unwrap())
+            };
+        } else {
             return None;
         }
     }
 }
-
-
-
 
 pub fn double_link_list_demo() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
     l.insert_first(3);
-    
-}
-
-
-#[test]
-fn dlink_list_iter() {
-    let mut l: DLinkList<i32> = DLinkList::new();
-    l.insert_first(1);
-    l.insert_first(2);
-    l.insert_first(3);
-    
-
-    let mut iter = l.into_iter();
-
-    assert_eq!(iter.next().unwrap().take(),3);
-    assert_eq!(iter.next().unwrap().take(),2);
-    assert_eq!(iter.next().unwrap().take(),1);
 }

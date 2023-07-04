@@ -29,5 +29,4 @@ fn main() {
     dlink_list::double_link_list_demo();
     let mut v = vec![1;3];
     v.iter();
-
 }
