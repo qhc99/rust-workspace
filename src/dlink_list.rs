@@ -1,37 +1,38 @@
 use crate::nullable_ptr::NullablePtr;
 use crate::nullable_ptr::RcRefCell;
+use std::fmt::Debug;
 
-struct DNode<T>
+#[derive(Debug)]
+struct DNode<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
-    pub val: NullablePtr<T>,
-    pub prev: NullablePtr<DNode<T>>,
-    pub next: NullablePtr<DNode<T>>,
+    pub val: NullablePtr<Val>,
+    pub prev: NullablePtr<DNode<Val>>,
+    pub next: NullablePtr<DNode<Val>>,
 }
 
-#[allow(dead_code)]
-impl<T> DNode<T>
+impl<Val> DNode<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
-    fn new(val: T) -> Self {
+    fn new(val: Val) -> Self {
         Self {
             val: NullablePtr::new(val),
-            prev: NullablePtr::<DNode<T>>::nullptr(),
-            next: NullablePtr::<DNode<T>>::nullptr(),
+            prev: NullablePtr::<DNode<Val>>::nullptr(),
+            next: NullablePtr::<DNode<Val>>::nullptr(),
         }
     }
 
     fn empty() -> Self {
         Self {
-            val: NullablePtr::<T>::nullptr(),
-            prev: NullablePtr::<DNode<T>>::nullptr(),
-            next: NullablePtr::<DNode<T>>::nullptr(),
+            val: NullablePtr::<Val>::nullptr(),
+            prev: NullablePtr::<DNode<Val>>::nullptr(),
+            next: NullablePtr::<DNode<Val>>::nullptr(),
         }
     }
 
-    fn get_val(&self) -> RcRefCell<T> {
+    fn get_val(&self) -> RcRefCell<Val> {
         self.val.unwrap()
     }
 
@@ -41,14 +42,14 @@ where
         p.borrow_mut().next = NullablePtr::of(n.clone());
         n.borrow_mut().prev = NullablePtr::of(p.clone());
 
-        self.next = NullablePtr::<DNode<T>>::nullptr();
-        self.prev = NullablePtr::<DNode<T>>::nullptr();
+        self.next = NullablePtr::<DNode<Val>>::nullptr();
+        self.prev = NullablePtr::<DNode<Val>>::nullptr();
     }
 }
 
-impl<T> PartialEq for DNode<T>
+impl<Val> PartialEq for DNode<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(&self.val as *const _, &other.val as *const _)
@@ -56,9 +57,9 @@ where
 }
 
 #[cfg(test)]
-impl<T> Drop for DNode<T>
+impl<Val> Drop for DNode<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
     fn drop(&mut self) {
         if self.val.not_null() {
@@ -69,19 +70,18 @@ where
     }
 }
 
-pub struct DLinkList<T>
+pub struct DLinkList<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
     size: usize,
-    head: NullablePtr<DNode<T>>,
-    tail: NullablePtr<DNode<T>>,
+    head: NullablePtr<DNode<Val>>,
+    tail: NullablePtr<DNode<Val>>,
 }
 
-#[allow(dead_code)]
-impl<T> DLinkList<T>
+impl<Val> DLinkList<Val>
 where
-    T: std::fmt::Debug,
+    Val: Debug,
 {
     pub fn new() -> Self {
         let head = NullablePtr::new(DNode::empty());
@@ -99,7 +99,7 @@ where
         };
     }
 
-    pub fn get_first(&self) -> RcRefCell<T> {
+    pub fn get_first(&self) -> RcRefCell<Val> {
         if self.size > 0 {
             self.head.borrow().next.borrow().get_val()
         } else {
@@ -107,7 +107,7 @@ where
         }
     }
 
-    pub fn get_last(&self) -> RcRefCell<T> {
+    pub fn get_last(&self) -> RcRefCell<Val> {
         if self.size > 0 {
             self.tail.borrow().prev.borrow().get_val()
         } else {
@@ -119,19 +119,19 @@ where
         self.size
     }
 
-    pub fn insert_first(&mut self, val: T) {
+    pub fn insert_first(&mut self, val: Val) {
         self.size = self.size + 1;
         DLinkList::insert_after(val, self.head.unwrap_ref());
     }
 
-    pub fn insert_last(&mut self, val: T) {
+    pub fn insert_last(&mut self, val: Val) {
         self.size = self.size + 1;
         // cannot use unwrap because borrow() create a temporary object
         let at = self.tail.borrow().prev.unwrap();
         DLinkList::insert_after(val, &at);
     }
 
-    pub fn remove_first(&mut self) -> Option<RcRefCell<T>> {
+    pub fn remove_first(&mut self) -> Option<RcRefCell<Val>> {
         let n = self.head.borrow_mut().next.unwrap();
         if self.size == 0 {
             return None;
@@ -141,7 +141,7 @@ where
         return DLinkList::remove_node(&n);
     }
 
-    pub fn remove_last(&mut self) -> Option<RcRefCell<T>> {
+    pub fn remove_last(&mut self) -> Option<RcRefCell<Val>> {
         let n = self.tail.borrow_mut().prev.unwrap();
         if self.size == 0 {
             return None;
@@ -151,12 +151,12 @@ where
         return DLinkList::remove_node(&n);
     }
 
-    fn remove_node(n: &RcRefCell<DNode<T>>) -> Option<RcRefCell<T>> {
+    fn remove_node(n: &RcRefCell<DNode<Val>>) -> Option<RcRefCell<Val>> {
         n.borrow_mut().detach();
         return Some(n.borrow().get_val());
     }
 
-    fn insert_after(val: T, n: &RcRefCell<DNode<T>>) {
+    fn insert_after(val: Val, n: &RcRefCell<DNode<Val>>) {
         let in_node = DNode::new(val);
         let in_node_ptr = NullablePtr::new(in_node);
 
@@ -169,11 +169,13 @@ where
         n.borrow_mut().next = in_node_ptr.clone();
         n_next.borrow_mut().prev = in_node_ptr;
     }
+
+    
 }
 
 impl<Val> Drop for DLinkList<Val>
 where
-    Val: std::fmt::Debug,
+    Val: Debug,
 {
     fn drop(&mut self) {
         let mut p = self.head.unwrap();
@@ -182,10 +184,9 @@ where
         }
         loop {
             let next = p.borrow().next.clone();
-            if next.is_null(){
+            if next.is_null() {
                 break;
-            }
-            else{
+            } else {
                 p.borrow_mut().next = NullablePtr::<DNode<Val>>::nullptr();
                 p = next.unwrap();
             }
@@ -194,11 +195,87 @@ where
     }
 }
 
+// TODO fix into_iter result is none
+impl<V> IntoIterator for DLinkList<V> where V: Debug{
+    type Item = RcRefCell<V>;
+
+    type IntoIter = DLinkListIter<V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        DLinkListIter{
+            head: self.head.clone().unwrap(),
+            current: self.head.borrow().next.unwrap(),
+            tail: self.tail.clone().unwrap()
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct DLinkListIter<Val> where Val : Debug{
+    head: RcRefCell<DNode<Val>>,
+    current: RcRefCell<DNode<Val>>,
+    tail: RcRefCell<DNode<Val>>
+}
+
+impl<Val> DoubleEndedIterator for DLinkListIter<Val> where Val : Debug{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.current != self.head{
+            let ans = self.current.borrow().get_val();
+            let next = self.current.borrow().prev.unwrap();
+            self.current = next;
+            return Some(ans);
+        }
+        else{
+            return None;
+        }
+    }
+}
+
+
+impl<Val> Iterator for DLinkListIter<Val> where Val : Debug{
+    type Item = RcRefCell<Val>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current != self.tail{
+            let ans = self.current.borrow().get_val();
+            dbg!(&self.head);
+            dbg!(&self.head.borrow().next);
+            dbg!(&self.head.borrow().next.borrow().next);
+            dbg!(&self.head.borrow().next.borrow().next.borrow().next);
+            let next = self.current.borrow().next.unwrap();
+            self.current = next;
+            return Some(ans);
+        }
+        else{
+            return None;
+        }
+    }
+}
+
+
+
+
 pub fn double_link_list_demo() {
     let mut l: DLinkList<i32> = DLinkList::new();
     l.insert_first(1);
     l.insert_first(2);
     l.insert_first(3);
+    
+}
 
-    println!("exit function")
+
+#[test]
+fn dlink_list_iter() {
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
+    
+
+    let mut iter = l.into_iter();
+
+    assert_eq!(iter.next().unwrap().take(),3);
+    assert_eq!(iter.next().unwrap().take(),2);
+    assert_eq!(iter.next().unwrap().take(),1);
 }

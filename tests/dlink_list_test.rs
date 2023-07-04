@@ -1,5 +1,4 @@
-#[cfg(test)]
-use crate::dlink_list::DLinkList;
+use rust_libs::dlink_list::DLinkList;
 
 #[test]
 // ---Drop dlink list---
@@ -87,4 +86,19 @@ fn dlink_list_head_test() {
 
     assert_eq!(4, t);
     assert_eq!(0, h.borrow().clone());
+}
+
+#[test]
+fn dlink_list_iter() {
+    let mut l: DLinkList<i32> = DLinkList::new();
+    l.insert_first(1);
+    l.insert_first(2);
+    l.insert_first(3);
+
+    let mut iter = l.into_iter();
+
+    dbg!(&iter);
+    assert_eq!(iter.next().unwrap().take(), 3);
+    assert_eq!(iter.next().unwrap().take(), 2);
+    assert_eq!(iter.next().unwrap().take(), 1);
 }
