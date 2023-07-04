@@ -1,18 +1,2 @@
-[package]
-name = "rust_libs"
-version = "0.1.0"
-edition = "2021"
-
-[profile.dev]
-debug = true
-profile-rustflags = ["-A dead_code"]
-incremental = true
-
-[profile.release]
-debug = false
-profile-rustflags = ["-A dead_code"]
-incremental = false
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-rand = "0.8.5"
+[workspace]
+members = ["rust_libs"]
