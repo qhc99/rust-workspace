@@ -1,7 +1,6 @@
 use crate::nullable_ptr::NullablePtr;
 use crate::nullable_ptr::RcRefCell;
 use std::fmt::Debug;
-use std::iter::Rev;
 
 #[derive(Debug)]
 struct DNode<Val>
@@ -13,6 +12,7 @@ where
     pub next: NullablePtr<DNode<Val>>,
 }
 
+#[allow(dead_code)]
 impl<Val> DNode<Val>
 where
     Val: Debug,
@@ -72,6 +72,7 @@ where
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct DLinkList<Val>
 where
     Val: Debug,
@@ -81,6 +82,7 @@ where
     tail: NullablePtr<DNode<Val>>,
 }
 
+#[allow(dead_code)]
 impl<Val> DLinkList<Val>
 where
     Val: Debug,
@@ -262,11 +264,4 @@ where
             return None;
         }
     }
-}
-
-pub fn double_link_list_demo() {
-    let mut l: DLinkList<i32> = DLinkList::new();
-    l.insert_first(1);
-    l.insert_first(2);
-    l.insert_first(3);
 }
