@@ -1,27 +1,9 @@
 use rand::Rng;
 
 use std::cmp;
-use std::ops::Deref;
 use std::time::Instant;
 
 /// A container for values that can only be deref'd immutably.
-struct Immutable<T> {
-    value: T,
-}
-
-impl<T> Immutable<T> {
-    pub fn new(value: T) -> Self {
-        return Immutable { value };
-    }
-}
-
-impl<T> Deref for Immutable<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        return &self.value;
-    }
-}
 
 struct MatBlock {
     r1: usize,
@@ -34,8 +16,8 @@ struct MatPartition {
     size_block: usize,
     m: usize,
     n: usize,
-    pub rows_ptr: Immutable<usize>,
-    pub cols_ptr: Immutable<usize>,
+    pub rows_idx: usize,
+    pub cols_idx: usize,
 }
 
 impl MatPartition {
@@ -49,8 +31,8 @@ impl MatPartition {
             size_block,
             m,
             n,
-            rows_ptr: Immutable::new(rows),
-            cols_ptr: Immutable::new(cols),
+            rows_idx: rows,
+            cols_idx: cols,
         };
     }
 
@@ -90,12 +72,11 @@ fn mul_mat_block(
     m3: &mut Vec<Vec<f32>>,
     m3r: &MatBlock,
 ) {
-    let mut cache: Vec<Vec<f32>> = vec![vec![0.;m3r.c2-m3r.c1];m3r.r2-m3r.r1];
+    let mut cache: Vec<Vec<f32>> = vec![vec![0.; m3r.c2 - m3r.c1]; m3r.r2 - m3r.r1];
     for i in 0..m3r.r2 - m3r.r1 {
         for j in 0..m3r.c2 - m3r.c1 {
             for k in 0..m2r.r2 - m2r.r1 {
-                cache[i][j] +=
-                    m1[i + m1r.r1][k + m1r.c1] * m2[k + m2r.r1][j + m2r.c1];
+                cache[i][j] += m1[i + m1r.r1][k + m1r.c1] * m2[k + m2r.r1][j + m2r.c1];
             }
         }
     }
@@ -105,8 +86,6 @@ fn mul_mat_block(
             m3[i + m3r.r1][j + m3r.c1] += cache[i][j];
         }
     }
-
-    
 }
 
 #[allow(dead_code)]
@@ -139,7 +118,7 @@ pub fn mat_mul_profile_demo() {
     println!("native: time elapsed {:?}", duration);
     println!("ans = {:}", ans);
 
-    let w_s = 64;
+    let w_s = 32;
     let p1 = MatPartition::new(&arr1, w_s);
     let p2 = MatPartition::new(&arr2, w_s);
     let p3 = MatPartition::new(&arr_res, w_s);
@@ -147,15 +126,15 @@ pub fn mat_mul_profile_demo() {
     reset_mat(&mut arr1, &mut arr2);
 
     let start = Instant::now();
-    for i in 0..*p3.rows_ptr {
-        for j in 0..*p3.cols_ptr {
+    for i in 0..p3.rows_idx {
+        for j in 0..p3.cols_idx {
             let arr3_block = p3.at(i, j);
             for p in 0..arr3_block.r2 - arr3_block.r1 {
                 for q in 0..arr3_block.c2 - arr3_block.c1 {
                     arr_res[p + arr3_block.r1][q + arr3_block.c1] = 0.;
                 }
             }
-            for k in 0..*p1.cols_ptr {
+            for k in 0..p1.cols_idx {
                 let arr1_block = p1.at(i, k);
                 let arr2_block = p2.at(k, j);
                 mul_mat_block(
