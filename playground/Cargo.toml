@@ -14,3 +14,9 @@ incremental = false
 
 [dependencies]
 rand = "0.8.5"
+docopt = "1"
+rayon = "1.7.0"
+
+[dependencies.serde]
+version = "1.0.85"
+features = ["derive"]
