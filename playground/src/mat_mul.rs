@@ -1,10 +1,8 @@
 use rand::Rng;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use std::borrow::BorrowMut;
+use std::cmp;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::{cmp, thread};
 
 #[derive(Copy, Clone)]
 struct UnsafeMutPtr<T> {
@@ -126,14 +124,12 @@ fn mul_mat_block(
 
     for i in 0..m3r.r2 - m3r.r1 {
         for j in 0..m3r.c2 - m3r.c1 {
-            if i + m3r.r1 >= m3.len() || j + m3r.c1 >= m3[0].len() {
-                panic!("catch m3r: {:?}.\n", m3r)
-            }
             m3[i + m3r.r1][j + m3r.c1] += cache[i][j];
         }
     }
 }
 
+#[allow(dead_code)]
 pub fn naive_mat_mul(
     arr1: &mut Vec<Vec<f32>>,
     arr2: &mut Vec<Vec<f32>>,
@@ -164,6 +160,7 @@ pub fn naive_mat_mul(
     println!("ans = {:}", ans);
 }
 
+#[allow(dead_code)]
 fn locality_mat_mul(
     arr1: &mut Vec<Vec<f32>>,
     arr2: &mut Vec<Vec<f32>>,
@@ -208,12 +205,6 @@ fn locality_mat_mul_row(
         let arr3_block = p3.at(i, j);
         for p in 0..arr3_block.r2 - arr3_block.r1 {
             for q in 0..arr3_block.c2 - arr3_block.c1 {
-                if p + arr3_block.r1 >= arr_res.len() || q + arr3_block.c1 >= arr_res[0].len() {
-                    panic!(
-                        "@@catch arr3_block: {:?}, i:{}, j:{}, p3:{:?}\n",
-                        arr3_block, i, j, p3
-                    );
-                }
                 arr_res[p + arr3_block.r1][q + arr3_block.c1] = 0.;
             }
         }
@@ -222,27 +213,6 @@ fn locality_mat_mul_row(
             let arr2_block = p2.at(k, j);
             mul_mat_block(arr1, &arr1_block, arr2, &arr2_block, arr_res, &arr3_block);
         }
-    }
-}
-
-fn locality_mat_mul_row_unsafe(
-    i: usize,
-    arr1: usize,
-    arr2: usize,
-    arr_res: usize,
-    p1: usize,
-    p2: usize,
-    p3: usize,
-) {
-    unsafe {
-        let arr1 = &*(arr1 as *mut Vec<Vec<f32>>);
-        let arr2 = &*(arr2 as *mut Vec<Vec<f32>>);
-        let arr_res = &mut *(arr_res as *mut Vec<Vec<f32>>);
-
-        let p1 = &*(p1 as *const MatPartition);
-        let p2 = &*(p2 as *const MatPartition);
-        let p3 = &*(p3 as *const MatPartition);
-        locality_mat_mul_row(i, arr1, arr2, arr_res, p1, p2, p3);
     }
 }
 
@@ -271,19 +241,22 @@ fn locality_mat_mul_par(
     let p3 = &p3 as *const MatPartition as usize;
 
     let start = Instant::now();
-    
+
     let data: Vec<Vec<usize>> = (0..loop_size)
         .map(|v| -> Vec<usize> { vec![v, arr1, arr2, arr3, p1, p2, p3] })
         .collect();
     data.par_iter().for_each(|v| -> () {
         let i = v[0];
-        let arr1 = v[1];
-        let arr2 = v[2];
-        let arr_res = v[3];
-        let p1 = v[4];
-        let p2 = v[5];
-        let p3 = v[6];
-        locality_mat_mul_row_unsafe(i, arr1, arr2, arr_res, p1, p2, p3);
+        unsafe {
+            let arr1 = &*(v[1] as *mut Vec<Vec<f32>>);
+            let arr2 = &*(v[2] as *mut Vec<Vec<f32>>);
+            let arr_res = &mut *(v[3] as *mut Vec<Vec<f32>>);
+
+            let p1 = &*(v[4] as *const MatPartition);
+            let p2 = &*(v[5] as *const MatPartition);
+            let p3 = &*(v[6] as *const MatPartition);
+            locality_mat_mul_row(i, arr1, arr2, arr_res, p1, p2, p3);
+        }
     });
     let duration = start.elapsed();
 
