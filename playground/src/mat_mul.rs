@@ -1,48 +1,8 @@
 use rand::Rng;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp;
-use std::ops::{Deref, DerefMut};
 use std::time::Instant;
 
-#[derive(Copy, Clone)]
-struct UnsafeMutPtr<T> {
-    pub ptr: *mut T,
-}
-
-impl<T> Deref for UnsafeMutPtr<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.ptr }
-    }
-}
-
-impl<T> DerefMut for UnsafeMutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.ptr }
-    }
-}
-
-unsafe impl<T> Send for UnsafeMutPtr<T> {}
-
-unsafe impl<T> Sync for UnsafeMutPtr<T> {}
-
-#[derive(Copy, Clone)]
-struct UnsafePtr<T> {
-    pub ptr: *const T,
-}
-
-impl<T> Deref for UnsafePtr<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.ptr }
-    }
-}
-
-unsafe impl<T> Send for UnsafePtr<T> {}
-
-unsafe impl<T> Sync for UnsafePtr<T> {}
 
 #[derive(Debug)]
 struct MatBlock {
