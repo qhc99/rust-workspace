@@ -203,7 +203,7 @@ fn locality_mat_mul_par(
     let start = Instant::now();
 
     let data: Vec<Vec<usize>> = (0..loop_size)
-        .map(|v| -> Vec<usize> { vec![v, arr1, arr2, arr3, p1, p2, p3] })
+        .map(|i| -> Vec<usize> { vec![i, arr1, arr2, arr3, p1, p2, p3] })
         .collect();
     data.par_iter().for_each(|v| -> () {
         let i = v[0];
