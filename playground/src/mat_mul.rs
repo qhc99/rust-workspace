@@ -232,9 +232,9 @@ fn locality_mat_mul_par(
 
 #[allow(dead_code)]
 pub fn mat_mul_profile_demo() {
-    const SIZE_A: usize = 1300;
-    const SIZE_B: usize = 1300;
-    const SIZE_C: usize = 1300;
+    const SIZE_A: usize = 2000;
+    const SIZE_B: usize = 2000;
+    const SIZE_C: usize = 2000;
     let mut arr1 = vec![vec![0.; SIZE_B]; SIZE_A];
     let mut arr2 = vec![vec![0.; SIZE_C]; SIZE_B];
     let mut arr_res = vec![vec![0.; SIZE_C]; SIZE_A];
