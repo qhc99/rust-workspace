@@ -41,7 +41,9 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
     if source == target {
         return 0;
     }
+    let cap = routes.iter().map(|v|->usize{v.len()}).sum();
     let mut bus_stop2_routes: HashMap<i32, Vec<i32>> = HashMap::new();
+    bus_stop2_routes.reserve(cap);
     for (route_idx, route_stops) in routes.iter().enumerate() {
         for stop in route_stops.iter() {
             let route_idx = route_idx as i32;
@@ -67,7 +69,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
 
     let mut end_routes_set: HashSet<i32> = HashSet::new();
     end_routes_set.reserve(end_routes.len());
-    for i in end_routes{
+    for i in end_routes {
         end_routes_set.insert(i.clone());
     }
     let mut visited_routes = HashSet::new();
@@ -92,4 +94,9 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
         }
     }
     return -1;
+}
+
+/// #816
+pub fn ambiguous_coordinates(s: String) -> Vec<String> {
+    return vec![];
 }
