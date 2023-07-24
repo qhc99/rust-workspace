@@ -2,4 +2,4 @@ DisjointSet
 TernaryTrie
 GrahamScan
 KMP
-Manacher
+RBTree
