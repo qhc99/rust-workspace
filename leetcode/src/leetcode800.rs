@@ -41,7 +41,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
     if source == target {
         return 0;
     }
-    let cap = routes.iter().map(|v|->usize{v.len()}).sum();
+    let cap = routes.iter().map(|v| -> usize { v.len() }).sum();
     let mut bus_stop2_routes: HashMap<i32, Vec<i32>> = HashMap::new();
     bus_stop2_routes.reserve(cap);
     for (route_idx, route_stops) in routes.iter().enumerate() {
@@ -98,5 +98,69 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
 
 /// #816
 pub fn ambiguous_coordinates(s: String) -> Vec<String> {
-    return vec![];
+    fn valid_comma_split(s: &[u8]) -> bool {
+        if s.len() == 1 {
+            return true;
+        } else {
+            return s[0] != b'0' || s[s.len() - 1] != b'0';
+        }
+    }
+
+    fn dot_split(s1: &[u8], s2: &[u8], v: &mut Vec<String>) {
+        let s1 = all_dot_split(s1);
+        let s2 = all_dot_split(s2);
+        for left in s1.iter() {
+            for right in s2.iter() {
+                let mut t = vec![b'('];
+                t.append(&mut left.as_bytes().to_vec());
+                t.push(b',');
+                t.push(b' ');
+                t.append(&mut right.as_bytes().to_vec());
+                t.push(b')');
+                v.push(String::from_utf8(t).unwrap());
+            }
+        }
+    }
+
+    fn all_dot_split(s: &[u8]) -> Vec<String> {
+        use std::str;
+        let mut ans = vec![];
+        if s.len() == 1 {
+            ans.push(str::from_utf8(s).unwrap().to_string());
+            return ans;
+        }
+
+        if s[0] == b'0' {
+            // only 0.###
+            let mut t = vec![b'0', b'.'];
+            t.append(&mut (s[1..].to_vec()));
+            ans.push(String::from_utf8(t).unwrap());
+            return ans;
+        } else if s[s.len() - 1] == b'0' {
+        } else {
+            // can split without prefix and suffix 0
+            for r_start in 1..s.len() {
+                let mut t = s[0..r_start].to_vec();
+                t.push(b'.');
+                t.append(&mut (s[r_start..].to_vec()));
+                ans.push(String::from_utf8(t).unwrap());
+            }
+        }
+        // add self if no prefix 0
+        ans.push(str::from_utf8(s).unwrap().to_string());
+        return ans;
+    }
+
+    let chrs = s.as_bytes();
+    let end = s.len() - 1;
+    let mut ans = vec![];
+    for right_start in 2..end {
+        let s1 = &chrs[1..right_start];
+        let s2 = &chrs[right_start..end];
+        if valid_comma_split(s1) && valid_comma_split(s2) {
+            dot_split(s1, s2, &mut ans)
+        }
+    }
+
+    return ans;
 }

@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.58.2"
 
+[profile.dev]
+opt-level = 0
+
 [dependencies]
 rustc_version_runtime = "0.2.1"
