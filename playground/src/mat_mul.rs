@@ -240,6 +240,6 @@ pub fn mat_mul_profile_demo() {
     let mut arr_res = vec![vec![0.; SIZE_C]; SIZE_A];
 
     // naive_mat_mul(&mut arr1, &mut arr2, &mut arr_res);
-    // locality_mat_mul(&mut arr1, &mut arr2, &mut arr_res, 32);
+    // locality_mat_mul(&mut arr1, &mut arr2, &mut arr_res, 64);
     locality_mat_mul_par(&mut arr1, &mut arr2, &mut arr_res, 64)
 }
