@@ -96,6 +96,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
     return -1;
 }
 
+#[allow(dead_code)]
 /// #816
 pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     fn valid_comma_split(s: &[u8]) -> bool {
@@ -160,4 +161,46 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     }
 
     return ans;
+}
+
+
+#[allow(dead_code)]
+/// #833
+pub fn find_replace_string(
+    s: String,
+    indices: Vec<i32>,
+    sources: Vec<String>,
+    targets: Vec<String>,
+) -> String {
+    use std::collections::HashMap;
+    let mut ans: Vec<u8> = vec![];
+    ans.reserve(s.len());
+    let mut s_idx2op_idx: HashMap<i32, i32> = HashMap::new();
+    for (i, v) in indices.iter().enumerate() {
+        s_idx2op_idx.insert(*v, i as i32);
+    }
+
+    let s = s.as_bytes();
+    let mut i = 0;
+    while i < s.len() {
+        let c = s[i];
+        let op_idx = s_idx2op_idx.get(&(i as i32));
+        if op_idx.is_some() {
+            let op_idx = *op_idx.unwrap() as usize;
+            let source = &sources[op_idx];
+            if i + source.len() <= s.len() && source.as_bytes() == &s[i..i + source.len()] {
+                let target = &targets[op_idx];
+                ans.append(&mut target.as_bytes().to_vec());
+                i = i + source.len();
+                continue;
+            } else {
+                ans.push(c);
+            }
+        } else {
+            ans.push(c);
+        }
+        i += 1;
+    }
+
+    return String::from_utf8(ans).unwrap();
 }
