@@ -125,18 +125,16 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     fn all_dot_split(s: &[u8]) -> Vec<String> {
         use std::str;
         let mut ans = vec![];
-        if s.len() == 1 {
+        if s.len() == 1 || s[s.len() - 1] == b'0' {
+            // add self if no prefix 0 or cannot add dot
             ans.push(str::from_utf8(s).unwrap().to_string());
             return ans;
-        }
-
-        if s[0] == b'0' {
+        } else if s[0] == b'0' {
             // only 0.###
             let mut t = vec![b'0', b'.'];
             t.append(&mut (s[1..].to_vec()));
             ans.push(String::from_utf8(t).unwrap());
             return ans;
-        } else if s[s.len() - 1] == b'0' {
         } else {
             // can split without prefix and suffix 0
             for r_start in 1..s.len() {
@@ -145,10 +143,9 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
                 t.append(&mut (s[r_start..].to_vec()));
                 ans.push(String::from_utf8(t).unwrap());
             }
+            ans.push(str::from_utf8(s).unwrap().to_string());
+            return ans;
         }
-        // add self if no prefix 0
-        ans.push(str::from_utf8(s).unwrap().to_string());
-        return ans;
     }
 
     let chrs = s.as_bytes();
