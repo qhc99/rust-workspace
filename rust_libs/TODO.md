@@ -3,3 +3,4 @@ TernaryTrie
 GrahamScan
 KMP
 RBTree
+strassen
