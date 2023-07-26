@@ -163,7 +163,6 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     return ans;
 }
 
-
 #[allow(dead_code)]
 /// #833
 pub fn find_replace_string(
@@ -203,4 +202,99 @@ pub fn find_replace_string(
     }
 
     return String::from_utf8(ans).unwrap();
+}
+
+/// #834
+pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
+    use std::collections::VecDeque;
+
+    fn children_count(node: usize, tree: &Vec<Vec<i32>>, descent_count: &mut Vec<i32>) {
+        let children = &tree[node];
+        if children.is_empty() {
+            return;
+        }
+        for c in children {
+            children_count(c.clone() as usize, tree, descent_count);
+        }
+        for c in children {
+            descent_count[node] += descent_count[c.clone() as usize] + 1;
+        }
+    }
+
+    fn children_sum(node: usize, tree: &Vec<Vec<i32>>, count: &Vec<i32>, sum: &mut Vec<i32>) {
+        let children = &tree[node];
+        if children.is_empty() {
+            return;
+        }
+        for c in children {
+            let c = c.clone() as usize;
+            children_sum(c, tree, count, sum);
+        }
+        for c in children {
+            let c = c.clone() as usize;
+            sum[node] += sum[c] + count[c] + 1;
+        }
+    }
+
+    fn parent_sum(
+        node: usize,
+        parent: usize,
+        inherit_count: i32,
+        inherit_sum: i32,
+        tree: &Vec<Vec<i32>>,
+        descent_count: &Vec<i32>,
+        sum: &mut Vec<i32>,
+    ) {
+        let children = &tree[node];
+        if parent != node {
+            sum[node] += inherit_sum + inherit_count;
+        }
+
+        for c in children {
+            let c = c.clone() as usize;
+            let inherit_sum = sum[node] - sum[c] - descent_count[c] - 1;
+            let inherit_count = inherit_count + descent_count[node] - descent_count[c];
+            parent_sum(
+                c,
+                node,
+                inherit_count,
+                inherit_sum,
+                tree,
+                descent_count,
+                sum,
+            )
+        }
+    }
+
+    let n = n as usize;
+    let mut tree = vec![vec![] as Vec<i32>; n];
+    let mut graph = vec![vec![] as Vec<i32>; n];
+    let mut descent_count = vec![0; n];
+    let mut sum = vec![0; n];
+    for v in edges.iter() {
+        let n1 = v[0];
+        let n2 = v[1];
+        graph[n1 as usize].push(n2);
+        graph[n2 as usize].push(n1);
+    }
+    let mut queue: VecDeque<i32> = VecDeque::new();
+    queue.push_back(0);
+    let mut seen = vec![false; n];
+    seen[0] = true;
+    while !queue.is_empty() {
+        let n = queue.pop_front().unwrap();
+        let neighbor = &graph[n as usize];
+        for nb in neighbor {
+            let nb = nb.clone();
+            if !seen[nb as usize] {
+                tree[n as usize].push(nb);
+                seen[nb as usize] = true;
+                queue.push_back(nb);
+            }
+        }
+    }
+    children_count(0, &tree, &mut descent_count);
+    children_sum(0, &tree, &descent_count, &mut sum);
+    parent_sum(0, 0, 0, 0, &tree, &descent_count, &mut sum);
+    return sum;
 }
