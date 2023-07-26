@@ -238,7 +238,6 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
 
     fn parent_sum(
         node: usize,
-        parent: usize,
         inherit_count: i32,
         inherit_sum: i32,
         tree: &Vec<Vec<i32>>,
@@ -246,23 +245,13 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
         sum: &mut Vec<i32>,
     ) {
         let children = &tree[node];
-        if parent != node {
-            sum[node] += inherit_sum + inherit_count;
-        }
+        sum[node] += inherit_sum + inherit_count;
 
         for c in children {
             let c = c.clone() as usize;
             let inherit_sum = sum[node] - sum[c] - descent_count[c] - 1;
             let inherit_count = inherit_count + descent_count[node] - descent_count[c];
-            parent_sum(
-                c,
-                node,
-                inherit_count,
-                inherit_sum,
-                tree,
-                descent_count,
-                sum,
-            )
+            parent_sum(c, inherit_count, inherit_sum, tree, descent_count, sum)
         }
     }
 
@@ -295,6 +284,6 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
     }
     children_count(0, &tree, &mut descent_count);
     children_sum(0, &tree, &descent_count, &mut sum);
-    parent_sum(0, 0, 0, 0, &tree, &descent_count, &mut sum);
+    parent_sum(0, 0, 0, &tree, &descent_count, &mut sum);
     return sum;
 }
