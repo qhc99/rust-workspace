@@ -267,6 +267,7 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
         graph[n2 as usize].push(n1);
     }
     let mut queue: VecDeque<i32> = VecDeque::new();
+    queue.reserve(n);
     queue.push_back(0);
     let mut seen = vec![false; n];
     seen[0] = true;
