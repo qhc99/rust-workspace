@@ -10,8 +10,7 @@ pub fn largest_sum_of_averages(nums: Vec<i32>, k: i32) -> f64 {
         prefix_sum[i] += prefix_sum[i - 1];
     }
 
-    let mut dp: Vec<f64> = Vec::new();
-    dp.reserve(prefix_sum.len());
+    let mut dp: Vec<f64> = Vec::with_capacity(prefix_sum.len());
     prefix_sum.iter().for_each(|v| {
         dp.push(*v as f64);
     });
@@ -42,8 +41,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
         return 0;
     }
     let cap = routes.iter().map(|v| -> usize { v.len() }).sum();
-    let mut bus_stop2_routes: HashMap<i32, Vec<i32>> = HashMap::new();
-    bus_stop2_routes.reserve(cap);
+    let mut bus_stop2_routes: HashMap<i32, Vec<i32>> = HashMap::with_capacity(cap);
     for (route_idx, route_stops) in routes.iter().enumerate() {
         for stop in route_stops.iter() {
             let route_idx = route_idx as i32;
@@ -67,8 +65,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
         .iter()
         .for_each(|v| queue_routes.push_back((*v, 1)));
 
-    let mut end_routes_set: HashSet<i32> = HashSet::new();
-    end_routes_set.reserve(end_routes.len());
+    let mut end_routes_set: HashSet<i32> = HashSet::with_capacity(end_routes.len());
     for i in end_routes {
         end_routes_set.insert(*i);
     }
@@ -172,8 +169,7 @@ pub fn find_replace_string(
     targets: Vec<String>,
 ) -> String {
     use std::collections::HashMap;
-    let mut ans: Vec<u8> = vec![];
-    ans.reserve(s.len());
+    let mut ans: Vec<u8> = Vec::with_capacity(s.len());
     let mut s_idx2op_idx: HashMap<i32, i32> = HashMap::new();
     for (i, v) in indices.iter().enumerate() {
         s_idx2op_idx.insert(*v, i as i32);
@@ -267,8 +263,7 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
         graph[n1 as usize].push(n2);
         graph[n2 as usize].push(n1);
     }
-    let mut queue: VecDeque<i32> = VecDeque::new();
-    queue.reserve(n);
+    let mut queue: VecDeque<i32> = VecDeque::with_capacity(n);
     queue.push_back(0);
     let mut seen = vec![false; n];
     seen[0] = true;
