@@ -12,8 +12,8 @@ pub fn largest_sum_of_averages(nums: Vec<i32>, k: i32) -> f64 {
 
     let mut dp: Vec<f64> = Vec::new();
     dp.reserve(prefix_sum.len());
-    prefix_sum.iter().for_each(|v| -> () {
-        dp.push(v.clone() as f64);
+    prefix_sum.iter().for_each(|v| {
+        dp.push(*v as f64);
     });
 
     for i in 1..dp.len() {
@@ -48,7 +48,7 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
         for stop in route_stops.iter() {
             let route_idx = route_idx as i32;
             if !bus_stop2_routes.contains_key(stop) {
-                bus_stop2_routes.insert(stop.clone(), vec![route_idx]);
+                bus_stop2_routes.insert(*stop, vec![route_idx]);
             } else {
                 bus_stop2_routes.get_mut(stop).unwrap().push(route_idx);
             }
@@ -65,12 +65,12 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
     let end_routes = end_routes.unwrap();
     start_routes
         .iter()
-        .for_each(|v| -> () { queue_routes.push_back((v.clone(), 1)) });
+        .for_each(|v| queue_routes.push_back((*v, 1)));
 
     let mut end_routes_set: HashSet<i32> = HashSet::new();
     end_routes_set.reserve(end_routes.len());
     for i in end_routes {
-        end_routes_set.insert(i.clone());
+        end_routes_set.insert(*i);
     }
     let mut visited_routes = HashSet::new();
     while !queue_routes.is_empty() {
@@ -83,11 +83,11 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
         let current_stops = &routes[current_route as usize];
         for stop in current_stops {
             let next_routes = bus_stop2_routes.get(stop);
-            if next_routes.is_some() {
-                next_routes.unwrap().iter().for_each(|r| -> () {
+            if let Some(next_routes) = next_routes {
+                next_routes.iter().for_each(|r| {
                     if !visited_routes.contains(r) {
-                        queue_routes.push_back((r.clone(), count + 1));
-                        visited_routes.insert(r.clone());
+                        queue_routes.push_back((*r, count + 1));
+                        visited_routes.insert(*r);
                     }
                 });
             }
@@ -184,13 +184,13 @@ pub fn find_replace_string(
     while i < s.len() {
         let c = s[i];
         let op_idx = s_idx2op_idx.get(&(i as i32));
-        if op_idx.is_some() {
-            let op_idx = *op_idx.unwrap() as usize;
+        if let Some(op_idx) = op_idx {
+            let op_idx = *op_idx as usize;
             let source = &sources[op_idx];
             if i + source.len() <= s.len() && source.as_bytes() == &s[i..i + source.len()] {
                 let target = &targets[op_idx];
                 ans.append(&mut target.as_bytes().to_vec());
-                i = i + source.len();
+                i += source.len();
                 continue;
             } else {
                 ans.push(c);
@@ -215,10 +215,10 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
             return;
         }
         for c in children {
-            children_count(c.clone() as usize, tree, descent_count);
+            children_count(*c as usize, tree, descent_count);
         }
         for c in children {
-            descent_count[node] += descent_count[c.clone() as usize] + 1;
+            descent_count[node] += descent_count[*c as usize] + 1;
         }
     }
 
@@ -228,11 +228,11 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
             return;
         }
         for c in children {
-            let c = c.clone() as usize;
+            let c = *c as usize;
             children_sum(c, tree, count, sum);
         }
         for c in children {
-            let c = c.clone() as usize;
+            let c = *c as usize;
             sum[node] += sum[c] + count[c] + 1;
         }
     }
@@ -249,7 +249,7 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
         sum[node] += inherit_sum + inherit_count;
 
         for c in children {
-            let c = c.clone() as usize;
+            let c = *c as usize;
             let inherit_sum = sum[node] - sum[c] - descent_count[c] - 1;
             let inherit_count = inherit_count + descent_count[node] - descent_count[c];
             parent_sum(c, inherit_count, inherit_sum, tree, descent_count, sum)
@@ -276,7 +276,7 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
         let n = queue.pop_front().unwrap();
         let neighbor = &graph[n as usize];
         for nb in neighbor {
-            let nb = nb.clone();
+            let nb = *nb;
             if !seen[nb as usize] {
                 tree[n as usize].push(nb);
                 seen[nb as usize] = true;

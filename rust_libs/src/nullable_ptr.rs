@@ -23,7 +23,7 @@ impl<M> NullablePtr<M> {
         NullablePtr { nullable: None }
     }
 
-    /// Prefer unwrap_ref. Use unwrap to add extra clone when borrow checker reports errors 
+    /// Prefer unwrap_ref. Use unwrap to add extra clone when borrow checker reports errors
     /// (e.g. error[E0716]: temporary value dropped while borrowed).
     pub fn unwrap(&self) -> RcRefCell<M> {
         self.nullable.as_ref().expect("null ptr.").clone()

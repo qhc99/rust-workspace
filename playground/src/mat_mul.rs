@@ -3,7 +3,6 @@ use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp;
 use std::time::Instant;
 
-
 #[derive(Debug)]
 struct MatBlock {
     r1: usize,
@@ -28,26 +27,26 @@ impl MatPartition {
         let rows = (m as f32 / size_block as f32).ceil() as usize;
         let cols = (n as f32 / size_block as f32).ceil() as usize;
 
-        return MatPartition {
+        MatPartition {
             size_block,
             m,
             n,
             rows_idx: rows,
             cols_idx: cols,
-        };
+        }
     }
 
     fn at(&self, i: usize, j: usize) -> MatBlock {
-        return MatBlock {
+        MatBlock {
             r1: i * self.size_block,
             c1: j * self.size_block,
             r2: cmp::min(i * self.size_block + self.size_block, self.m),
             c2: cmp::min(j * self.size_block + self.size_block, self.n),
-        };
+        }
     }
 }
 
-fn reset_mat(a1: &mut Vec<Vec<f32>>, a2: &mut Vec<Vec<f32>>) {
+fn reset_mat(a1: &mut [Vec<f32>], a2: &mut [Vec<f32>]) {
     let mut rng = rand::thread_rng();
     let size_a: usize = a1.len();
     let size_b: usize = a2.len();
@@ -66,11 +65,11 @@ fn reset_mat(a1: &mut Vec<Vec<f32>>, a2: &mut Vec<Vec<f32>>) {
 }
 
 fn mul_mat_block(
-    m1: &Vec<Vec<f32>>,
+    m1: &[Vec<f32>],
     m1r: &MatBlock,
-    m2: &Vec<Vec<f32>>,
+    m2: &[Vec<f32>],
     m2r: &MatBlock,
-    m3: &mut Vec<Vec<f32>>,
+    m3: &mut [Vec<f32>],
     m3r: &MatBlock,
 ) {
     let mut cache: Vec<Vec<f32>> = vec![vec![0.; m3r.c2 - m3r.c1]; m3r.r2 - m3r.r1];
@@ -89,12 +88,7 @@ fn mul_mat_block(
     }
 }
 
-#[allow(dead_code)]
-pub fn naive_mat_mul(
-    arr1: &mut Vec<Vec<f32>>,
-    arr2: &mut Vec<Vec<f32>>,
-    arr_res: &mut Vec<Vec<f32>>,
-) {
+pub fn naive_mat_mul(arr1: &mut [Vec<f32>], arr2: &mut [Vec<f32>], arr_res: &mut [Vec<f32>]) {
     reset_mat(arr1, arr2);
     let size_a: usize = arr1.len();
     let size_b: usize = arr2.len();
@@ -120,7 +114,6 @@ pub fn naive_mat_mul(
     println!("ans = {:}", ans);
 }
 
-#[allow(dead_code)]
 fn locality_mat_mul(
     arr1: &mut Vec<Vec<f32>>,
     arr2: &mut Vec<Vec<f32>>,
@@ -130,9 +123,9 @@ fn locality_mat_mul(
     let size_a: usize = arr1.len();
     let size_c: usize = arr2[0].len();
 
-    let p1 = MatPartition::new(&arr1, w_s);
-    let p2 = MatPartition::new(&arr2, w_s);
-    let p3 = MatPartition::new(&arr_res, w_s);
+    let p1 = MatPartition::new(arr1, w_s);
+    let p2 = MatPartition::new(arr2, w_s);
+    let p3 = MatPartition::new(arr_res, w_s);
 
     reset_mat(arr1, arr2);
 
@@ -154,9 +147,9 @@ fn locality_mat_mul(
 
 fn locality_mat_mul_row(
     i: usize,
-    arr1: &Vec<Vec<f32>>,
-    arr2: &Vec<Vec<f32>>,
-    arr_res: &mut Vec<Vec<f32>>,
+    arr1: &[Vec<f32>],
+    arr2: &[Vec<f32>],
+    arr_res: &mut [Vec<f32>],
     p1: &MatPartition,
     p2: &MatPartition,
     p3: &MatPartition,
@@ -185,9 +178,9 @@ fn locality_mat_mul_par(
     let size_a: usize = arr1.len();
     let size_c: usize = arr2[0].len();
 
-    let p1 = MatPartition::new(&arr1, w_s);
-    let p2 = MatPartition::new(&arr2, w_s);
-    let p3 = MatPartition::new(&arr_res, w_s);
+    let p1 = MatPartition::new(arr1, w_s);
+    let p2 = MatPartition::new(arr2, w_s);
+    let p3 = MatPartition::new(arr_res, w_s);
     let loop_size = p3.rows_idx;
 
     reset_mat(arr1, arr2);
@@ -205,7 +198,7 @@ fn locality_mat_mul_par(
     let data: Vec<Vec<usize>> = (0..loop_size)
         .map(|i| -> Vec<usize> { vec![i, arr1, arr2, arr3, p1, p2, p3] })
         .collect();
-    data.par_iter().for_each(|v| -> () {
+    data.par_iter().for_each(|v| {
         let i = v[0];
         unsafe {
             let arr1 = &*(v[1] as *mut Vec<Vec<f32>>);
@@ -230,7 +223,6 @@ fn locality_mat_mul_par(
     println!("ans = {:}", ans);
 }
 
-#[allow(dead_code)]
 pub fn mat_mul_profile_demo() {
     const SIZE_A: usize = 1300;
     const SIZE_B: usize = 1300;

@@ -1,4 +1,4 @@
-#[macro_export] 
+#[macro_export]
 macro_rules! vec2d {
     [$($element:expr),+] => {
         {

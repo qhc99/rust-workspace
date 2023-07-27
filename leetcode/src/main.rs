@@ -1,8 +1,15 @@
-#[macro_use] extern crate rust_libs;
+#![allow(clippy::needless_return)]
+#![allow(clippy::needless_range_loop)]
+#![allow(dead_code)]
+#![allow(unused)]
+
+#[macro_use]
+extern crate rust_libs;
+
 mod leetcode800;
+use crate::leetcode800::*;
 
 pub fn main() {
-    let t = vec2d![[0, 1], [0, 2], [2, 3], [2, 4], [2, 5,6]];
-    println!("{:?}", t)
-    // println!("{:?}", sum_of_distances_in_tree(6, t));
+    let a = [(0, 1)];
+    let [..] = a;
 }

@@ -5,6 +5,3 @@ struct SharedList<T> {
     val: T,
     parent: Option<Rc<SharedList<T>>>,
 }
-
-
-

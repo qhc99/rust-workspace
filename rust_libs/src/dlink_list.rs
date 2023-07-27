@@ -95,12 +95,12 @@ impl<V> DLinkList<V> {
     }
 
     pub fn insert_first(&mut self, val: V) {
-        self.size = self.size + 1;
+        self.size += 1;
         DLinkList::insert_after(val, self.head.unwrap_ref());
     }
 
     pub fn insert_last(&mut self, val: V) {
-        self.size = self.size + 1;
+        self.size += 1;
         // cannot use unwrap because borrow() create a temporary object
         let at = self.tail.borrow().prev.unwrap();
         DLinkList::insert_after(val, &at);
@@ -111,7 +111,7 @@ impl<V> DLinkList<V> {
         if self.size == 0 {
             return None;
         }
-        self.size = self.size - 1;
+        self.size -= 1;
 
         return DLinkList::remove_node(&n);
     }
@@ -121,7 +121,7 @@ impl<V> DLinkList<V> {
         if self.size == 0 {
             return None;
         }
-        self.size = self.size - 1;
+        self.size -= 1;
 
         return DLinkList::remove_node(&n);
     }
@@ -143,6 +143,12 @@ impl<V> DLinkList<V> {
 
         n.borrow_mut().next = in_node_ptr.clone();
         n_next.borrow_mut().prev = in_node_ptr;
+    }
+}
+
+impl<V> Default for DLinkList<V> {
+    fn default() -> Self {
+        DLinkList::new()
     }
 }
 
@@ -213,7 +219,7 @@ impl<V> DoubleEndedIterator for DLinkListIter<V> {
                 Some(ans.unwrap())
             };
         } else {
-            return None;
+            None
         }
     }
 }
