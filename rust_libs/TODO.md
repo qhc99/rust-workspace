@@ -1,6 +1,6 @@
 DisjointSet
-TernaryTrie
 GrahamScan
 KMP
+TernaryTrie
 RBTree
 strassen

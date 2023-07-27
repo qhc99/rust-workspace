@@ -204,6 +204,7 @@ pub fn find_replace_string(
     return String::from_utf8(ans).unwrap();
 }
 
+#[allow(dead_code)]
 /// #834
 pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
     use std::collections::VecDeque;
