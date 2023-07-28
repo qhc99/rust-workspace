@@ -200,6 +200,11 @@ pub fn find_replace_string(
     return String::from_utf8(ans).unwrap();
 }
 
+/// #818
+pub fn racecar(target: i32) -> i32 {
+    return 1;
+}
+
 #[allow(dead_code)]
 /// #834
 pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {

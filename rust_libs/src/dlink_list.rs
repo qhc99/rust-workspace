@@ -207,23 +207,6 @@ impl<V> Iterator for DLinkListIter<V> {
     }
 }
 
-impl<V> DoubleEndedIterator for DLinkListIter<V> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.current != self.list.head.unwrap() {
-            let ans = self.current.borrow().val.clone();
-            let next = self.current.borrow().prev.unwrap();
-            self.current = next;
-            return if ans.is_null() {
-                None
-            } else {
-                Some(ans.unwrap())
-            };
-        } else {
-            None
-        }
-    }
-}
-
 pub struct DLinkListView<V> {
     current: RcRefCell<DNode<V>>,
 }
