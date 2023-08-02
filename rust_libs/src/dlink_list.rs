@@ -74,7 +74,7 @@ impl<V> DLinkList<V> {
         };
     }
 
-    pub fn get_first(&self) -> RcRefCell<V> {
+    pub fn peek_first(&self) -> RcRefCell<V> {
         if self.size > 0 {
             self.head.borrow().next.borrow().get_val()
         } else {
@@ -82,7 +82,7 @@ impl<V> DLinkList<V> {
         }
     }
 
-    pub fn get_last(&self) -> RcRefCell<V> {
+    pub fn peek_last(&self) -> RcRefCell<V> {
         if self.size > 0 {
             self.tail.borrow().prev.borrow().get_val()
         } else {

@@ -53,8 +53,8 @@ fn dlink_list_get_test() {
     l.insert_first(2);
     l.insert_first(3);
 
-    assert_eq!(3, l.get_first().take());
-    assert_eq!(1, l.get_last().take());
+    assert_eq!(3, l.peek_first().take());
+    assert_eq!(1, l.peek_last().take());
 }
 
 #[test]

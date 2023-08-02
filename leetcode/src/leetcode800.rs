@@ -110,10 +110,10 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
         for left in s1.iter() {
             for right in s2.iter() {
                 let mut t = vec![b'('];
-                t.append(&mut left.as_bytes().to_vec());
+                t.extend_from_slice(left.as_bytes());
                 t.push(b',');
                 t.push(b' ');
-                t.append(&mut right.as_bytes().to_vec());
+                t.extend_from_slice(right.as_bytes());
                 t.push(b')');
                 v.push(String::from_utf8(t).unwrap());
             }
@@ -130,7 +130,7 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
         } else if s[0] == b'0' {
             // only 0.###
             let mut t = vec![b'0', b'.'];
-            t.append(&mut (s[1..].to_vec()));
+            t.extend_from_slice(&s[1..]);
             ans.push(String::from_utf8(t).unwrap());
             return ans;
         } else {
@@ -138,7 +138,7 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
             for r_start in 1..s.len() {
                 let mut t = s[0..r_start].to_vec();
                 t.push(b'.');
-                t.append(&mut (s[r_start..].to_vec()));
+                t.extend_from_slice(&s[r_start..]);
                 ans.push(String::from_utf8(t).unwrap());
             }
             ans.push(str::from_utf8(s).unwrap().to_string());
@@ -185,7 +185,7 @@ pub fn find_replace_string(
             let source = &sources[op_idx];
             if i + source.len() <= s.len() && source.as_bytes() == &s[i..i + source.len()] {
                 let target = &targets[op_idx];
-                ans.append(&mut target.as_bytes().to_vec());
+                ans.extend_from_slice(target.as_bytes());
                 i += source.len();
                 continue;
             } else {
