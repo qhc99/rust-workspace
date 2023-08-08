@@ -161,6 +161,38 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
 }
 
 #[allow(dead_code)]
+/// #818
+pub fn racecar(target: i32) -> i32 {
+    let (b, k) = is_pow_2(target + 1);
+    if b {
+        return k;
+    }
+
+    return 1;
+}
+
+fn is_pow_2(mut d: i32) -> (bool, i32) {
+    let mut count = 0;
+    let mut pos = -1;
+    for i in 0..32 {
+        if d & 1 == 1 {
+            pos = i;
+            count += 1;
+        }
+        d >>= 1;
+    }
+    if count == 1 {
+        return (true, pos);
+    } else {
+        return (false, pos);
+    }
+}
+
+fn get_kth_digit(num: i32, k: i32) -> i32 {
+    return (num >> k) & 1;
+}
+
+#[allow(dead_code)]
 /// #833
 pub fn find_replace_string(
     s: String,
@@ -198,11 +230,6 @@ pub fn find_replace_string(
     }
 
     return String::from_utf8(ans).unwrap();
-}
-
-/// #818
-pub fn racecar(target: i32) -> i32 {
-    return 1;
 }
 
 #[allow(dead_code)]
@@ -288,4 +315,70 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
     children_sum(0, &tree, &descent_count, &mut sum);
     parent_sum(0, 0, 0, &tree, &descent_count, &mut sum);
     return sum;
+}
+
+#[allow(dead_code)]
+/// #838
+pub fn push_dominoes(dominoes: String) -> String {
+    use std::collections::VecDeque;
+    /// at most one 'L' at the end
+    fn clear_stack(stack: &mut VecDeque<u8>, ans: &mut Vec<u8>) {
+        if stack.is_empty() {
+            return;
+        }
+        if stack[stack.len() - 1] == b'L' {
+            let mut r_pos = stack.len() - 1;
+            let l_pos = stack.len() - 1;
+            while r_pos > 0 && stack[r_pos] != b'R' {
+                r_pos -= 1;
+            }
+            if stack[r_pos] != b'R' {
+                ans.append(&mut vec![b'L'; stack.len()]);
+                stack.clear();
+            } else {
+                stack.split_off(r_pos);
+                clear_stack_r_only(stack, ans);
+                let half = (l_pos - r_pos + 1) / 2;
+                if (l_pos - r_pos) % 2 == 0 {
+                    ans.append(&mut vec![b'R'; half]);
+                    ans.push(b'.');
+                    ans.append(&mut vec![b'L'; half]);
+                } else {
+                    ans.append(&mut vec![b'R'; half]);
+                    ans.append(&mut vec![b'L'; half]);
+                }
+            }
+        } else {
+            clear_stack_r_only(stack, ans);
+        }
+    }
+
+    fn clear_stack_r_only(stack: &mut VecDeque<u8>, ans: &mut Vec<u8>) {
+        while !stack.is_empty() {
+            let front = stack.pop_front().unwrap();
+            if front != b'R' {
+                ans.push(b'.');
+            } else {
+                ans.append(&mut vec![b'R'; stack.len() + 1]);
+                stack.clear();
+            }
+        }
+    }
+
+    let chrs = dominoes.as_bytes();
+    let mut stack = VecDeque::<u8>::new();
+    let mut ans = Vec::<u8>::new();
+    for i in 0..chrs.len() {
+        if chrs[i] == b'L' {
+            stack.push_back(chrs[i]);
+            clear_stack(&mut stack, &mut ans)
+        } else if chrs[i] == b'R' {
+            clear_stack(&mut stack, &mut ans);
+            stack.push_back(chrs[i]);
+        } else {
+            stack.push_back(chrs[i]);
+        }
+    }
+    clear_stack(&mut stack, &mut ans);
+    return String::from_utf8(ans).unwrap();
 }

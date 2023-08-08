@@ -10,9 +10,5 @@ mod leetcode800;
 use crate::leetcode800::*;
 
 fn main() {
-    let t = {
-        let a = 1;
-        a * 2
-    };
-    vec2d!([1]);
+    println!("{}",push_dominoes("RR.L".to_string()));
 }
