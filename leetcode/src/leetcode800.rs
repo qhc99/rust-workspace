@@ -161,38 +161,6 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
 }
 
 #[allow(dead_code)]
-/// #818
-pub fn racecar(target: i32) -> i32 {
-    let (b, k) = is_pow_2(target + 1);
-    if b {
-        return k;
-    }
-
-    return 1;
-}
-
-fn is_pow_2(mut d: i32) -> (bool, i32) {
-    let mut count = 0;
-    let mut pos = -1;
-    for i in 0..32 {
-        if d & 1 == 1 {
-            pos = i;
-            count += 1;
-        }
-        d >>= 1;
-    }
-    if count == 1 {
-        return (true, pos);
-    } else {
-        return (false, pos);
-    }
-}
-
-fn get_kth_digit(num: i32, k: i32) -> i32 {
-    return (num >> k) & 1;
-}
-
-#[allow(dead_code)]
 /// #833
 pub fn find_replace_string(
     s: String,
