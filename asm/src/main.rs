@@ -1,3 +1,4 @@
+#![allow(clippy::needless_return)]
 use std::{
     collections::HashMap,
     env,
@@ -25,12 +26,10 @@ fn main() -> io::Result<()> {
 
     let mut clean_lines = Vec::<String>::new();
     // strip comment and all splaces
-    for line in lines {
-        if let Ok(l) = line {
-            let s = strip_comment(l.as_str()).replace(" ", "");
-            if !s.is_empty() {
-                clean_lines.push(s);
-            }
+    for line in lines.into_iter().flatten() {
+        let s = strip_comment(line.as_str()).replace(' ', "");
+        if !s.is_empty() {
+            clean_lines.push(s);
         }
     }
 
@@ -110,111 +109,113 @@ fn map_to_binary(
     dest: Option<&str>,
     comp: Option<&str>,
     jmp: Option<&str>,
-    comp_table: &Vec<Vec<u8>>,
-    jmp_table: &Vec<Vec<u8>>,
+    comp_table: &[Vec<u8>],
+    jmp_table: &[Vec<u8>],
 ) -> Vec<u8> {
     let mut cmd = vec![1u8; 3];
 
     let comp = comp.unwrap();
     let comp_idx;
     match comp {
-        "0"=>{
-            comp_idx = (0,0);
+        "0" => {
+            comp_idx = (0, 0);
         }
-        "1"=>{
-            comp_idx = (0,1);
+        "1" => {
+            comp_idx = (0, 1);
         }
-        "-1"=>{
-            comp_idx = (0,2);
+        "-1" => {
+            comp_idx = (0, 2);
         }
-        "D"=>{
-            comp_idx = (0,3);
+        "D" => {
+            comp_idx = (0, 3);
         }
-        "A"=>{
-            comp_idx = (0,4);
+        "A" => {
+            comp_idx = (0, 4);
         }
-        "M"=>{
-            comp_idx = (1,4);
+        "M" => {
+            comp_idx = (1, 4);
         }
-        "!D"=>{
-            comp_idx = (0,5);
+        "!D" => {
+            comp_idx = (0, 5);
         }
-        "!A"=>{
-            comp_idx = (0,6);
+        "!A" => {
+            comp_idx = (0, 6);
         }
-        "!M"=>{
-            comp_idx = (1,6);
+        "!M" => {
+            comp_idx = (1, 6);
         }
-        "-D"=>{
-            comp_idx = (0,7);
+        "-D" => {
+            comp_idx = (0, 7);
         }
-        "-A"=>{
-            comp_idx = (0,8);
+        "-A" => {
+            comp_idx = (0, 8);
         }
-        "-M"=>{
-            comp_idx = (1,8);
+        "-M" => {
+            comp_idx = (1, 8);
         }
-        "D+1"=>{
-            comp_idx = (0,9);
+        "D+1" => {
+            comp_idx = (0, 9);
         }
-        "A+1"=>{
-            comp_idx = (0,10);
+        "A+1" => {
+            comp_idx = (0, 10);
         }
-        "M+1"=>{
-            comp_idx = (1,10);
+        "M+1" => {
+            comp_idx = (1, 10);
         }
-        "D-1"=>{
-            comp_idx = (0,11);
+        "D-1" => {
+            comp_idx = (0, 11);
         }
-        "A-1"=>{
-            comp_idx = (0,12);
+        "A-1" => {
+            comp_idx = (0, 12);
         }
-        "M-1"=>{
-            comp_idx = (1,12);
+        "M-1" => {
+            comp_idx = (1, 12);
         }
-        "D+A"=>{
-            comp_idx = (0,13);
+        "D+A" => {
+            comp_idx = (0, 13);
         }
-        "D+M"=>{
-            comp_idx = (1,13);
+        "D+M" => {
+            comp_idx = (1, 13);
         }
-        "D-A"=>{
-            comp_idx = (0,14);
+        "D-A" => {
+            comp_idx = (0, 14);
         }
-        "D-M"=>{
-            comp_idx = (1,14);
+        "D-M" => {
+            comp_idx = (1, 14);
         }
-        "A-D"=>{
-            comp_idx = (0,15);
+        "A-D" => {
+            comp_idx = (0, 15);
         }
-        "M-D"=>{
-            comp_idx = (1,15);
+        "M-D" => {
+            comp_idx = (1, 15);
         }
-        "D&A"=>{
-            comp_idx = (0,16);
+        "D&A" => {
+            comp_idx = (0, 16);
         }
-        "D&M"=>{
-            comp_idx = (1,16);
+        "D&M" => {
+            comp_idx = (1, 16);
         }
-        "D|A"=>{
-            comp_idx = (0,17);
+        "D|A" => {
+            comp_idx = (0, 17);
         }
-        "D|M"=>{
-            comp_idx = (1,17);
+        "D|M" => {
+            comp_idx = (1, 17);
         }
         wildcard => {
             panic!("comp no match: {}", wildcard)
         }
     }
 
-    let mut dest_bits = vec![0u8;3];
+    let mut dest_bits = vec![0u8; 3];
     if let Some(dest) = dest {
-        for u in dest.as_bytes(){
+        for u in dest.as_bytes() {
             match u {
-                b'M'=>{dest_bits[2] = 1}
-                b'D'=>{dest_bits[1] = 1}
-                b'A'=>{dest_bits[0] = 1}
-                wildcard=>{panic!("dest no match u8: {}", wildcard)}
+                b'M' => dest_bits[2] = 1,
+                b'D' => dest_bits[1] = 1,
+                b'A' => dest_bits[0] = 1,
+                wildcard => {
+                    panic!("dest no match u8: {}", wildcard)
+                }
             }
         }
     }
@@ -222,17 +223,18 @@ fn map_to_binary(
     let jmp_idx;
     if let Some(jmp) = jmp {
         match jmp {
-            "JGT"=>{jmp_idx=1}
-            "JEQ"=>{jmp_idx=2}
-            "JGE"=>{jmp_idx=3}
-            "JLT"=>{jmp_idx=4}
-            "JNE"=>{jmp_idx=5}
-            "JLE"=>{jmp_idx=6}
-            "JMP"=>{jmp_idx=7}
-            wildcard=>{panic!("jmp no match: {}", wildcard)}
+            "JGT" => jmp_idx = 1,
+            "JEQ" => jmp_idx = 2,
+            "JGE" => jmp_idx = 3,
+            "JLT" => jmp_idx = 4,
+            "JNE" => jmp_idx = 5,
+            "JLE" => jmp_idx = 6,
+            "JMP" => jmp_idx = 7,
+            wildcard => {
+                panic!("jmp no match: {}", wildcard)
+            }
         }
-    }
-    else{
+    } else {
         jmp_idx = 0;
     }
 
@@ -240,9 +242,9 @@ fn map_to_binary(
     cmd.extend(&comp_table[comp_idx.1]);
     cmd.append(&mut dest_bits);
     cmd.extend(&jmp_table[jmp_idx]);
-    cmd.iter_mut().for_each(|b|->(){
-        *b = *b + b'0';
-    } );
+    cmd.iter_mut().for_each(|b| {
+        *b += b'0';
+    });
     return cmd;
 }
 
@@ -256,19 +258,19 @@ fn compile(asm: &Vec<&str>) -> Vec<String> {
                 .parse::<u16>()
                 .expect("A instruction num exceeds u16");
             let mut t = format!("{:b}", t).as_bytes().to_vec();
-            let patch = 16-t.len();
-            let mut tt = vec![b'0';patch];
+            let patch = 16 - t.len();
+            let mut tt = vec![b'0'; patch];
             tt.append(&mut t);
             ans.push(String::from_utf8(tt).unwrap());
         } else {
-            let parts = line.split("=").collect::<Vec<&str>>();
+            let parts = line.split('=').collect::<Vec<&str>>();
             let mut dest = Option::<&str>::None;
             let comp;
             let mut jmp = Option::<&str>::None;
             if parts.len() == 2 {
                 dest = Some(parts[0]);
                 let parts = parts[1];
-                let parts = parts.split(";").collect::<Vec<&str>>();
+                let parts = parts.split(';').collect::<Vec<&str>>();
                 if parts.len() == 2 {
                     jmp = Some(parts[1]);
                 }
@@ -276,7 +278,7 @@ fn compile(asm: &Vec<&str>) -> Vec<String> {
             } else {
                 // no `=`
                 let parts = parts[0];
-                let parts = parts.split(";").collect::<Vec<&str>>();
+                let parts = parts.split(';').collect::<Vec<&str>>();
                 if parts.len() == 2 {
                     jmp = Some(parts[1]);
                 }
@@ -315,51 +317,46 @@ fn clean_asm<'a>(
     // replace line symbol with line number
     for line in clean_no_label_lines.iter_mut() {
         let bs = line.as_bytes();
-        match bs[0] {
-            b'@' => {
-                // A instruction
-                if !(bs[1] <= b'9' && bs[1] >= b'0') {
-                    let sym = std::str::from_utf8(&bs[1..]).expect("Input is not utf8");
-                    if let Some(line_num) = symbol_table.get(sym) {
-                        let mut no = line_num.to_string().into_bytes();
-                        let mut instruct = "@".to_string().into_bytes();
-                        instruct.append(&mut no);
 
-                        let t = Box::leak(Box::<String>::new(
-                            String::from_utf8(instruct).expect("Input is not utf8"),
-                        ));
-                        *line = t.as_str();
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut stack_ptr = 16;
-    // replace stack variable with stack index
-    for line in clean_no_label_lines.iter_mut() {
-        let bs = line.as_bytes();
-        match bs[0] {
-            b'@' => {
-                // A instruction
-                if !(bs[1] <= b'9' && bs[1] >= b'0') {
-                    let sym = std::str::from_utf8(&bs[1..]).expect("Input is not utf8");
+        if bs[0] == b'@' {
+            // A instruction
+            if !(bs[1] <= b'9' && bs[1] >= b'0') {
+                let sym = std::str::from_utf8(&bs[1..]).expect("Input is not utf8");
+                if let Some(line_num) = symbol_table.get(sym) {
+                    let mut no = line_num.to_string().into_bytes();
                     let mut instruct = "@".to_string().into_bytes();
-                    if let Some(line_num) = symbol_table.get(sym) {
-                        let mut no = line_num.to_string().into_bytes();
-                        instruct.append(&mut no);
-                    } else {
-                        instruct.append(&mut stack_ptr.to_string().into_bytes());
-                        symbol_table.insert(sym, stack_ptr);
-                        stack_ptr += 1;
-                    }
+                    instruct.append(&mut no);
+
                     let t = Box::leak(Box::<String>::new(
                         String::from_utf8(instruct).expect("Input is not utf8"),
                     ));
                     *line = t.as_str();
                 }
             }
-            _ => {}
+        }
+    }
+    let mut stack_ptr = 16;
+    // replace stack variable with stack index
+    for line in clean_no_label_lines.iter_mut() {
+        let bs = line.as_bytes();
+        if bs[0] == b'@' {
+            // A instruction
+            if !(bs[1] <= b'9' && bs[1] >= b'0') {
+                let sym = std::str::from_utf8(&bs[1..]).expect("Input is not utf8");
+                let mut instruct = "@".to_string().into_bytes();
+                if let Some(line_num) = symbol_table.get(sym) {
+                    let mut no = line_num.to_string().into_bytes();
+                    instruct.append(&mut no);
+                } else {
+                    instruct.append(&mut stack_ptr.to_string().into_bytes());
+                    symbol_table.insert(sym, stack_ptr);
+                    stack_ptr += 1;
+                }
+                let t = Box::leak(Box::<String>::new(
+                    String::from_utf8(instruct).expect("Input is not utf8"),
+                ));
+                *line = t.as_str();
+            }
         }
     }
     return clean_no_label_lines;
