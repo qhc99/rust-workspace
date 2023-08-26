@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
         ("THAT", 4),
     ]);
 
-    let clean_no_label_lines = clean_asm(&clean_lines, &mut symbol_table);
+    let clean_no_label_lines = strip_asm_label_and_sym(&clean_lines, &mut symbol_table);
     let bin = compile(&clean_no_label_lines);
     let mut file = File::create(output_file_path)?;
     for line in bin {
@@ -294,7 +294,7 @@ fn compile(asm: &Vec<&str>) -> Vec<String> {
     return ans;
 }
 
-fn clean_asm<'a>(
+fn strip_asm_label_and_sym<'a>(
     clean_lines: &'a Vec<String>,
     symbol_table: &mut HashMap<&'a str, i32>,
 ) -> Vec<&'a str> {
