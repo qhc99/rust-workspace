@@ -1,2 +1,2 @@
 [workspace]
-members = ["rust_libs", "playground", "leetcode", "asm"]
+members = ["rust_libs", "playground", "leetcode", "asm", "vm"]

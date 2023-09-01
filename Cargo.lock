@@ -157,6 +157,7 @@ dependencies = [
  "docopt",
  "rand",
  "rayon",
+ "regex",
  "serde",
 ]
 
@@ -351,6 +352,13 @@ name = "unicode-ident"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22049a19f4a68748a168c0fc439f9516686aa045927ff767eca0a85101fb6e73"
+
+[[package]]
+name = "vm"
+version = "0.1.0"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "wasi"
