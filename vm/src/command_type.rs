@@ -1,5 +1,6 @@
+#[derive(PartialEq,Eq)]
 pub enum CommandType{
-    Arithmeic,
+    Arithmetic,
     Push,
     Pop,
     Label,

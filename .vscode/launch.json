@@ -1,4 +1,5 @@
 {
+    "version": "0.2.0",
     "configurations": [
         {
             "name": "asm debug c++",
@@ -13,18 +14,20 @@
             "console": "externalTerminal"
         },
         {
-            "type": "lldb",
+            "name": "vm debug",
+            "type": "cppvsdbg",
             "request": "launch",
-            "name": "asm debug lldb",
-            "cargo": {
-                "args": [
-                    "build",
-                    "-p",
-                    "asm"
-                ]
-            },
-            "args": ["C:\\Users\\Nathan\\VSCodeProjects\\nand2tetris\\projects\\06\\add\\Add.asm",
-            "C:\\Users\\Nathan\\VSCodeProjects\\nand2tetris\\projects\\06\\add\\Add.hack"]
-        },
-    ]
+            "program": "${workspaceFolder}/target/debug/vm.exe",
+            "args": ["C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/07/MemoryAccess/BasicTest/BasicTest.vm"],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [{
+                "name":"RUST_BACKTRACE",
+                "value": "1"
+            }],
+            "console": "externalTerminal",
+            "preLaunchTask": "cargo build vm debug"
+        }
+    ],
+    
 }
