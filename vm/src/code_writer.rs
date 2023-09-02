@@ -19,8 +19,9 @@ impl CodeWriter {
         }
     }
 
-    pub fn set_input_file_name(&mut self, in_name: &str){
-        self.input_file_name = Some(in_name.to_string())
+    pub fn reset_input_metadata(&mut self, in_name: &str){
+        self.input_file_name = Some(in_name.to_string());
+        self.cond_label_num = 0;
     }
 
     pub fn write_arithmetic(&mut self, cmd: String) {

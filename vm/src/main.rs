@@ -61,7 +61,7 @@ fn main() -> io::Result<()> {
 }
 
 fn translate(parser: &mut Parser, writer: &mut CodeWriter)->io::Result<()> {
-    writer.set_input_file_name(parser.file_name());
+    writer.reset_input_metadata(parser.file_name());
     while parser.has_more_commands() {
         parser.advance()?;
         let cmd_type = parser.command_type();
