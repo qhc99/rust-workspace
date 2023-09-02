@@ -4,25 +4,23 @@ use std::io::Write;
 
 pub struct CodeWriter {
     out: File,
-    file_name: String,
+    input_file_name: Option<String>,
     cond_label_num: u16,
 }
 
 impl CodeWriter {
     pub fn new(out_path: PathBuf) -> Self {
-        let file_name = out_path
-            .file_stem()
-            .expect("output path no file or dir name")
-            .to_str()
-            .expect("os str cannot convert to str")
-            .to_string();
         let out = File::create(out_path).expect("cannot create output file");
 
         CodeWriter {
             out,
-            file_name,
+            input_file_name: None,
             cond_label_num: 0,
         }
+    }
+
+    pub fn set_input_file_name(&mut self, in_name: &str){
+        self.input_file_name = Some(in_name.to_string())
     }
 
     pub fn write_arithmetic(&mut self, cmd: String) {
@@ -115,7 +113,7 @@ M=0
 A=M-1
 M=-1
 ({0}$cond$false.{1})",
-            self.file_name, self.cond_label_num, j
+            self.input_file_name.as_ref().unwrap(), self.cond_label_num, j
         ));
     }
 
@@ -141,7 +139,7 @@ A=A-1"
             "this" => self.write_base_shift_push(3, idx, true),
             "that" => self.write_base_shift_push(4, idx, true),
             "constant" => self.write_reg_a_push(&idx.to_string(), true),
-            "static" => self.write_reg_a_push(&format!("{0}.{1}", self.file_name, idx),false),
+            "static" => self.write_reg_a_push(&format!("{0}.{1}", self.input_file_name.as_ref().unwrap(), idx),false),
             "temp" => self.write_base_shift_push(5, idx, false),
             "pointer" => self.write_base_shift_push(3, idx, false),
             _ => {
@@ -228,7 +226,7 @@ A=M
 D=M
 @{0}.{1}
 M=D",
-                self.file_name, idx
+                self.input_file_name.as_ref().unwrap(), idx
             )),
             "temp" => self.write_base_shift_pop(5, idx, false),
             "pointer" => self.write_base_shift_pop(3, idx, false),

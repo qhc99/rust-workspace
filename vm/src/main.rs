@@ -1,7 +1,7 @@
 #![allow(clippy::needless_return)]
 use std::{
     env,
-    fs::{self, File},
+    fs::{self},
     io::{self, Error},
     path::{Path, PathBuf},
 };
@@ -35,7 +35,7 @@ fn main() -> io::Result<()> {
                     .and_then(|s: &str| -> _ { Some(s.ends_with(".vm")) })
                     == Some(true)
             {
-                let mut parser = Parser::new(File::open(f.path())?)?;
+                let mut parser = Parser::new(f.path())?;
                 translate(&mut parser, &mut writer)?;
             }
         }
@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
             panic!("input file is not ends with .vm");
         } else {
             let out_path = replace_extension_path(input_path);
-            let mut parser = Parser::new(File::open(input_path)?)?;
+            let mut parser = Parser::new(input_path.to_path_buf())?;
             let mut writer = CodeWriter::new(out_path);
             translate(&mut parser, &mut writer)?;
         }
@@ -61,6 +61,7 @@ fn main() -> io::Result<()> {
 }
 
 fn translate(parser: &mut Parser, writer: &mut CodeWriter)->io::Result<()> {
+    writer.set_input_file_name(parser.file_name());
     while parser.has_more_commands() {
         parser.advance()?;
         let cmd_type = parser.command_type();

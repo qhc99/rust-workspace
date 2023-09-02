@@ -5,6 +5,7 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader},
     iter::Peekable,
+    path::PathBuf,
 };
 
 pub struct Parser {
@@ -13,21 +14,21 @@ pub struct Parser {
     arg1: Option<String>,
     arg2: Option<i16>,
     regex_whitespaces: Regex,
+    file_name: String,
 }
 
 impl Parser {
-    pub fn new(input: File) -> io::Result<Self> {
-        let lines = BufReader::new(input).lines();
+    pub fn new(input_path: PathBuf) -> io::Result<Self> {
+        let file_name = input_path
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let lines = BufReader::new(File::open(input_path)?).lines();
         let iter = lines
-            .map(|r| -> _ {
-                r.map(|s|->_{
-                    Self::strip_comment(&s)
-                    .trim()
-                    .to_string()
-                })
-            })
-            .filter(|r| -> bool { r.as_ref().map_or(false, |s|->_{!s.is_empty()}) 
-        });
+            .map(|r| -> _ { r.map(|s| -> _ { Self::strip_comment(&s).trim().to_string() }) })
+            .filter(|r| -> bool { r.as_ref().map_or(false, |s| -> _ { !s.is_empty() }) });
         let b: Box<dyn Iterator<Item = io::Result<String>>> = Box::new(iter);
         Ok(Self {
             cmd_iter: b.peekable(),
@@ -35,14 +36,19 @@ impl Parser {
             arg1: None,
             arg2: None,
             regex_whitespaces: Regex::new(r"\s+").unwrap(),
+            file_name,
         })
+    }
+
+    pub fn file_name(&self) -> &str {
+        &self.file_name
     }
 
     pub fn has_more_commands(&mut self) -> bool {
         return self.cmd_iter.peek().is_some();
     }
 
-    pub fn advance(&mut self)->io::Result<()> {
+    pub fn advance(&mut self) -> io::Result<()> {
         let s = self
             .cmd_iter
             .next()
@@ -86,7 +92,7 @@ impl Parser {
         self.arg2.take().expect("arg2 is empty")
     }
 
-    pub fn raw_cmd(&mut self)->String{
+    pub fn raw_cmd(&mut self) -> String {
         self.cmd.take().expect("cmd is empty")
     }
 
