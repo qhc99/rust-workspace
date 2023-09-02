@@ -32,20 +32,21 @@ fn main() -> io::Result<()> {
             if f.file_type()?.is_file()
                 && f.file_name()
                     .to_str()
-                    .and_then(|s: &str| -> _ { Some(s.ends_with(".vm")) })
+                    .map(|s: &str| -> _ { s.ends_with(".vm") })
                     == Some(true)
             {
+                // TODO handle Sys.v
                 let mut parser = Parser::new(f.path())?;
                 translate(&mut parser, &mut writer)?;
             }
         }
     } else if input_path.is_file() {
-        if !(input_path
+        if input_path
             .extension()
             .ok_or(Error::new(io::ErrorKind::InvalidInput, "file no ext"))?
             .to_str()
             .ok_or(Error::new(io::ErrorKind::InvalidInput, "cannot convert os str"))?
-            == "vm")
+            != "vm"
         {
             panic!("input file is not ends with .vm");
         } else {
@@ -80,8 +81,14 @@ fn translate(parser: &mut Parser, writer: &mut CodeWriter)->io::Result<()> {
                 let arg2 = parser.arg2();
                 writer.write_pop(&arg1, arg2);
             }
-            CommandType::Label => {}
-            CommandType::Goto => {}
+            CommandType::Label => {
+                let arg1 = parser.arg1();
+                writer.write_label(&arg1);
+            }
+            CommandType::Goto => {
+                let arg1 = parser.arg1();
+                writer.write_goto(&arg1);
+            }
             CommandType::If => {}
             CommandType::Function => {}
             CommandType::Return => {}

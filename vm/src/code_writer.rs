@@ -4,8 +4,9 @@ use std::io::Write;
 
 pub struct CodeWriter {
     out: File,
-    input_file_name: Option<String>,
+    input_file_name: String,
     cond_label_num: u16,
+    if_goto_num:u16
 }
 
 impl CodeWriter {
@@ -14,14 +15,16 @@ impl CodeWriter {
 
         CodeWriter {
             out,
-            input_file_name: None,
+            input_file_name: "".to_string(),
             cond_label_num: 0,
+            if_goto_num: 0
         }
     }
 
-    pub fn reset_input_metadata(&mut self, in_name: &str){
-        self.input_file_name = Some(in_name.to_string());
+    pub fn reset_input_metadata(&mut self, in_name: &str) {
+        self.input_file_name = in_name.to_string();
         self.cond_label_num = 0;
+        self.if_goto_num = 0;
     }
 
     pub fn write_arithmetic(&mut self, cmd: String) {
@@ -50,17 +53,17 @@ M=-M",
             }
             "eq" => {
                 self.gen_arithmetic_double_partial();
-                self.gen_partial_compare(&"JEQ");
+                self.gen_partial_compare("JEQ");
                 self.cond_label_num += 1;
             }
             "gt" => {
                 self.gen_arithmetic_double_partial();
-                self.gen_partial_compare(&"JGT");
+                self.gen_partial_compare("JGT");
                 self.cond_label_num += 1;
             }
             "lt" => {
                 self.gen_arithmetic_double_partial();
-                self.gen_partial_compare(&"JLT");
+                self.gen_partial_compare("JLT");
                 self.cond_label_num += 1;
             }
             "and" => {
@@ -114,7 +117,9 @@ M=0
 A=M-1
 M=-1
 ({0}$cond$false.{1})",
-            self.input_file_name.as_ref().unwrap(), self.cond_label_num, j
+            self.input_file_name,
+            self.cond_label_num,
+            j
         ));
     }
 
@@ -140,7 +145,10 @@ A=A-1"
             "this" => self.write_base_shift_push(3, idx, true),
             "that" => self.write_base_shift_push(4, idx, true),
             "constant" => self.write_reg_a_push(&idx.to_string(), true),
-            "static" => self.write_reg_a_push(&format!("{0}.{1}", self.input_file_name.as_ref().unwrap(), idx),false),
+            "static" => self.write_reg_a_push(
+                &format!("{0}.{1}", self.input_file_name, idx),
+                false,
+            ),
             "temp" => self.write_base_shift_push(5, idx, false),
             "pointer" => self.write_base_shift_push(3, idx, false),
             _ => {
@@ -159,7 +167,8 @@ A=M
 M=D
 @0
 M=M+1",
-            a, if immediate {"A"} else{"M"}
+            a,
+            if immediate { "A" } else { "M" }
         ))
     }
 
@@ -227,7 +236,8 @@ A=M
 D=M
 @{0}.{1}
 M=D",
-                self.input_file_name.as_ref().unwrap(), idx
+                self.input_file_name,
+                idx
             )),
             "temp" => self.write_base_shift_pop(5, idx, false),
             "pointer" => self.write_base_shift_pop(3, idx, false),
@@ -235,5 +245,22 @@ M=D",
                 panic!("unknown push stack segment")
             }
         }
+    }
+
+    pub fn write_label(&mut self, arg1: &str) {
+        self.write(&format!(
+            "
+({})",
+            arg1
+        ))
+    }
+
+    pub fn write_goto(&mut self, arg1: &str) {
+        self.write(&format!(
+            "
+@{}
+0;JMP",
+            arg1
+        ))
     }
 }
