@@ -39,14 +39,14 @@ impl CodeWriter {
                 self.gen_arithmetic_double_partial();
                 self.write(
                     "
-M=D+M",
+M=D+M // add",
                 );
             }
             "sub" => {
                 self.gen_arithmetic_double_partial();
                 self.write(
                     "
-M=M-D",
+M=M-D // sub",
                 );
             }
             "neg" => {
@@ -73,22 +73,22 @@ M=-M",
                 self.gen_arithmetic_double_partial();
                 self.write(
                     "
-M=D&M",
+M=D&M // and",
                 )
             }
             "or" => {
                 self.gen_arithmetic_double_partial();
                 self.write(
                     "
-M=D|M",
+M=D|M // or",
                 );
             }
             "not" => {
                 self.write(
                     "
-@0 // not
+@0
 A=M-1
-M=!M",
+M=!M // not",
                 );
             }
             other => {
@@ -114,7 +114,7 @@ D;{2} // {2} to true
 A=M-1
 M=0
 @{0}$cond$false.{1}
-0;JMP /// JMP to false
+0;JMP // JMP to false
 ({0}$cond$true.{1})
 @0
 A=M-1
@@ -160,7 +160,7 @@ A=A-1"
     fn write_reg_a_push(&mut self, a: &str, immediate: bool) {
         self.write(&format!(
             "
-@{0} // push
+@{0} // push reg {a}
 D={1}
 @0
 A=M
@@ -175,7 +175,7 @@ M=M+1",
     fn write_base_shift_push(&mut self, base: i16, shift: i16, indirect: bool) {
         self.write(&format!(
             "
-@{0} // push 
+@{0} // push {base} {shift}, {2}
 D={2}
 @{1}
 A=D+A
@@ -194,16 +194,16 @@ M=M+1",
     fn write_base_shift_pop(&mut self, base: i16, shift: i16, indirect: bool) {
         self.write(&format!(
             "
-@0 // pop 
+@0 // pop {base} {shift}, {2}
 AM=M-1
 D=M
-@R13 
+@R13 // RAM[R13] = val
 M=D
 @{0}
 D={2}
 @{1}
 D=D+A
-@R14 
+@R14 // RAM[R14] = addr
 M=D
 @R13
 D=M
@@ -229,10 +229,10 @@ M=M-1",
             ),
             "static" => self.write(&format!(
                 "
-@0 // pop static
+@0 // pop static 
 AM=M-1
 D=M
-@{0}.{1}
+@{0}.{1} // var name
 M=D",
                 self.input_file_name, idx
             )),
@@ -255,7 +255,7 @@ M=D",
     pub fn write_goto(&mut self, arg1: &str) {
         self.write(&format!(
             "
-@{} // goto 
+@{} // goto
 0;JMP",
             arg1
         ))
@@ -264,7 +264,7 @@ M=D",
     pub fn write_if_goto(&mut self, arg1: &str) {
         self.write(&format!(
             "
-@0 // if-goto 
+@0 // if-goto {arg1}
 AM=M-1
 D=M
 @{0}$if-goto$false.{1}
@@ -280,7 +280,7 @@ D;JEQ
     pub fn write_function(&mut self, func_name: &str, lcl: i16) {
         self.write(&format!(
             "
-({0}$entry)
+({0}$entry) // function {0} {1}
 @0
 D=M
 @1
@@ -289,18 +289,21 @@ M=D // load lcl
 D=D+A
 @R13
 M=D // RAM[R13] = stop SP
-({2}$clear-lcl.{3}) // clean LCL
+({2}$clear-lcl-loop.{3})
+@R13
+D=M
+@0
+D=D-M
+@{2}$clear-lcl-stop.{3}
+D;JEQ 
 @0
 A=M
 M=0
 @0
 M=M+1
-@R13
-D=M
-@0
-D=D-M
-@{2}$clear-lcl.{3}
-D;JGT // start of function",
+@{2}$clear-lcl-loop.{3}
+0;JMP
+({2}$clear-lcl-stop.{3})",
             func_name, lcl, self.input_file_name, self.func_clean_lcl_num
         ));
         self.func_clean_lcl_num+=1;
@@ -311,7 +314,7 @@ D;JGT // start of function",
             "
 @0 // call {func_name} {arg}
 D=M
-@{0} // arg 
+@{0} // arg num
 D=D-A
 @R13
 M=D // wait to load arg
@@ -357,7 +360,7 @@ M=D // load arg
 @{1}$entry
 0;JMP
 ({2}$ret.{3})",
-            arg + 1,
+            arg ,
             func_name,
             self.input_file_name,
             self.func_call_ret_num
@@ -376,7 +379,7 @@ M=D // RAM[R13] = ret
 @1
 D=M-1
 @0
-M=D // SP = RAM[LCL]-1
+M=D // SP = LCL-1
 @0
 A=M
 D=M
