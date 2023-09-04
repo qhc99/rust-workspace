@@ -160,7 +160,7 @@ A=A-1"
     fn write_reg_a_push(&mut self, a: &str, immediate: bool) {
         self.write(&format!(
             "
-@{0} // push reg {a}
+@{0} // push reg {a}, {immediate}
 D={1}
 @0
 A=M
@@ -431,8 +431,28 @@ A=M
     pub fn write_sys_init(&mut self) {
         self.write(
             "
-@Sys.init$entry
-0;JMP",
+@256
+D=A
+@0
+M=D
+@11111
+D=A
+@1
+M=D
+@22222
+D=A
+@2
+M=D
+@33333
+D=A
+@3
+M=D
+@44444
+D=A
+@4
+M=D
+",
         );
+        self.write_call("Sys.init", 0);
     }
 }
