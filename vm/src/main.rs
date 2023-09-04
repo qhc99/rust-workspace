@@ -1,10 +1,9 @@
 #![allow(clippy::needless_return)]
 use std::{
-    cmp::Ordering,
     collections::HashSet,
     env,
     fs::{self},
-    io::{self, Error},
+    io::{self},
     path::{Path, PathBuf},
 };
 
@@ -139,18 +138,6 @@ fn translate(parser: &mut Parser, writer: &mut CodeWriter) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-fn replace_extension_path(path: &Path) -> PathBuf {
-    let mut new_path = PathBuf::new();
-    if let Some(parent) = path.parent() {
-        new_path.push(parent);
-    }
-    if let Some(stem) = path.file_stem() {
-        new_path.push(stem);
-    }
-    new_path.set_extension("asm");
-    new_path
 }
 
 fn output_to_dir_path(path: &Path) -> PathBuf {
