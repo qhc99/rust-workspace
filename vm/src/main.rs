@@ -1,6 +1,7 @@
 #![allow(clippy::needless_return)]
 use std::{
     cmp::Ordering,
+    collections::HashSet,
     env,
     fs::{self},
     io::{self, Error},
@@ -22,10 +23,42 @@ fn main() -> io::Result<()> {
     let input_path: &str = &args[1];
     let input_path = Path::new(input_path);
     if !input_path.exists() {
-        panic!("input file not exists")
+        panic!("input path not exists")
     }
     if input_path.is_dir() {
+        let mut compile_dirs = HashSet::<PathBuf>::new();
+        find_compile_dirs(input_path, &mut compile_dirs)?;
+        for compile_dir in compile_dirs {
+            compile(compile_dir.as_path())?;
+        }
+    } else {
+        panic!("input path is not a dir");
+    }
+
+    Ok(())
+}
+
+fn find_compile_dirs(dir: &Path, sets: &mut HashSet<PathBuf>) -> Result<(), std::io::Error> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Recursively visit subdirectories
+                find_compile_dirs(&path, sets)?;
+            } else if path.extension().unwrap().to_str().unwrap() == "vm" {
+                sets.insert(path.parent().unwrap().to_owned());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn compile(input_path: &Path) -> io::Result<()> {
+    if input_path.is_dir() {
         let out_path = output_to_dir_path(input_path);
+        println!("generate: {}", out_path.to_str().unwrap());
         let mut writer = CodeWriter::new(&out_path);
         let t = fs::read_dir(input_path)?;
         let mut bootstrap = false;
@@ -52,26 +85,8 @@ fn main() -> io::Result<()> {
             let mut parser = Parser::new(p)?;
             translate(&mut parser, &mut writer)?;
         }
-    } else if input_path.is_file() {
-        if input_path
-            .extension()
-            .ok_or(Error::new(io::ErrorKind::InvalidInput, "file no ext"))?
-            .to_str()
-            .ok_or(Error::new(
-                io::ErrorKind::InvalidInput,
-                "cannot convert os str",
-            ))?
-            != "vm"
-        {
-            panic!("input file is not ends with .vm");
-        } else {
-            let out_path = replace_extension_path(input_path);
-            let mut parser = Parser::new(&input_path.to_path_buf())?;
-            let mut writer = CodeWriter::new(&out_path);
-            translate(&mut parser, &mut writer)?;
-        }
     } else {
-        panic!("input path is not dir or file");
+        panic!("input path is not a dir");
     }
     return Ok(());
 }
@@ -125,7 +140,6 @@ fn translate(parser: &mut Parser, writer: &mut CodeWriter) -> io::Result<()> {
     }
     Ok(())
 }
-
 
 fn replace_extension_path(path: &Path) -> PathBuf {
     let mut new_path = PathBuf::new();
