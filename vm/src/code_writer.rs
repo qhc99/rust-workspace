@@ -6,18 +6,22 @@ pub struct CodeWriter {
     out: File,
     input_file_name: String,
     cond_label_num: u16,
-    if_goto_num:u16
+    if_goto_num: u16,
+    func_call_ret_num: u16,
+    func_clean_lcl_num: u16,
 }
 
 impl CodeWriter {
-    pub fn new(out_path: PathBuf) -> Self {
+    pub fn new(out_path: &PathBuf) -> Self {
         let out = File::create(out_path).expect("cannot create output file");
 
         CodeWriter {
             out,
             input_file_name: "".to_string(),
             cond_label_num: 0,
-            if_goto_num: 0
+            if_goto_num: 0,
+            func_call_ret_num: 0,
+            func_clean_lcl_num: 0,
         }
     }
 
@@ -25,6 +29,8 @@ impl CodeWriter {
         self.input_file_name = in_name.to_string();
         self.cond_label_num = 0;
         self.if_goto_num = 0;
+        self.func_call_ret_num = 0;
+        self.func_clean_lcl_num = 0;
     }
 
     pub fn write_arithmetic(&mut self, cmd: String) {
@@ -46,7 +52,7 @@ M=M-D",
             "neg" => {
                 self.write(
                     "
-@0
+@0 // neg
 A=M-1
 M=-M",
                 );
@@ -54,17 +60,14 @@ M=-M",
             "eq" => {
                 self.gen_arithmetic_double_partial();
                 self.gen_partial_compare("JEQ");
-                self.cond_label_num += 1;
             }
             "gt" => {
                 self.gen_arithmetic_double_partial();
                 self.gen_partial_compare("JGT");
-                self.cond_label_num += 1;
             }
             "lt" => {
                 self.gen_arithmetic_double_partial();
                 self.gen_partial_compare("JLT");
-                self.cond_label_num += 1;
             }
             "and" => {
                 self.gen_arithmetic_double_partial();
@@ -83,7 +86,7 @@ M=D|M",
             "not" => {
                 self.write(
                     "
-@0
+@0 // not
 A=M-1
 M=!M",
                 );
@@ -106,31 +109,29 @@ M=!M",
             "
 D=M-D
 @{0}$cond$true.{1}
-D;{2}
+D;{2} // {2} to true
 @0
 A=M-1
 M=0
 @{0}$cond$false.{1}
-0;JMP
+0;JMP /// JMP to false
 ({0}$cond$true.{1})
 @0
 A=M-1
 M=-1
 ({0}$cond$false.{1})",
-            self.input_file_name,
-            self.cond_label_num,
-            j
+            self.input_file_name, self.cond_label_num, j
         ));
+        self.cond_label_num+=1;
     }
 
-    /// SP <- SP-1, D <- RAM[SP], M <- RAM[SP-1]
+    /// SP <- SP-1, A <- SP-1 D <- RAM[SP], A <- SP-1
     fn gen_arithmetic_double_partial(&mut self) {
         self.out
             .write_all(
                 "
-@0
-M=M-1
-A=M
+@0 // arithmetic double operaotr
+AM=M-1
 D=M
 A=A-1"
                     .as_bytes(),
@@ -145,10 +146,9 @@ A=A-1"
             "this" => self.write_base_shift_push(3, idx, true),
             "that" => self.write_base_shift_push(4, idx, true),
             "constant" => self.write_reg_a_push(&idx.to_string(), true),
-            "static" => self.write_reg_a_push(
-                &format!("{0}.{1}", self.input_file_name, idx),
-                false,
-            ),
+            "static" => {
+                self.write_reg_a_push(&format!("{0}.{1}", self.input_file_name, idx), false)
+            }
             "temp" => self.write_base_shift_push(5, idx, false),
             "pointer" => self.write_base_shift_push(3, idx, false),
             _ => {
@@ -160,7 +160,7 @@ A=A-1"
     fn write_reg_a_push(&mut self, a: &str, immediate: bool) {
         self.write(&format!(
             "
-@{0}
+@{0} // push
 D={1}
 @0
 A=M
@@ -175,7 +175,7 @@ M=M+1",
     fn write_base_shift_push(&mut self, base: i16, shift: i16, indirect: bool) {
         self.write(&format!(
             "
-@{0}
+@{0} // push 
 D={2}
 @{1}
 A=D+A
@@ -194,9 +194,8 @@ M=M+1",
     fn write_base_shift_pop(&mut self, base: i16, shift: i16, indirect: bool) {
         self.write(&format!(
             "
-@0
-M=M-1
-A=M
+@0 // pop 
+AM=M-1
 D=M
 @R13 
 M=D
@@ -225,19 +224,17 @@ M=D",
             "that" => self.write_base_shift_pop(4, idx, true),
             "constant" => self.write(
                 "
-@0
+@0 // pop constant
 M=M-1",
             ),
             "static" => self.write(&format!(
                 "
-@0
-M=M-1
-A=M
+@0 // pop static
+AM=M-1
 D=M
 @{0}.{1}
 M=D",
-                self.input_file_name,
-                idx
+                self.input_file_name, idx
             )),
             "temp" => self.write_base_shift_pop(5, idx, false),
             "pointer" => self.write_base_shift_pop(3, idx, false),
@@ -258,9 +255,181 @@ M=D",
     pub fn write_goto(&mut self, arg1: &str) {
         self.write(&format!(
             "
-@{}
+@{} // goto 
 0;JMP",
             arg1
         ))
+    }
+
+    pub fn write_if_goto(&mut self, arg1: &str) {
+        self.write(&format!(
+            "
+@0 // if-goto 
+AM=M-1
+D=M
+@{0}$if-goto$false.{1}
+D;JEQ
+@{2}
+0;JMP
+({0}$if-goto$false.{1})",
+            self.input_file_name, self.if_goto_num, arg1
+        ));
+        self.if_goto_num += 1;
+    }
+
+    pub fn write_function(&mut self, func_name: &str, lcl: i16) {
+        self.write(&format!(
+            "
+({0}$entry)
+@0
+D=M
+@1
+M=D // load lcl
+@{1}
+D=D+A
+@R13
+M=D // RAM[R13] = stop SP
+({2}$clear-lcl.{3}) // clean LCL
+@0
+A=M
+M=0
+@0
+M=M+1
+@R13
+D=M
+@0
+D=D-M
+@{2}$clear-lcl.{3}
+D;JGT // start of function",
+            func_name, lcl, self.input_file_name, self.func_clean_lcl_num
+        ));
+        self.func_clean_lcl_num+=1;
+    }
+
+    pub fn write_call(&mut self, func_name: &str, arg: i16) {
+        self.write(&format!(
+            "
+@0 // call {func_name} {arg}
+D=M
+@{0} // arg 
+D=D-A
+@R13
+M=D // wait to load arg
+@{2}$ret.{3}
+D=A
+@0
+A=M
+M=D // save return jump line
+@0
+M=M+1
+@1
+D=M
+@0
+A=M
+M=D // save LCL
+@0
+M=M+1
+@2
+D=M
+@0
+A=M
+M=D // save arg 
+@0
+M=M+1
+@3
+D=M
+@0
+A=M
+M=D // save this
+@0
+M=M+1
+@4
+D=M
+@0
+A=M
+M=D // save that
+@0
+M=M+1
+@R13
+D=M
+@2
+M=D // load arg
+@{1}$entry
+0;JMP
+({2}$ret.{3})",
+            arg + 1,
+            func_name,
+            self.input_file_name,
+            self.func_call_ret_num
+        ));
+        self.func_call_ret_num += 1;
+    }
+
+    pub fn write_return(&mut self) {
+        self.write(
+            "
+@0 // return
+AM=M-1
+D=M
+@R13
+M=D // RAM[R13] = ret
+@1
+D=M-1
+@0
+M=D // SP = RAM[LCL]-1
+@0
+A=M
+D=M
+@4
+M=D // reload that
+@0
+AM=M-1
+D=M 
+@3
+M=D // reload this
+@0
+M=M-1
+@2
+D=M
+@R14
+M=D // RAM[R14] = arg
+@0
+A=M
+D=M
+@2
+M=D // reload arg
+@0
+AM=M-1
+D=M
+@1
+M=D // reload lcl
+@0
+A=M-1
+D=M
+@R15
+M=D // RAM[R15] = jump
+@R14
+D=M
+@0
+M=D // reload stack base
+@R13
+D=M
+@0
+A=M
+M=D // set return value
+@0
+M=M+1
+@R15
+A=M
+0;JMP // return jump",
+        )
+    }
+
+    pub fn write_sys_init(&mut self) {
+        self.write(
+            "
+@Sys.init$entry
+0;JMP",
+        );
     }
 }

@@ -1,5 +1,6 @@
 #![allow(clippy::needless_return)]
 use std::{
+    cmp::Ordering,
     env,
     fs::{self},
     io::{self, Error},
@@ -25,8 +26,10 @@ fn main() -> io::Result<()> {
     }
     if input_path.is_dir() {
         let out_path = output_to_dir_path(input_path);
-        let mut writer = CodeWriter::new(out_path);
+        let mut writer = CodeWriter::new(&out_path);
         let t = fs::read_dir(input_path)?;
+        let mut bootstrap = false;
+        let mut vm_f_paths = Vec::<PathBuf>::new();
         for f in t {
             let f = f?;
             if f.file_type()?.is_file()
@@ -35,24 +38,36 @@ fn main() -> io::Result<()> {
                     .map(|s: &str| -> _ { s.ends_with(".vm") })
                     == Some(true)
             {
-                // TODO handle Sys.v
-                let mut parser = Parser::new(f.path())?;
-                translate(&mut parser, &mut writer)?;
+                let p = f.path();
+                if p.file_stem().unwrap().to_str().unwrap() == "Sys" {
+                    bootstrap = true;
+                }
+                vm_f_paths.push(p);
             }
+        }
+        if bootstrap {
+            writer.write_sys_init();
+        }
+        for p in vm_f_paths.iter() {
+            let mut parser = Parser::new(p)?;
+            translate(&mut parser, &mut writer)?;
         }
     } else if input_path.is_file() {
         if input_path
             .extension()
             .ok_or(Error::new(io::ErrorKind::InvalidInput, "file no ext"))?
             .to_str()
-            .ok_or(Error::new(io::ErrorKind::InvalidInput, "cannot convert os str"))?
+            .ok_or(Error::new(
+                io::ErrorKind::InvalidInput,
+                "cannot convert os str",
+            ))?
             != "vm"
         {
             panic!("input file is not ends with .vm");
         } else {
             let out_path = replace_extension_path(input_path);
-            let mut parser = Parser::new(input_path.to_path_buf())?;
-            let mut writer = CodeWriter::new(out_path);
+            let mut parser = Parser::new(&input_path.to_path_buf())?;
+            let mut writer = CodeWriter::new(&out_path);
             translate(&mut parser, &mut writer)?;
         }
     } else {
@@ -61,12 +76,12 @@ fn main() -> io::Result<()> {
     return Ok(());
 }
 
-fn translate(parser: &mut Parser, writer: &mut CodeWriter)->io::Result<()> {
+fn translate(parser: &mut Parser, writer: &mut CodeWriter) -> io::Result<()> {
     writer.reset_input_metadata(parser.file_name());
     while parser.has_more_commands() {
         parser.advance()?;
         let cmd_type = parser.command_type();
-        
+
         match cmd_type {
             CommandType::Arithmetic => {
                 writer.write_arithmetic(parser.raw_cmd());
@@ -89,14 +104,28 @@ fn translate(parser: &mut Parser, writer: &mut CodeWriter)->io::Result<()> {
                 let arg1 = parser.arg1();
                 writer.write_goto(&arg1);
             }
-            CommandType::If => {}
-            CommandType::Function => {}
-            CommandType::Return => {}
-            CommandType::Call => {}
+            CommandType::If => {
+                let arg1 = parser.arg1();
+                writer.write_if_goto(&arg1);
+            }
+            CommandType::Function => {
+                let arg1 = parser.arg1();
+                let arg2 = parser.arg2();
+                writer.write_function(&arg1, arg2);
+            }
+            CommandType::Return => {
+                writer.write_return();
+            }
+            CommandType::Call => {
+                let arg1 = parser.arg1();
+                let arg2 = parser.arg2();
+                writer.write_call(&arg1, arg2);
+            }
         }
     }
     Ok(())
 }
+
 
 fn replace_extension_path(path: &Path) -> PathBuf {
     let mut new_path = PathBuf::new();
@@ -116,6 +145,6 @@ fn output_to_dir_path(path: &Path) -> PathBuf {
     if let Some(stem) = path.file_name() {
         new_path.push(stem);
     }
-    new_path.set_extension(".asm");
+    new_path.set_extension("asm");
     new_path
 }

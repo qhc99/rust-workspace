@@ -18,14 +18,14 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(input_path: PathBuf) -> io::Result<Self> {
+    pub fn new(input_path: &PathBuf) -> io::Result<Self> {
         let file_name = input_path
             .file_stem()
             .unwrap()
             .to_str()
             .unwrap()
             .to_string();
-        let lines = BufReader::new(File::open(input_path)?).lines();
+        let lines = BufReader::new(File::options().read(true).open(input_path)?).lines();
         let iter = lines
             .map(|r| -> _ { r.map(|s| -> _ { Self::strip_comment(&s).trim().to_string() }) })
             .filter(|r| -> bool { r.as_ref().map_or(false, |s| -> _ { !s.is_empty() }) });
