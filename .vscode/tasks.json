@@ -9,7 +9,7 @@
             ],
             "group": "build",
             "label": "cargo build vm debug",
-            "args": ["-p", "vm"]
+            "args": ["-p", "VMTranslator"]
         },
         {
             "type": "cargo",
@@ -19,7 +19,7 @@
             ],
             "group": "build",
             "label": "cargo build vm release",
-            "args": ["--release","-p", "vm"]
+            "args": ["--release","-p", "VMTranslator"]
         }
     ]
 }
