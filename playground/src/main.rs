@@ -3,5 +3,9 @@
 mod mat_mul;
 
 fn main() {
-    println!("{}",!(24|82))
+    let t = 
+"a
+b
+c";
+        println!("{}",t);
 }
