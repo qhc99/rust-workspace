@@ -3,3 +3,6 @@ name = "compiler"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+regex = "1.9.6"
+xml = "0.8.10"
