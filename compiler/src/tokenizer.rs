@@ -1,9 +1,3 @@
-// keywords:
-// symbols:
-// ((keywords)|(symbols)|(".+?")|([_\w]+[_\w\d]+)|(\d+))
-// class var { } 20  "12" "23" _t2 _T3
-// ,;+-*/&|<>=~
-
 use regex::Regex;
 use std::fs;
 use std::io::Read;
