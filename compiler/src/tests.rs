@@ -24,7 +24,7 @@ fn print_token_xml(out_path: &str, input_path: &str) {
     let file = BufWriter::new(file);
 
     let mut writer = EmitterConfig::new()
-        .perform_indent(false)
+        .perform_indent(true)
         .create_writer(file);
 
     let tn = Tokenizer::new();
