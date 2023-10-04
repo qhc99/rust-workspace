@@ -8,7 +8,33 @@ pub struct XmlCompilationEngine {
     writer: EventWriter<BufWriter<File>>,
     tokens: Peekable<Box<dyn Iterator<Item = Token>>>,
 }
-
+fn escape_str(s:String)->String{
+    let t = s.as_bytes();
+    let mut v = Vec::<u8>::with_capacity(t.len());
+    for i in t{
+        match *i {
+            b'&'=>{
+                v.extend("&amp;".to_string().as_bytes().to_vec());
+            }
+            b'<'=>{
+                v.extend("&lt;".to_string().as_bytes().to_vec());
+            }
+            b'>'=>{
+                v.extend("&gt;".to_string().as_bytes().to_vec());
+            }
+            b'\''=>{
+                v.extend("&apos;".to_string().as_bytes().to_vec());
+            }
+            b'"'=>{
+                v.extend("&quot;".to_string().as_bytes().to_vec());
+            }
+            _=>{
+                v.push(*i);
+            }
+        }
+    }
+    return String::from_utf8(v).unwrap();
+}
 impl XmlCompilationEngine {
     fn write_identifier(&mut self) {
         let next = self.tokens.next().unwrap();
@@ -16,7 +42,7 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("identifier"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&t)).unwrap();
+            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -29,7 +55,7 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("symbol"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&t)).unwrap();
+            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -43,7 +69,7 @@ impl XmlCompilationEngine {
                 .write(XmlEvent::start_element("integerConstant"))
                 .unwrap();
             self.writer
-                .write(XmlEvent::characters(&t.to_string()))
+                .write(XmlEvent::characters(&escape_str(t.to_string())))
                 .unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
@@ -57,7 +83,7 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("keyword"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&t)).unwrap();
+            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -76,7 +102,7 @@ impl XmlCompilationEngine {
                 .write(XmlEvent::start_element("stringConstant"))
                 .unwrap();
             self.writer
-                .write(XmlEvent::characters(&t.to_string()))
+                .write(XmlEvent::characters(&escape_str(t)))
                 .unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
@@ -142,12 +168,12 @@ impl CompilationEngine for XmlCompilationEngine {
     fn start(out_path: &str, tokens: Vec<Token>) {
         let file = File::create(out_path).unwrap();
         let file = BufWriter::new(file);
-
-        let writer = EmitterConfig::new()
-            .perform_indent(true)
-            .write_document_declaration(false)
-            .normalize_empty_elements(false)
-            .create_writer(file);
+        let mut config = EmitterConfig::new()
+        .perform_indent(true)
+        .write_document_declaration(false)
+        .normalize_empty_elements(false);
+        config.perform_escaping = false;
+        let writer = config .create_writer(file);
         let t: Box<dyn Iterator<Item = Token>> = Box::new(tokens.into_iter());
         let mut e = XmlCompilationEngine {
             writer,
