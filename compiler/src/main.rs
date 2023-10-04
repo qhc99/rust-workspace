@@ -2,13 +2,12 @@ mod compilation_engine;
 mod tokenizer;
 mod tokens;
 mod tests;
-use tests::test_token_xml;
+use tests::{test_tokenizer_xml, test_parser_xml};
 mod vm_compilation_engine;
 mod xml_compilation_engine;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    test_token_xml();
-    Ok(())
+fn main()  {
+    test_parser_xml();
 }
 
 

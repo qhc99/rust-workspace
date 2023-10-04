@@ -2,9 +2,9 @@ use std::{fs::File, io::BufWriter, path::Path};
 
 use xml::{EmitterConfig, writer::XmlEvent};
 
-use crate::{tokenizer::Tokenizer, tokens::Token};
+use crate::{tokenizer::Tokenizer, tokens::Token, xml_compilation_engine::XmlCompilationEngine, compilation_engine::CompilationEngine};
 
-pub fn test_token_xml() {
+pub fn test_tokenizer_xml() {
     let out_path = "MainT.xml";
     let input_path = "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/Main.jack";
     print_token_xml(out_path, input_path);
@@ -18,6 +18,28 @@ pub fn test_token_xml() {
         "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/SquareGame.jack";
     print_token_xml(out_path, input_path);
 }
+
+pub fn test_parser_xml() {
+    let out_path = "Main.xml";
+    let input_path = "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/Main.jack";
+    let tn = Tokenizer::new();
+    let v = tn.tokenize(Path::new(input_path));
+    XmlCompilationEngine::start(out_path, v);
+
+    let out_path = "Square.xml";
+    let input_path = "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/Square.jack";
+    let tn = Tokenizer::new();
+    let v = tn.tokenize(Path::new(input_path));
+    XmlCompilationEngine::start(out_path, v);
+
+    let out_path = "SquareGame.xml";
+    let input_path =
+        "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/SquareGame.jack";
+    let tn = Tokenizer::new();
+    let v = tn.tokenize(Path::new(input_path));
+    XmlCompilationEngine::start(out_path, v);
+}
+
 
 fn print_token_xml(out_path: &str, input_path: &str) {
     let file = File::create(out_path).unwrap();

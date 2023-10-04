@@ -15,7 +15,7 @@ pub trait CompilationEngine {
 
     fn compile_var_dec(&mut self);
 
-    fn compile_var_statements(&mut self);
+    fn compile_statements(&mut self);
 
     fn compile_let(&mut self);
 
