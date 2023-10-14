@@ -1,7 +1,7 @@
 use crate::tokens::Token;
 
 pub trait CompilationEngine {
-    fn start(out_path: &str, tokens: Vec<Token>);
+    fn compile(out_path: &str, tokens: Vec<Token>);
 
     fn compile_class(&mut self);
 
@@ -31,7 +31,7 @@ pub trait CompilationEngine {
 
     fn compile_term(&mut self);
 
-    fn compile_expression_list(&mut self);
+    fn compile_expression_list(&mut self)->u32;
 }
 
 

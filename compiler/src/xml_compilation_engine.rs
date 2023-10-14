@@ -165,7 +165,7 @@ impl XmlCompilationEngine {
 }
 
 impl CompilationEngine for XmlCompilationEngine {
-    fn start(out_path: &str, tokens: Vec<Token>) {
+    fn compile(out_path: &str, tokens: Vec<Token>) {
         let file = File::create(out_path).unwrap();
         let file = BufWriter::new(file);
         let mut config = EmitterConfig::new()
@@ -501,7 +501,7 @@ impl CompilationEngine for XmlCompilationEngine {
         self.writer.write(XmlEvent::end_element()).unwrap();
     }
 
-    fn compile_expression_list(&mut self) {
+    fn compile_expression_list(&mut self) -> u32{
         self.writer
             .write(XmlEvent::start_element("expressionList"))
             .unwrap();
@@ -513,5 +513,6 @@ impl CompilationEngine for XmlCompilationEngine {
             }
         }
         self.writer.write(XmlEvent::end_element()).unwrap();
+        return 0;
     }
 }

@@ -24,20 +24,20 @@ pub fn test_parser_xml() {
     let input_path = "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/Main.jack";
     let tn = Tokenizer::new();
     let v = tn.tokenize(Path::new(input_path));
-    XmlCompilationEngine::start(out_path, v);
+    XmlCompilationEngine::compile(out_path, v);
 
     let out_path = "Square.xml";
     let input_path = "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/Square.jack";
     let tn = Tokenizer::new();
     let v = tn.tokenize(Path::new(input_path));
-    XmlCompilationEngine::start(out_path, v);
+    XmlCompilationEngine::compile(out_path, v);
 
     let out_path = "SquareGame.xml";
     let input_path =
         "C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/10/Square/SquareGame.jack";
     let tn = Tokenizer::new();
     let v = tn.tokenize(Path::new(input_path));
-    XmlCompilationEngine::start(out_path, v);
+    XmlCompilationEngine::compile(out_path, v);
 }
 
 
