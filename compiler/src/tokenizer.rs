@@ -19,7 +19,7 @@ impl Tokenizer {
         let id_pattern = r"[_a-zA-Z]+[_\w]*";
         let comment = "//.*?\n";
         let comments = r"/\*[\s\S\n]+?\*/";
-        let pattern = format!("({comment})|({comments})|({keywords})|({symbols})|({str_pattern})|({id_pattern})|(\\d+)");
+        let pattern = format!("({comment})|({comments})|\\b({keywords})\\b|({symbols})|({str_pattern})|({id_pattern})|(\\d+)");
         return Tokenizer {
             re: Regex::new(&pattern).expect("regex syntax error."),
         };

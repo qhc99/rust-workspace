@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "asm debug c++",
+            "name": "asm debug",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/asm.exe",
@@ -26,7 +26,22 @@
                 "value": "1"
             }],
             "console": "externalTerminal",
-            "preLaunchTask": "cargo build vm debug"
+            "preLaunchTask": "task build vm debug"
+        },
+        {
+            "name": "compiler debug",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/compiler.exe",
+            "args": ["C:/Users/Nathan/VSCodeProjects/nand2tetris/projects/11/ComplexArrays"],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [{
+                "name":"RUST_BACKTRACE",
+                "value": "1"
+            }],
+            "console": "externalTerminal",
+            "preLaunchTask": "task build compiler debug"
         }
     ],
     

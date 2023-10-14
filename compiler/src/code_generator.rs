@@ -63,12 +63,8 @@ pub struct CodeGenerator {
 impl CodeGenerator {
     pub fn new(out: &str) -> Self {
         let p = PathBuf::from(out);
-        if p.exists() {
-            let f = File::create(p).unwrap();
-            CodeGenerator { out: f }
-        } else {
-            panic!()
-        }
+        let f = File::create(p).unwrap();
+        CodeGenerator { out: f }
     }
 
     fn write(&mut self, data: &str) {

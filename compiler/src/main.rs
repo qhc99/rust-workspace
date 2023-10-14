@@ -14,13 +14,13 @@ use std::{
 
 use compilation_engine::CompilationEngine;
 use tokenizer::Tokenizer;
-use xml_compilation_engine::XmlCompilationEngine;
+use vm_compilation_engine::VmCompilationEngine;
 mod code_generator;
 mod vm_compilation_engine;
 mod xml_compilation_engine;
 
 fn main() {
-    compile::<XmlCompilationEngine>();
+    compile::<VmCompilationEngine>();
 }
 
 pub fn compile<Engine>()
@@ -39,7 +39,7 @@ where
     let tn = Tokenizer::new();
     if input_path.is_file() {
         let out_path = PathBuf::from(input_path);
-        out_path.with_extension("xml");
+        out_path.with_extension(Engine::output_extension());
         let v = tn.tokenize(Path::new(input_path));
         Engine::compile(out_path.to_str().unwrap(), v);
     } else if input_path.is_dir() {
@@ -49,7 +49,7 @@ where
             let path = entry.path();
             if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("jack")) {
                 let v = tn.tokenize(&path);
-                let out_path = path.with_extension("xml");
+                let out_path = path.with_extension(Engine::output_extension());
                 Engine::compile(out_path.to_str().unwrap(), v);
             }
         }

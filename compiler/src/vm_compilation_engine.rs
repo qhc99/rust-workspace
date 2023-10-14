@@ -13,6 +13,7 @@ pub struct VmCompilationEngine {
     class_name: String,
     func_name: String,
     func_type: String,
+    func_return_type: String,
     sym_table: SymbolTable,
     if_count: u32,
     while_count: u32,
@@ -113,9 +114,50 @@ impl VmCompilationEngine {
             panic!("syntax error");
         }
     }
+
+    /// self method
+    fn compile_func_call(&mut self, func_name: &str) {
+        self.code_gen.write_push(&Segment::Pointer, 0);
+        self.pop_symbol_assert("(");
+        let n_args = self.compile_expression_list();
+        self.pop_symbol_assert(")");
+        self.code_gen
+            .write_call(&format!("{}.{}", self.class_name, func_name), n_args + 1);
+    }
+
+    /// function or constructor
+    fn compile_prefix_func_call(&mut self, obj_or_class_name: &str) {
+        if self.sym_table.has_id(obj_or_class_name) {
+            let obj_name = obj_or_class_name;
+            let idx = self.sym_table.index_of(obj_name);
+            let kind = self.sym_table.kind_of(obj_name);
+            let seg = kind.into();
+            self.code_gen.write_push(&seg, idx);
+        }
+        self.pop_symbol_assert(".");
+        let method_name = self.pop_identifier();
+        self.pop_symbol_assert("(");
+        let n_args = self.compile_expression_list();
+        self.pop_symbol_assert(")");
+        if self.sym_table.has_id(obj_or_class_name) {
+            let obj_name = obj_or_class_name;
+            self.code_gen.write_call(
+                &format!("{}.{}", self.sym_table.type_of(obj_name), method_name),
+                n_args + 1,
+            );
+        } else {
+            let class_name = obj_or_class_name;
+            self.code_gen
+                .write_call(&format!("{}.{}", class_name, method_name), n_args);
+        }
+    }
 }
 
 impl CompilationEngine for VmCompilationEngine {
+    fn output_extension() -> String {
+        return "vm".to_string();
+    }
+
     fn compile(out_path: &str, tokens: Vec<Token>) {
         let t: Box<dyn Iterator<Item = Token>> = Box::new(tokens.into_iter());
         let mut e = VmCompilationEngine {
@@ -124,6 +166,7 @@ impl CompilationEngine for VmCompilationEngine {
             class_name: "".to_string(),
             func_name: "".to_string(),
             func_type: "".to_string(),
+            func_return_type: "".to_string(),
             sym_table: SymbolTable::new(),
             if_count: 0,
             while_count: 0,
@@ -182,10 +225,11 @@ impl CompilationEngine for VmCompilationEngine {
     fn compile_sub_routine_dec(&mut self) {
         self.sym_table.start_subroutine();
         self.func_type = self.pop_keyword();
-        if matches!(self.tokens.peek(), Some(Token::Keyword(t)) if t == "void") {
-            self.pop_keyword();
+        self.func_return_type = if matches!(self.tokens.peek(), Some(Token::Keyword(t)) if t == "void")
+        {
+            self.pop_keyword()
         } else {
-            self.pop_type();
+            self.pop_type()
         };
         self.func_name = self.pop_identifier();
         self.pop_symbol_assert("(");
@@ -195,6 +239,9 @@ impl CompilationEngine for VmCompilationEngine {
     }
 
     fn compile_parameter_list(&mut self) {
+        if self.func_type == "method" {
+            self.sym_table.define(&"this", &self.class_name, &VarType::Arg);
+        }
         if !matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ")") {
             let tp = self.pop_type();
             let name = self.pop_identifier();
@@ -219,8 +266,13 @@ impl CompilationEngine for VmCompilationEngine {
             var_count,
         );
         if self.func_type == "constructor" {
-            self.code_gen.write_push(&Segment::Const, var_count);
+            self.code_gen
+                .write_push(&Segment::Const, self.sym_table.var_count(&VarType::Field));
             self.code_gen.write_call(&"Memory.alloc", 1);
+            self.code_gen.write_pop(&Segment::Pointer, 0);
+        }
+        if self.func_type == "method" {
+            self.code_gen.write_push(&Segment::Arg, 0);
             self.code_gen.write_pop(&Segment::Pointer, 0);
         }
         self.compile_statements();
@@ -296,69 +348,70 @@ impl CompilationEngine for VmCompilationEngine {
     }
 
     fn compile_if(&mut self) {
+        let count = self.if_count;
+        self.if_count += 1;
+
         self.pop_keyword_assert("if");
 
         self.pop_symbol_assert("(");
         self.compile_expression();
         self.pop_symbol_assert(")");
-        self.code_gen.write_arithmetic(&Command::Not);
         self.code_gen
-            .write_if(&format!("{}.IF_FALSE${}", self.class_name, self.if_count));
-
+            .write_if(&format!("IF_TRUE{}", count));
+        self.code_gen
+            .write_goto(&format!("IF_FALSE{}", count));
+        self.code_gen
+            .write_label(&format!("IF_TRUE{}", count));
         self.pop_symbol_assert("{");
         self.compile_statements();
         self.pop_symbol_assert("}");
+        let has_else_branch = matches!(self.tokens.peek(), Some(Token::Keyword(t)) if t == "else");
 
-        self.code_gen
-            .write_goto(&format!("{}.IF_END${}", self.class_name, self.if_count));
-        self.code_gen
-            .write_label(&format!("{}.IF_FALSE${}", self.class_name, self.if_count));
-        if matches!(self.tokens.peek(), Some(Token::Keyword(t)) if t == "else") {
+        if has_else_branch {
+            self.code_gen
+                .write_goto(&format!("IF_END{}", count));
+            self.code_gen
+                .write_label(&format!("IF_FALSE{}", count));
             self.pop_keyword();
             self.pop_symbol_assert("{");
             self.compile_statements();
             self.pop_symbol_assert("}");
+            self.code_gen
+                .write_label(&format!("IF_END{}", count));
+        } else {
+            self.code_gen
+                .write_label(&format!("IF_FALSE{}", count));
         }
-        self.code_gen
-            .write_label(&format!("{}.IF_END${}", self.class_name, self.if_count));
-        self.if_count += 1;
     }
 
     fn compile_while(&mut self) {
+        let count = self.while_count;
+        self.while_count += 1;
+
         self.pop_keyword_assert("while");
 
-        self.code_gen.write_label(&format!(
-            "{}.WHILE_START${}",
-            self.class_name, self.while_count
-        ));
+        self.code_gen
+            .write_label(&format!("WHILE_EXP{}", count));
         self.pop_symbol_assert("(");
         self.compile_expression();
         self.pop_symbol_assert(")");
 
         self.code_gen.write_arithmetic(&Command::Not);
-        self.code_gen.write_if(&format!(
-            "{}.WHILE_END${}",
-            self.class_name, self.while_count
-        ));
+        self.code_gen
+            .write_if(&format!("WHILE_END{}", count));
 
         self.pop_symbol_assert("{");
         self.compile_statements();
         self.pop_symbol_assert("}");
-        self.code_gen.write_goto(&format!(
-            "{}.WHILE_START${}",
-            self.class_name, self.while_count
-        ));
+        self.code_gen
+            .write_goto(&format!("WHILE_EXP{}", count));
 
-        self.code_gen.write_label(&format!(
-            "{}.WHILE_END${}",
-            self.class_name, self.while_count
-        ));
-        self.while_count += 1;
+        self.code_gen
+            .write_label(&format!("WHILE_END{}", count));
     }
 
     fn compile_do(&mut self) {
         self.pop_keyword_assert("do");
-        // subroutine call
         let next = self.tokens.next().unwrap();
         let pulled_identifier = if let Token::Identifier(t) = next {
             t
@@ -368,38 +421,10 @@ impl CompilationEngine for VmCompilationEngine {
 
         match self.tokens.peek() {
             Some(Token::Symbol(t)) if t == "(" => {
-                let func_name = pulled_identifier;
-                self.pop_symbol_assert("(");
-                let n_args = self.compile_expression_list();
-                self.pop_symbol_assert(")");
-                self.code_gen.write_call(&func_name, n_args);
+                self.compile_func_call(&pulled_identifier);
             }
             Some(Token::Symbol(t)) if t == "." => {
-                let obj_or_class_name = pulled_identifier;
-                if self.sym_table.has_id(&obj_or_class_name) {
-                    let idx = self.sym_table.index_of(&obj_or_class_name);
-                    let kind = self.sym_table.kind_of(&obj_or_class_name);
-                    let seg = kind.into();
-                    self.code_gen.write_push(&seg, idx);
-                }
-                self.pop_symbol_assert(".");
-                let method_name = self.pop_identifier();
-                self.pop_symbol_assert("(");
-                let n_args = self.compile_expression_list();
-                self.pop_symbol_assert(")");
-                if self.sym_table.has_id(&obj_or_class_name) {
-                    self.code_gen.write_call(
-                        &format!(
-                            "{}.{}",
-                            self.sym_table.type_of(&obj_or_class_name),
-                            method_name
-                        ),
-                        n_args + 1,
-                    );
-                } else {
-                    self.code_gen
-                        .write_call(&format!("{}.{}", obj_or_class_name, method_name), n_args);
-                }
+                self.compile_prefix_func_call(&pulled_identifier);
             }
             _ => {
                 panic!()
@@ -415,6 +440,9 @@ impl CompilationEngine for VmCompilationEngine {
             self.compile_expression();
         }
         self.pop_symbol_assert(";");
+        if self.func_return_type == "void" {
+            self.code_gen.write_push(&Segment::Const, 0);
+        }
         self.code_gen.write_return();
     }
 
@@ -453,7 +481,7 @@ impl CompilationEngine for VmCompilationEngine {
                 self.code_gen.write_call("String.new", 1);
                 for i in s.as_bytes() {
                     self.code_gen.write_push(&Segment::Const, *i as u32);
-                    self.code_gen.write_call("String.appendChar", 1);
+                    self.code_gen.write_call("String.appendChar", 2);
                 }
             }
             Some(Token::Keyword(t))
@@ -515,42 +543,17 @@ impl CompilationEngine for VmCompilationEngine {
                     }
                     Some(Token::Symbol(t)) if t == "(" => {
                         let func_name = get_pulled_identifier();
-                        self.pop_symbol_assert("(");
-                        let n_args = self.compile_expression_list();
-                        self.pop_symbol_assert(")");
-                        self.code_gen.write_call(&func_name, n_args);
+                        self.compile_func_call(&func_name);
                     }
                     Some(Token::Symbol(t)) if t == "." => {
                         let obj_or_class_name = get_pulled_identifier();
-                        if self.sym_table.has_id(&obj_or_class_name) {
-                            let kind = self.sym_table.kind_of(&obj_or_class_name);
-                            let seg = kind.into();
-                            self.code_gen
-                                .write_push(&seg, self.sym_table.index_of(&obj_or_class_name));
-                        }
-                        self.pop_symbol_assert(".");
-                        let method_name = self.pop_identifier();
-                        self.pop_symbol_assert("(");
-                        let n_args = self.compile_expression_list();
-                        self.pop_symbol_assert(")");
-                        if self.sym_table.has_id(&obj_or_class_name) {
-                            self.code_gen.write_call(
-                                &format!(
-                                    "{}.{}",
-                                    self.sym_table.type_of(&obj_or_class_name),
-                                    method_name
-                                ),
-                                n_args + 1,
-                            );
-                        } else {
-                            self.code_gen.write_call(
-                                &format!("{}.{}", obj_or_class_name, method_name),
-                                n_args,
-                            );
-                        }
+                        self.compile_prefix_func_call(&obj_or_class_name);
                     }
                     _ => {
-                        get_pulled_identifier();
+                        let id = get_pulled_identifier();
+                        let idx = self.sym_table.index_of(&id);
+                        let seg = self.sym_table.kind_of(&id).into();
+                        self.code_gen.write_push(&seg, idx);
                     }
                 }
             }

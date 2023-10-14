@@ -36,7 +36,7 @@ impl SymbolTable {
             VarType::Static | VarType::Field => {
                 self.class_table.insert(
                     name.to_string(),
-                    (tp.to_string(), kind.clone(), self.var_count(&kind) + 1),
+                    (tp.to_string(), kind.clone(), self.var_count(&kind)),
                 );
                 if *kind == VarType::Static {
                     self.static_count += 1;
@@ -45,7 +45,7 @@ impl SymbolTable {
             VarType::Arg | VarType::Var => {
                 self.sub_routine_table.insert(
                     name.to_string(),
-                    (tp.to_string(), kind.clone(), self.var_count(&kind) + 1),
+                    (tp.to_string(), kind.clone(), self.var_count(&kind)),
                 );
                 if *kind == VarType::Var {
                     self.var_count += 1;

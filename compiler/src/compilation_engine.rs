@@ -1,6 +1,8 @@
 use crate::tokens::Token;
 
 pub trait CompilationEngine {
+    fn output_extension() -> String;
+
     fn compile(out_path: &str, tokens: Vec<Token>);
 
     fn compile_class(&mut self);

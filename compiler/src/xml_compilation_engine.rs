@@ -170,6 +170,10 @@ impl XmlCompilationEngine {
 }
 
 impl CompilationEngine for XmlCompilationEngine {
+    fn output_extension() -> String {
+        return "xml".to_string();
+    }
+
     fn compile(out_path: &str, tokens: Vec<Token>) {
         let file = File::create(out_path).unwrap();
         let file = BufWriter::new(file);

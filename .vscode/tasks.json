@@ -1,6 +1,6 @@
 {
-	"version": "2.0.0",
-	"tasks": [
+    "version": "2.0.0",
+    "tasks": [
         {
             "type": "cargo",
             "command": "build",
@@ -8,8 +8,11 @@
                 "$rustc"
             ],
             "group": "build",
-            "label": "cargo build vm debug",
-            "args": ["-p", "VMTranslator"]
+            "label": "task build vm debug",
+            "args": [
+                "-p",
+                "VMTranslator"
+            ]
         },
         {
             "type": "cargo",
@@ -18,8 +21,11 @@
                 "$rustc"
             ],
             "group": "build",
-            "label": "cargo build vm release",
-            "args": ["--release","-p", "VMTranslator"]
+            "label": "task build compiler debug",
+            "args": [
+                "-p",
+                "compiler"
+            ]
         }
     ]
 }
