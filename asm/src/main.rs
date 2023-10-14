@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     env,
     fs::File,
-    io::{Write, self, BufRead},
+    io::{self, BufRead, Write},
     path::Path,
     vec,
 };

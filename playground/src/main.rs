@@ -3,9 +3,8 @@
 mod mat_mul;
 
 fn main() {
-    let t = 
-"a
+    let t = "a
 b
 c";
-        println!("{}",t);
+    println!("{}", t);
 }

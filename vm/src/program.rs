@@ -1,8 +1,13 @@
-use std::{path::{Path, PathBuf}, env, collections::HashSet, fs, io::{Error, self}};
+use std::{
+    collections::HashSet,
+    env, fs,
+    io::{self, Error},
+    path::{Path, PathBuf},
+};
 
-use crate::{code_writer::CodeWriter, parser::Parser, command_type::CommandType};
+use crate::{code_writer::CodeWriter, command_type::CommandType, parser::Parser};
 
-pub fn compile_single_file(){
+pub fn compile_single_file() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         panic!("Arg num should be 1");

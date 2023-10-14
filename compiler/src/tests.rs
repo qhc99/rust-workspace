@@ -1,8 +1,11 @@
 use std::{fs::File, io::BufWriter, path::Path};
 
-use xml::{EmitterConfig, writer::XmlEvent};
+use xml::{writer::XmlEvent, EmitterConfig};
 
-use crate::{tokenizer::Tokenizer, tokens::Token, xml_compilation_engine::XmlCompilationEngine, compilation_engine::CompilationEngine};
+use crate::{
+    compilation_engine::CompilationEngine, tokenizer::Tokenizer, tokens::Token,
+    xml_compilation_engine::XmlCompilationEngine,
+};
 
 pub fn test_tokenizer_xml() {
     let out_path = "MainT.xml";
@@ -39,7 +42,6 @@ pub fn test_parser_xml() {
     let v = tn.tokenize(Path::new(input_path));
     XmlCompilationEngine::compile(out_path, v);
 }
-
 
 fn print_token_xml(out_path: &str, input_path: &str) {
     let file = File::create(out_path).unwrap();

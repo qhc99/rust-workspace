@@ -10,5 +10,5 @@ mod leetcode800;
 use crate::leetcode800::*;
 
 fn main() {
-    println!("{}",push_dominoes("RR.L".to_string()));
+    println!("{}", push_dominoes("RR.L".to_string()));
 }

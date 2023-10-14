@@ -8,27 +8,27 @@ pub struct XmlCompilationEngine {
     writer: EventWriter<BufWriter<File>>,
     tokens: Peekable<Box<dyn Iterator<Item = Token>>>,
 }
-fn escape_str(s:String)->String{
+fn escape_str(s: String) -> String {
     let t = s.as_bytes();
     let mut v = Vec::<u8>::with_capacity(t.len());
-    for i in t{
+    for i in t {
         match *i {
-            b'&'=>{
+            b'&' => {
                 v.extend("&amp;".to_string().as_bytes().to_vec());
             }
-            b'<'=>{
+            b'<' => {
                 v.extend("&lt;".to_string().as_bytes().to_vec());
             }
-            b'>'=>{
+            b'>' => {
                 v.extend("&gt;".to_string().as_bytes().to_vec());
             }
-            b'\''=>{
+            b'\'' => {
                 v.extend("&apos;".to_string().as_bytes().to_vec());
             }
-            b'"'=>{
+            b'"' => {
                 v.extend("&quot;".to_string().as_bytes().to_vec());
             }
-            _=>{
+            _ => {
                 v.push(*i);
             }
         }
@@ -42,7 +42,9 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("identifier"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
+            self.writer
+                .write(XmlEvent::characters(&escape_str(t)))
+                .unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -55,7 +57,9 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("symbol"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
+            self.writer
+                .write(XmlEvent::characters(&escape_str(t)))
+                .unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -83,7 +87,9 @@ impl XmlCompilationEngine {
             self.writer
                 .write(XmlEvent::start_element("keyword"))
                 .unwrap();
-            self.writer.write(XmlEvent::characters(&escape_str(t))).unwrap();
+            self.writer
+                .write(XmlEvent::characters(&escape_str(t)))
+                .unwrap();
             self.writer.write(XmlEvent::end_element()).unwrap();
         } else {
             panic!("syntax error");
@@ -116,7 +122,7 @@ impl XmlCompilationEngine {
             Token::Keyword(t) if t == "int" || t == "boolean" || t == "char" => {
                 self.write_keyword();
             }
-            Token::Identifier(_)  => {
+            Token::Identifier(_) => {
                 self.write_identifier();
             }
             _ => {
@@ -154,8 +160,7 @@ impl XmlCompilationEngine {
 
     fn next_is_op(&mut self) -> bool {
         let next = self.tokens.peek().unwrap();
-        if matches!(next, Token::Symbol(t) 
-            if t == "+" || t == "-"|| t == "*" || t == "/"|| t == "&"
+        if matches!(next, Token::Symbol(t) if t == "+" || t == "-"|| t == "*" || t == "/"|| t == "&"
             || t == "|"|| t == "<"|| t == ">"|| t == "=")
         {
             return true;
@@ -169,11 +174,11 @@ impl CompilationEngine for XmlCompilationEngine {
         let file = File::create(out_path).unwrap();
         let file = BufWriter::new(file);
         let mut config = EmitterConfig::new()
-        .perform_indent(true)
-        .write_document_declaration(false)
-        .normalize_empty_elements(false);
+            .perform_indent(true)
+            .write_document_declaration(false)
+            .normalize_empty_elements(false);
         config.perform_escaping = false;
-        let writer = config .create_writer(file);
+        let writer = config.create_writer(file);
         let t: Box<dyn Iterator<Item = Token>> = Box::new(tokens.into_iter());
         let mut e = XmlCompilationEngine {
             writer,
@@ -183,9 +188,7 @@ impl CompilationEngine for XmlCompilationEngine {
     }
 
     fn compile_class(&mut self) {
-        self.writer
-            .write(XmlEvent::start_element("class"))
-            .unwrap();
+        self.writer.write(XmlEvent::start_element("class")).unwrap();
         self.write_keyword_assert("class");
         self.write_identifier();
         self.write_symbol_assert("{");
@@ -380,7 +383,7 @@ impl CompilationEngine for XmlCompilationEngine {
         self.write_keyword_assert("do");
         // subroutine call
         let next = self.tokens.next().unwrap();
-        let write_pulled_identifier = ||{
+        let write_pulled_identifier = || {
             if let Token::Identifier(t) = next {
                 self.writer
                     .write(XmlEvent::start_element("identifier"))
@@ -389,14 +392,14 @@ impl CompilationEngine for XmlCompilationEngine {
                 self.writer.write(XmlEvent::end_element()).unwrap();
             }
         };
-        match self.tokens.peek(){
-            Some(Token::Symbol(t)) if t == "(" =>{
+        match self.tokens.peek() {
+            Some(Token::Symbol(t)) if t == "(" => {
                 write_pulled_identifier();
                 self.write_symbol_assert("(");
                 self.compile_expression_list();
                 self.write_symbol_assert(")");
             }
-            Some(Token::Symbol(t)) if t == "." =>{
+            Some(Token::Symbol(t)) if t == "." => {
                 write_pulled_identifier();
                 self.write_symbol_assert(".");
                 self.write_identifier();
@@ -404,7 +407,7 @@ impl CompilationEngine for XmlCompilationEngine {
                 self.compile_expression_list();
                 self.write_symbol_assert(")");
             }
-            _=>{
+            _ => {
                 panic!()
             }
         }
@@ -437,17 +440,17 @@ impl CompilationEngine for XmlCompilationEngine {
     }
 
     fn compile_term(&mut self) {
-        self.writer
-            .write(XmlEvent::start_element("term"))
-            .unwrap();
+        self.writer.write(XmlEvent::start_element("term")).unwrap();
         match self.tokens.peek() {
-            Some(Token::IntegerConstant(_))=>{
+            Some(Token::IntegerConstant(_)) => {
                 self.write_int_constant();
             }
-            Some(Token::StringConstant(_))=>{
+            Some(Token::StringConstant(_)) => {
                 self.write_string_constant();
             }
-            Some(Token::Keyword(t)) if t == "true" || t == "false" || t == "this" || t == "null" =>{
+            Some(Token::Keyword(t))
+                if t == "true" || t == "false" || t == "this" || t == "null" =>
+            {
                 self.write_keyword();
             }
             Some(Token::Symbol(t)) if t == "(" => {
@@ -459,9 +462,9 @@ impl CompilationEngine for XmlCompilationEngine {
                 self.write_symbol();
                 self.compile_term();
             }
-            Some(Token::Identifier(_))=>{
+            Some(Token::Identifier(_)) => {
                 let next = self.tokens.next().unwrap();
-                let write_pulled_identifier = ||{
+                let write_pulled_identifier = || {
                     if let Token::Identifier(t) = next {
                         self.writer
                             .write(XmlEvent::start_element("identifier"))
@@ -470,20 +473,20 @@ impl CompilationEngine for XmlCompilationEngine {
                         self.writer.write(XmlEvent::end_element()).unwrap();
                     }
                 };
-                match self.tokens.peek(){
-                    Some(Token::Symbol(t)) if t == "[" =>{
+                match self.tokens.peek() {
+                    Some(Token::Symbol(t)) if t == "[" => {
                         write_pulled_identifier();
                         self.write_symbol_assert("[");
                         self.compile_expression();
                         self.write_symbol_assert("]");
                     }
-                    Some(Token::Symbol(t)) if t == "(" =>{
+                    Some(Token::Symbol(t)) if t == "(" => {
                         write_pulled_identifier();
                         self.write_symbol_assert("(");
                         self.compile_expression_list();
                         self.write_symbol_assert(")");
                     }
-                    Some(Token::Symbol(t)) if t == "." =>{
+                    Some(Token::Symbol(t)) if t == "." => {
                         write_pulled_identifier();
                         self.write_symbol_assert(".");
                         self.write_identifier();
@@ -491,21 +494,23 @@ impl CompilationEngine for XmlCompilationEngine {
                         self.compile_expression_list();
                         self.write_symbol_assert(")");
                     }
-                    _=>{
+                    _ => {
                         write_pulled_identifier();
                     }
                 }
             }
-            _=>{panic!()}
+            _ => {
+                panic!()
+            }
         }
         self.writer.write(XmlEvent::end_element()).unwrap();
     }
 
-    fn compile_expression_list(&mut self) -> u32{
+    fn compile_expression_list(&mut self) -> u32 {
         self.writer
             .write(XmlEvent::start_element("expressionList"))
             .unwrap();
-        if !matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ")"){
+        if !matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ")") {
             self.compile_expression();
             while matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ",") {
                 self.write_symbol();

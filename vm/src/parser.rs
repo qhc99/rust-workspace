@@ -1,4 +1,9 @@
-use std::{iter::Peekable, path::PathBuf, io::{BufReader, self, BufRead}, fs::File};
+use std::{
+    fs::File,
+    io::{self, BufRead, BufReader},
+    iter::Peekable,
+    path::PathBuf,
+};
 
 use crate::command_type::CommandType;
 

@@ -3,10 +3,10 @@
 extern crate derive_more;
 
 mod compilation_engine;
+mod sym_table;
 mod tests;
 mod tokenizer;
 mod tokens;
-mod sym_table;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -15,15 +15,18 @@ use std::{
 use compilation_engine::CompilationEngine;
 use tokenizer::Tokenizer;
 use xml_compilation_engine::XmlCompilationEngine;
+mod code_generator;
 mod vm_compilation_engine;
 mod xml_compilation_engine;
-mod code_generator;
 
 fn main() {
     compile::<XmlCompilationEngine>();
 }
 
-pub fn compile<Engine>() where Engine : CompilationEngine {
+pub fn compile<Engine>()
+where
+    Engine: CompilationEngine,
+{
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
         panic!("Arg num should be 1");

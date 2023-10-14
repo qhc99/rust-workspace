@@ -1,5 +1,4 @@
-use std::{path::PathBuf, fs::File, io::Write};
-
+use std::{fs::File, io::Write, path::PathBuf};
 
 pub struct CodeWriter {
     out: File,

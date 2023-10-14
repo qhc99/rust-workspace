@@ -31,8 +31,5 @@ pub trait CompilationEngine {
 
     fn compile_term(&mut self);
 
-    fn compile_expression_list(&mut self)->u32;
+    fn compile_expression_list(&mut self) -> u32;
 }
-
-
-

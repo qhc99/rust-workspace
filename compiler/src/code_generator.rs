@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::Write,
-    path::PathBuf,
-};
+use std::{fs::File, io::Write, path::PathBuf};
 
 use crate::sym_table::VarType;
 
@@ -26,9 +22,9 @@ pub enum Segment {
     Temp,
 }
 
-impl From<&VarType> for Segment{
+impl From<&VarType> for Segment {
     fn from(kind: &VarType) -> Self {
-        match kind{
+        match kind {
             VarType::Static => Segment::Static,
             VarType::Field => Segment::This,
             VarType::Arg => Segment::Arg,
