@@ -95,7 +95,7 @@ pub fn compile(input_path: &Path) -> io::Result<()> {
             translate(&mut parser, &mut writer)?;
         }
     } else if input_path.is_file() {
-        if !(input_path
+        if input_path
             .extension()
             .ok_or(Error::new(io::ErrorKind::InvalidInput, "file no ext"))?
             .to_str()
@@ -103,7 +103,7 @@ pub fn compile(input_path: &Path) -> io::Result<()> {
                 io::ErrorKind::InvalidInput,
                 "cannot convert os str",
             ))?
-            == "vm")
+            != "vm"
         {
             panic!("input file is not ends with .vm");
         } else {

@@ -241,7 +241,7 @@ impl CompilationEngine for VmCompilationEngine {
     fn compile_parameter_list(&mut self) {
         if self.func_type == "method" {
             self.sym_table
-                .define(&"this", &self.class_name, &VarType::Arg);
+                .define("this", &self.class_name, &VarType::Arg);
         }
         if !matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ")") {
             let tp = self.pop_type();
@@ -269,7 +269,7 @@ impl CompilationEngine for VmCompilationEngine {
         if self.func_type == "constructor" {
             self.code_gen
                 .write_push(&Segment::Const, self.sym_table.var_count(&VarType::Field));
-            self.code_gen.write_call(&"Memory.alloc", 1);
+            self.code_gen.write_call("Memory.alloc", 1);
             self.code_gen.write_pop(&Segment::Pointer, 0);
         }
         if self.func_type == "method" {

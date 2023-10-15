@@ -51,7 +51,7 @@ impl Parser {
             .next()
             .expect("advance called when no more commands");
         let s = s?;
-        let mut l = s.split(" ").filter(|s| -> _ { !s.is_empty() });
+        let mut l = s.split(' ').filter(|s| -> _ { !s.is_empty() });
         self.cmd = l.next().map(|a| -> _ { a.to_owned() });
         self.arg1 = l.next().map(|a| -> _ { a.to_owned() });
         self.arg2 = l

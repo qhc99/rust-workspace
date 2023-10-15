@@ -1,3 +1,4 @@
+#![allow(clippy::needless_return)]
 mod code_writer;
 mod command_type;
 mod parser;
