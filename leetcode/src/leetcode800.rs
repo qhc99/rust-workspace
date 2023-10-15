@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 /// #813
 pub fn largest_sum_of_averages(nums: Vec<i32>, k: i32) -> f64 {
     let n = nums.len();
@@ -33,7 +32,6 @@ pub fn largest_sum_of_averages(nums: Vec<i32>, k: i32) -> f64 {
     return dp[n];
 }
 
-#[allow(dead_code)]
 /// #815
 pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32) -> i32 {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -93,7 +91,6 @@ pub fn num_buses_to_destination(routes: Vec<Vec<i32>>, source: i32, target: i32)
     return -1;
 }
 
-#[allow(dead_code)]
 /// #816
 pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     fn valid_comma_split(s: &[u8]) -> bool {
@@ -160,7 +157,6 @@ pub fn ambiguous_coordinates(s: String) -> Vec<String> {
     return ans;
 }
 
-#[allow(dead_code)]
 /// #833
 pub fn find_replace_string(
     s: String,
@@ -200,7 +196,6 @@ pub fn find_replace_string(
     return String::from_utf8(ans).unwrap();
 }
 
-#[allow(dead_code)]
 /// #834
 pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
     use std::collections::VecDeque;
@@ -285,7 +280,6 @@ pub fn sum_of_distances_in_tree(n: i32, edges: Vec<Vec<i32>>) -> Vec<i32> {
     return sum;
 }
 
-#[allow(dead_code)]
 /// #838
 pub fn push_dominoes(dominoes: String) -> String {
     use std::collections::VecDeque;

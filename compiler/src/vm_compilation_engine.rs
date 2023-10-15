@@ -240,7 +240,8 @@ impl CompilationEngine for VmCompilationEngine {
 
     fn compile_parameter_list(&mut self) {
         if self.func_type == "method" {
-            self.sym_table.define(&"this", &self.class_name, &VarType::Arg);
+            self.sym_table
+                .define(&"this", &self.class_name, &VarType::Arg);
         }
         if !matches!(self.tokens.peek(), Some(Token::Symbol(t)) if t == ")") {
             let tp = self.pop_type();
@@ -356,31 +357,24 @@ impl CompilationEngine for VmCompilationEngine {
         self.pop_symbol_assert("(");
         self.compile_expression();
         self.pop_symbol_assert(")");
-        self.code_gen
-            .write_if(&format!("IF_TRUE{}", count));
-        self.code_gen
-            .write_goto(&format!("IF_FALSE{}", count));
-        self.code_gen
-            .write_label(&format!("IF_TRUE{}", count));
+        self.code_gen.write_if(&format!("IF_TRUE{}", count));
+        self.code_gen.write_goto(&format!("IF_FALSE{}", count));
+        self.code_gen.write_label(&format!("IF_TRUE{}", count));
         self.pop_symbol_assert("{");
         self.compile_statements();
         self.pop_symbol_assert("}");
         let has_else_branch = matches!(self.tokens.peek(), Some(Token::Keyword(t)) if t == "else");
 
         if has_else_branch {
-            self.code_gen
-                .write_goto(&format!("IF_END{}", count));
-            self.code_gen
-                .write_label(&format!("IF_FALSE{}", count));
+            self.code_gen.write_goto(&format!("IF_END{}", count));
+            self.code_gen.write_label(&format!("IF_FALSE{}", count));
             self.pop_keyword();
             self.pop_symbol_assert("{");
             self.compile_statements();
             self.pop_symbol_assert("}");
-            self.code_gen
-                .write_label(&format!("IF_END{}", count));
+            self.code_gen.write_label(&format!("IF_END{}", count));
         } else {
-            self.code_gen
-                .write_label(&format!("IF_FALSE{}", count));
+            self.code_gen.write_label(&format!("IF_FALSE{}", count));
         }
     }
 
@@ -390,24 +384,20 @@ impl CompilationEngine for VmCompilationEngine {
 
         self.pop_keyword_assert("while");
 
-        self.code_gen
-            .write_label(&format!("WHILE_EXP{}", count));
+        self.code_gen.write_label(&format!("WHILE_EXP{}", count));
         self.pop_symbol_assert("(");
         self.compile_expression();
         self.pop_symbol_assert(")");
 
         self.code_gen.write_arithmetic(&Command::Not);
-        self.code_gen
-            .write_if(&format!("WHILE_END{}", count));
+        self.code_gen.write_if(&format!("WHILE_END{}", count));
 
         self.pop_symbol_assert("{");
         self.compile_statements();
         self.pop_symbol_assert("}");
-        self.code_gen
-            .write_goto(&format!("WHILE_EXP{}", count));
+        self.code_gen.write_goto(&format!("WHILE_EXP{}", count));
 
-        self.code_gen
-            .write_label(&format!("WHILE_END{}", count));
+        self.code_gen.write_label(&format!("WHILE_END{}", count));
     }
 
     fn compile_do(&mut self) {
