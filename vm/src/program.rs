@@ -20,6 +20,7 @@ pub fn compile_single_file() {
     compile(input_path).unwrap();
 }
 
+#[allow(dead_code)]
 fn compile_all_dirs() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
