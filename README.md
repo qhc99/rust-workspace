@@ -6,4 +6,4 @@ Proof of concepts
 ## rust_libs 
 Frequently used algorithms and data structures in leetcode
 ## asm, vm, compiler
-nand2tetris project
+nand2tetris projects
