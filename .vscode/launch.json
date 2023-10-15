@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "asm debug",
+            "name": "asm debug demo",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/asm.exe",
@@ -14,7 +14,7 @@
             "console": "externalTerminal"
         },
         {
-            "name": "vm debug",
+            "name": "vm debug demo",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/vm.exe",
@@ -29,7 +29,7 @@
             "preLaunchTask": "task build vm debug"
         },
         {
-            "name": "compiler debug",
+            "name": "compiler debug demo",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/compiler.exe",
