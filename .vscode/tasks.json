@@ -26,6 +26,20 @@
                 "-p",
                 "compiler"
             ]
+        },
+        {
+            "type": "cargo",
+            "command": "run",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "none",
+            "label": "task run playground release",
+            "args": [
+                "--release",
+                "-p",
+                "playground"
+            ]
         }
     ]
 }
