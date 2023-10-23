@@ -1,2 +1,2 @@
 [workspace]
-members = ["compiler","rust_libs", "playground", "leetcode", "asm", "vm"]
+members = ["compiler","rust_libs", "playground", "leetcode", "asm", "vm", "cg"]
