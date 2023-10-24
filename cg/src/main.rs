@@ -18,7 +18,6 @@ async fn main() -> io::Result<()> {
 }
 
 
-
 fn print_backends() {
     // Create a new instance of wgpu
     let instance = Instance::new(InstanceDescriptor::default());
