@@ -11,7 +11,7 @@ async fn main() {
     // Open a connection to the mini-redis address.
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
-    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
     let mut render = Renderer::new(event_loop, window).await;
     render.start().await;

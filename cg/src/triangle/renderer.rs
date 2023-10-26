@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use wgpu::{
     Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, TextureFormat,
-    VertexBufferLayout,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -10,7 +9,7 @@ use winit::{
     window::Window,
 };
 
-use crate::triangle::triangle_mesh::init_buffer_data;
+use super::triangle_mesh::TriangleMesh;
 
 pub struct Renderer {
     event_loop: Option<EventLoop<()>>,
@@ -27,8 +26,7 @@ pub struct Renderer {
     bind_group: Option<BindGroup>,
     render_pipeline: Option<RenderPipeline>,
     // mesh
-    vertex_buffer: Option<Buffer>,
-    buffer_layout: Option<VertexBufferLayout<'static>>,
+    triangle_mesh: Option<TriangleMesh>,
 }
 
 impl Renderer {
@@ -45,17 +43,13 @@ impl Renderer {
             uniform_buffer: None,
             bind_group: None,
             render_pipeline: None,
-            vertex_buffer: None,
-            buffer_layout: None,
+            triangle_mesh: None,
         }
     }
 
     pub async fn start(&mut self) {
         self.setup_device().await;
-        let device = self.device.as_ref().unwrap();
-        let (buffer, buffer_layout) = init_buffer_data(device);
-        self.vertex_buffer = Some(buffer);
-        self.buffer_layout = Some(buffer_layout);
+        self.create_assets();
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
         self.render();
     }
@@ -107,10 +101,21 @@ impl Renderer {
         self.texture_format = Some(texture_format);
     }
 
+    fn create_assets(&mut self) {
+        let device = self.device.as_ref().unwrap();
+        self.triangle_mesh = Some(TriangleMesh::new(device));
+    }
+
     fn make_pipeline(&mut self, shader_path: Cow<str>) {
         let device = self.device.as_ref().unwrap();
         let texture_format = self.texture_format.as_ref().unwrap();
-        let buffer_layout = self.buffer_layout.take().unwrap();
+        let vertex_buffer_layout = self
+            .triangle_mesh
+            .as_mut()
+            .unwrap()
+            .vertex_buffer_layout
+            .take()
+            .unwrap();
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("storage-buffer-for-triangle"),
@@ -163,7 +168,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[buffer_layout], 
+                buffers: &[vertex_buffer_layout],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -192,7 +197,13 @@ impl Renderer {
         let surface = self.surface.take().unwrap();
         let adapter = self.adapter.take().unwrap();
         let render_pipeline = self.render_pipeline.take().unwrap();
-        let vertex_buffer = self.vertex_buffer.take().unwrap();
+        let vertex_buffer = self
+            .triangle_mesh
+            .as_mut()
+            .unwrap()
+            .vertex_buffer
+            .take()
+            .unwrap();
         let uniform_buffer = self.uniform_buffer.take().unwrap();
         let bind_group = self.bind_group.take().unwrap();
 
@@ -211,6 +222,35 @@ impl Renderer {
         };
 
         surface.configure(&device, &config);
+
+        let projection =
+            glam::Mat4::perspective_rh_gl(std::f32::consts::PI / 4., 800. / 600., 0.1, 10.);
+
+        let view = glam::Mat4::look_at_rh(
+            glam::Vec3 {
+                x: -2.,
+                y: 0.,
+                z: 2.,
+            },
+            glam::Vec3 {
+                x: 0.,
+                y: 0.,
+                z: 0.,
+            },
+            glam::Vec3 {
+                x: 0.,
+                y: 0.,
+                z: 1.,
+            },
+        );
+
+        queue.write_buffer(&uniform_buffer, 64, bytemuck::cast_slice(view.as_ref()));
+        queue.write_buffer(
+            &uniform_buffer,
+            128,
+            bytemuck::cast_slice(projection.as_ref()),
+        );
+
         let mut t = 0.;
         self.event_loop
             .take()
@@ -235,41 +275,7 @@ impl Renderer {
                         if t > 2.0 * std::f32::consts::PI {
                             t -= 2.0 * std::f32::consts::PI;
                         }
-                        let projection = glam::Mat4::perspective_rh_gl(
-                            std::f32::consts::PI / 4.,
-                            800. / 600.,
-                            0.1,
-                            10.,
-                        );
 
-                        let view = glam::Mat4::look_at_rh(
-                            glam::Vec3 {
-                                x: -2.,
-                                y: 0.,
-                                z: 2.,
-                            },
-                            glam::Vec3 {
-                                x: 0.,
-                                y: 0.,
-                                z: 0.,
-                            },
-                            glam::Vec3 {
-                                x: 0.,
-                                y: 0.,
-                                z: 1.,
-                            },
-                        );
-
-                        queue.write_buffer(
-                            &uniform_buffer,
-                            64,
-                            bytemuck::cast_slice(view.as_ref()),
-                        );
-                        queue.write_buffer(
-                            &uniform_buffer,
-                            128,
-                            bytemuck::cast_slice(projection.as_ref()),
-                        );
                         let rotate = glam::Mat4::from_rotation_z(t);
                         queue.write_buffer(
                             &uniform_buffer,
@@ -308,7 +314,7 @@ impl Renderer {
                         render_pass.draw(0..3, 0..1);
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
-                        texture.present(); // one extra step compared to javascript 
+                        texture.present(); // one extra step compared to javascript
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
