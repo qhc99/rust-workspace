@@ -163,7 +163,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[buffer_layout], // TODO buffer
+                buffers: &[buffer_layout], 
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -231,8 +231,7 @@ impl Renderer {
                         window.request_redraw();
                     }
                     Event::RedrawRequested(_) | Event::MainEventsCleared => {
-                        // | Event::MainEventsCleared
-                        t += 0.03;
+                        t += 0.05;
                         if t > 2.0 * std::f32::consts::PI {
                             t -= 2.0 * std::f32::consts::PI;
                         }
@@ -309,7 +308,7 @@ impl Renderer {
                         render_pass.draw(0..3, 0..1);
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
-                        texture.present();
+                        texture.present(); // one extra step compared to javascript 
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
