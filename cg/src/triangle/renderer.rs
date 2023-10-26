@@ -211,12 +211,11 @@ impl Renderer {
         };
 
         surface.configure(&device, &config);
-
+        let mut t = 0.;
         self.event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| {
-                let mut t = 0.;
                 let mut command_encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 match event {
@@ -231,12 +230,13 @@ impl Renderer {
                         // On macos the window needs to be redrawn manually after resizing
                         window.request_redraw();
                     }
-                    Event::RedrawRequested(_) => {
+                    Event::RedrawRequested(_)| Event::MainEventsCleared => {
                         // | Event::MainEventsCleared
                         t += 0.01;
                         if t > 2.0 * std::f32::consts::PI {
                             t -= 2.0 * std::f32::consts::PI;
                         }
+                        log::info!(">>>t={}",t);
                         let projection = glam::Mat4::perspective_rh_gl(
                             std::f32::consts::PI / 4.,
                             800. / 600.,
@@ -312,7 +312,7 @@ impl Renderer {
                         // render_pass.end_pipeline_statistics_query();
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
-                        log::info!(">>>>>>draw frame")
+                        texture.present();
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
