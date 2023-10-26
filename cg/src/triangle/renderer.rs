@@ -32,8 +32,8 @@ pub struct Renderer<'a> {
 }
 
 impl Renderer<'_> {
-    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) {
-        let mut renderer = Renderer {
+    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) -> Renderer<'a>{
+        Renderer {
             event_loop: Some(event_loop),
             window: Some(window),
             instance: None,
@@ -47,15 +47,18 @@ impl Renderer<'_> {
             render_pipeline: None,
             buffer: None,
             buffer_layout: None,
-        };
-        renderer.setup_device().await;
-        // TODO fix borrow checker
-        let (buffer, buffer_layout) = init_buffer_data(renderer.device.as_ref().unwrap());
-        renderer.buffer_layout = Some(buffer_layout);
-        renderer.buffer = Some(buffer);
+        }
+    }
 
-        renderer.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
-        // return renderer;
+    pub async fn init(&mut self){
+        self.setup_device().await;
+        // TODO fix borrow checker
+        let device = self.device.as_ref().unwrap();
+        let (buffer, buffer_layout) = init_buffer_data(device);
+        self.buffer_layout = Some(buffer_layout);
+        self.buffer = Some(buffer);
+
+        self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
     }
     /// **Data structures relationships:**
     ///
