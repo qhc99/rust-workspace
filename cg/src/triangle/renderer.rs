@@ -2,12 +2,18 @@ use std::borrow::Cow;
 
 use wgpu::{
     Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, TextureFormat,
+    VertexBufferLayout,
 };
-use winit::{event_loop::EventLoop, window::Window};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::Window,
+};
 
 use crate::triangle::triangle_mesh::init_buffer_data;
 
-pub struct Renderer {
+pub struct Renderer<'a> {
+    event_loop: Option<EventLoop<()>>,
     window: Option<Window>,
     // device setup
     instance: Option<Instance>,
@@ -17,14 +23,18 @@ pub struct Renderer {
     queue: Option<Queue>,
     texture_format: Option<TextureFormat>,
     // pipeline
-    buffer: Option<Buffer>,
+    uniform_buffer: Option<Buffer>,
     bind_group: Option<BindGroup>,
     render_pipeline: Option<RenderPipeline>,
+    // triangle mesh
+    buffer: Option<Buffer>,
+    buffer_layout: Option<VertexBufferLayout<'a>>,
 }
 
-impl Renderer {
-    pub async fn new(event_loop: &EventLoop<()>, window: Window) -> Self {
+impl Renderer<'_> {
+    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) {
         let mut renderer = Renderer {
+            event_loop: Some(event_loop),
             window: Some(window),
             instance: None,
             surface: None,
@@ -32,14 +42,20 @@ impl Renderer {
             device: None,
             queue: None,
             texture_format: None,
-            buffer: None,
+            uniform_buffer: None,
             bind_group: None,
             render_pipeline: None,
+            buffer: None,
+            buffer_layout: None,
         };
         renderer.setup_device().await;
+        // TODO fix borrow checker
         let (buffer, buffer_layout) = init_buffer_data(renderer.device.as_ref().unwrap());
+        renderer.buffer_layout = Some(buffer_layout);
+        renderer.buffer = Some(buffer);
+
         renderer.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
-        return renderer;
+        // return renderer;
     }
     /// **Data structures relationships:**
     ///
@@ -160,19 +176,22 @@ impl Renderer {
             multiview: None,
         });
 
-        self.buffer = Some(uniform_buffer);
+        self.uniform_buffer = Some(uniform_buffer);
         self.bind_group = Some(bind_group);
         self.render_pipeline = Some(render_pipeline);
     }
 
-    fn render(&self, mut t: f32) {
+    fn render(&self) {
         let window = self.window.as_ref().unwrap();
         let device = self.device.as_ref().unwrap();
         let queue = self.queue.as_ref().unwrap();
-        let buffer = self.buffer.as_ref().unwrap();
+        let buffer = self.uniform_buffer.as_ref().unwrap();
         let texture_format = self.texture_format.as_ref().unwrap();
         let surface = self.surface.as_ref().unwrap();
         let adapter = self.adapter.as_ref().unwrap();
+        let render_pipeline = self.render_pipeline.as_ref().unwrap();
+        let buffer = self.uniform_buffer.as_ref().unwrap();
+        let bind_group = self.bind_group.as_ref().unwrap();
 
         let size = window.inner_size();
         let projection =
@@ -196,20 +215,14 @@ impl Renderer {
             },
         );
 
-        let command_encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-        if t > 2.0 * 3.1415 {
-            t -= 2.0 * 3.1415;
-        }
-
-        let rotate = glam::Mat4::from_rotation_z(t);
-
-        queue.write_buffer(buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
         queue.write_buffer(buffer, 64, bytemuck::cast_slice(view.as_ref()));
         queue.write_buffer(buffer, 128, bytemuck::cast_slice(projection.as_ref()));
 
+        let command_encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
         let swapchain_capabilities = surface.get_capabilities(&adapter);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: texture_format.to_owned(),
@@ -221,5 +234,60 @@ impl Renderer {
         };
 
         surface.configure(&device, &config);
+
+        self.event_loop
+            .as_ref()
+            .unwrap()
+            .run(move |event, _, control_flow| {
+                let mut t = 0.;
+
+                match event {
+                    Event::RedrawRequested(_) | Event::MainEventsCleared => {
+                        t += 0.1;
+                        if t > 2.0 * 3.1415 {
+                            t -= 2.0 * 3.1415;
+                        }
+                        let rotate = glam::Mat4::from_rotation_z(t);
+                        queue.write_buffer(buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
+
+                        let texture = surface
+                            .get_current_texture()
+                            .expect("Failed to acquire next swap chain texture");
+                        let texture_view = texture
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+
+                        let render_pass =
+                            command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: None,
+                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                    view: &texture_view,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations::<wgpu::Color> {
+                                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                                            r: 0.5,
+                                            g: 0.,
+                                            b: 0.25,
+                                            a: 1.,
+                                        }),
+                                        store: true,
+                                    },
+                                })],
+                                depth_stencil_attachment: None,
+                            });
+                        render_pass.set_pipeline(render_pipeline);
+                        render_pass.set_vertex_buffer(0, buffer.slice(..));
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.draw(0..3, 0..1);
+                        render_pass.end_pipeline_statistics_query();
+                        queue.submit([command_encoder.finish()]);
+                    }
+                    Event::WindowEvent {
+                        event: WindowEvent::CloseRequested,
+                        ..
+                    } => *control_flow = ControlFlow::Exit,
+                    _ => {}
+                }
+            });
     }
 }
