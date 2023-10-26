@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use std::time::SystemTime;
 use wgpu::Instance;
 use winit::{
     event::{Event, WindowEvent},
@@ -117,7 +116,7 @@ pub async fn draw_triangle(event_loop: EventLoop<()>, window: Window) {
                     label: Some("command-encoder-for-triangle"),
                 });
                 {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("render-pass-for-triangle"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &view,
@@ -131,8 +130,8 @@ pub async fn draw_triangle(event_loop: EventLoop<()>, window: Window) {
                         // timestamp_writes: None,
                         // occlusion_query_set: None,
                     });
-                    rpass.set_pipeline(&render_pipeline);
-                    rpass.draw(0..3, 0..1);
+                    render_pass.set_pipeline(&render_pipeline);
+                    render_pass.draw(0..3, 0..1);
                 }
                 log::info!(">>>>>test1<<<<<");
                 queue.submit(Some(encoder.finish()));

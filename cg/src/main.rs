@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(clippy::needless_return)]
+use triangle::Renderer;
 use wgpu::{Instance, InstanceDescriptor};
 use winit::{event_loop::EventLoop, window::Window};
 
@@ -12,7 +13,7 @@ async fn main() {
     let window = Window::new(&event_loop).unwrap();
     std::env::set_var("RUST_LOG", "info");
     env_logger::init();
-    triangle::new(event_loop, &window).await;
+    Renderer::new(&event_loop, window).await;
 }
 
 
