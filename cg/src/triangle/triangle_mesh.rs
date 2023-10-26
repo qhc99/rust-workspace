@@ -1,5 +1,4 @@
 use wgpu::{Buffer, Device, VertexBufferLayout};
-// TODO return data in struct
 
 pub struct TriangleMesh {
     pub vertex_buffer: Option<Buffer>,
