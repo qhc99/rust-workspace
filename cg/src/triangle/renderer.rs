@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use wgpu::{
-    Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, TextureFormat,
-    VertexBufferLayout,
+    Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, SurfaceTexture,
+    TextureFormat, VertexBufferLayout,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -57,6 +57,7 @@ impl Renderer {
         self.buffer = Some(buffer);
         self.buffer_layout = Some(buffer_layout);
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
+        self.render();
     }
     /// **Data structures relationships:**
     ///
@@ -73,7 +74,7 @@ impl Renderer {
         let surface = unsafe { instance.create_surface(window) }.unwrap();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
+                power_preference: wgpu::PowerPreference::default(),
                 force_fallback_adapter: false,
                 // Request an adapter which can render to our surface
                 compatible_surface: Some(&surface),
@@ -192,36 +193,14 @@ impl Renderer {
         let adapter = self.adapter.take().unwrap();
         let render_pipeline = self.render_pipeline.take().unwrap();
         let buffer = self.buffer.take().unwrap();
+        let uniform_buffer = self.uniform_buffer.take().unwrap();
         let bind_group = self.bind_group.take().unwrap();
 
         let size = window.inner_size();
-        let projection =
-            glam::Mat4::perspective_rh_gl(std::f32::consts::PI / 4., 800. / 600., 0.1, 10.);
-
-        let view = glam::Mat4::look_to_rh(
-            glam::Vec3 {
-                x: -2.,
-                y: 0.,
-                z: 2.,
-            },
-            glam::Vec3 {
-                x: 0.,
-                y: 0.,
-                z: 0.,
-            },
-            glam::Vec3 {
-                x: 0.,
-                y: 0.,
-                z: 1.,
-            },
-        );
-
-        queue.write_buffer(&buffer, 64, bytemuck::cast_slice(view.as_ref()));
-        queue.write_buffer(&buffer, 128, bytemuck::cast_slice(projection.as_ref()));
 
         let swapchain_capabilities = surface.get_capabilities(&adapter);
 
-        let config = wgpu::SurfaceConfiguration {
+        let mut config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: texture_format.to_owned(),
             width: size.width,
@@ -241,17 +220,69 @@ impl Renderer {
                 let mut command_encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 match event {
-                    Event::RedrawRequested(_) | Event::MainEventsCleared => {
-                        t += 0.1;
-                        if t > 2.0 * 3.1415 {
-                            t -= 2.0 * 3.1415;
+                    Event::WindowEvent {
+                        event: WindowEvent::Resized(size),
+                        ..
+                    } => {
+                        // Reconfigure the surface with the new size
+                        config.width = size.width;
+                        config.height = size.height;
+                        surface.configure(&device, &config);
+                        // On macos the window needs to be redrawn manually after resizing
+                        window.request_redraw();
+                    }
+                    Event::RedrawRequested(_) => {
+                        // | Event::MainEventsCleared
+                        t += 0.01;
+                        if t > 2.0 * std::f32::consts::PI {
+                            t -= 2.0 * std::f32::consts::PI;
                         }
+                        let projection = glam::Mat4::perspective_rh_gl(
+                            std::f32::consts::PI / 4.,
+                            800. / 600.,
+                            0.1,
+                            10.,
+                        );
+
+                        let view = glam::Mat4::look_to_rh(
+                            glam::Vec3 {
+                                x: -2.,
+                                y: 0.,
+                                z: 2.,
+                            },
+                            glam::Vec3 {
+                                x: 0.,
+                                y: 0.,
+                                z: 0.,
+                            },
+                            glam::Vec3 {
+                                x: 0.,
+                                y: 0.,
+                                z: 1.,
+                            },
+                        );
+
+                        queue.write_buffer(
+                            &uniform_buffer,
+                            64,
+                            bytemuck::cast_slice(view.as_ref()),
+                        );
+                        queue.write_buffer(
+                            &uniform_buffer,
+                            128,
+                            bytemuck::cast_slice(projection.as_ref()),
+                        );
                         let rotate = glam::Mat4::from_rotation_z(t);
                         queue.write_buffer(&buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
 
-                        let texture = surface
-                            .get_current_texture()
-                            .expect("Failed to acquire next swap chain texture");
+                        let res = surface.get_current_texture();
+                        let texture: SurfaceTexture;
+                        if res.is_ok() {
+                            texture = res.unwrap();
+                        } else {
+                            log::warn!("{:?}", res);
+                            return;
+                        }
                         let texture_view = texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -278,9 +309,10 @@ impl Renderer {
                         render_pass.set_vertex_buffer(0, buffer.slice(..));
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.draw(0..3, 0..1);
-                        render_pass.end_pipeline_statistics_query();
+                        // render_pass.end_pipeline_statistics_query();
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
+                        log::info!(">>>>>>draw frame")
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,

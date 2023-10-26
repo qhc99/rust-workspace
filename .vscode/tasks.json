@@ -40,6 +40,20 @@
                 "-p",
                 "playground"
             ]
+        },
+        {
+            "type": "cargo",
+            "command": "run",
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "none",
+            "label": "task run cg release",
+            "args": [
+                "--release",
+                "-p",
+                "cg"
+            ]
         }
     ]
 }

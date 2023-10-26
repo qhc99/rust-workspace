@@ -13,7 +13,8 @@ async fn main() {
     let window = Window::new(&event_loop).unwrap();
     std::env::set_var("RUST_LOG", "info");
     env_logger::init();
-    Renderer::new(event_loop, window).await;
+    let mut render = Renderer::new(event_loop, window).await;
+    render.start().await;
 }
 
 

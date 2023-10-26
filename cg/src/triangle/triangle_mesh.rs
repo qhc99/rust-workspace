@@ -1,7 +1,7 @@
 use wgpu::{Buffer, Device, VertexBufferLayout};
 
 pub fn init_buffer_data(device: &Device) -> (Buffer, VertexBufferLayout<'static>) {
-    let vertices: &[f32] = &vec![
+    let vertices: &[f32] = &[
         0.0, 0.0, 0.5, 1.0, 0.0, 0.0, //
         0.0, -0.5, -0.5, 0.0, 1.0, 0.0, //
         0.0, 0.5, -0.5, 0.0, 0.0, 1.0,
@@ -18,12 +18,11 @@ pub fn init_buffer_data(device: &Device) -> (Buffer, VertexBufferLayout<'static>
 
     // Load vertices into the buffer
 
-    {
-        let mut mapped_range = buffer.slice(..).get_mapped_range_mut();
-        let target = bytemuck::cast_slice_mut::<u8, f32>(&mut mapped_range); // Assuming you're using `bytemuck` crate for this
-        target.copy_from_slice(&vertices);
-        buffer.unmap();
-    }
+    let mut mapped_range = buffer.slice(..).get_mapped_range_mut();
+    let target = bytemuck::cast_slice_mut::<u8, f32>(&mut mapped_range); // Assuming you're using `bytemuck` crate for this
+    target.copy_from_slice(vertices);
+    std::mem::drop(mapped_range);
+    buffer.unmap();
 
     let buffer_layout = VertexBufferLayout {
         array_stride: 24,
