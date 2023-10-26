@@ -106,6 +106,9 @@ impl Renderer {
         self.triangle_mesh = Some(TriangleMesh::new(device));
     }
 
+    /// **Simplified logics**
+    ///
+    /// - Device -> UniformBuffer, BindGroup, RenderPipeline
     fn make_pipeline(&mut self, shader_path: Cow<str>) {
         let device = self.device.as_ref().unwrap();
         let texture_format = self.texture_format.as_ref().unwrap();
@@ -189,6 +192,31 @@ impl Renderer {
         self.render_pipeline = Some(render_pipeline);
     }
 
+    /// **Simplified logics**
+    ///
+    /// - (Surface, Adapter) -> SurfaceCapabilities -> SurfaceConfiguration
+    ///
+    /// - Surface.config(Device, SurfaceConfiguration)
+    ///
+    /// - Queue.write_buffer(UniformBuffer)
+    ///
+    /// - Surface -> SurfaceTexture -> TextureView
+    ///
+    /// - Device -> CommandEncoder 
+    /// 
+    /// - (CommandEncoder, TextureView) -> RenderPass
+    /// 
+    /// - RenderPass.set_pipeline(RenderPipeline);
+    /// 
+    /// - RenderPass.set_vertex_buffer(vertex_Buffer)
+    /// 
+    /// - RenderPass.set_bind_group(BindGroup)
+    /// 
+    /// - RenderPass.draw()
+    /// 
+    /// - Queue.submit(CommandEncoder.finish());
+    /// 
+    /// - SurfaceTexture.present(); 
     fn render(&mut self) {
         let window = self.window.take().unwrap();
         let device = self.device.take().unwrap();
@@ -252,12 +280,11 @@ impl Renderer {
         );
 
         let mut t = 0.;
+
         self.event_loop
             .take()
             .unwrap()
             .run(move |event, _, control_flow| {
-                let mut command_encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::Resized(size),
@@ -290,6 +317,8 @@ impl Renderer {
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
 
+                        let mut command_encoder = device
+                            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                         let mut render_pass =
                             command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                                 label: None,
