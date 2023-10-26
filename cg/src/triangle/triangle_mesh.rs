@@ -1,5 +1,5 @@
 use wgpu::{Buffer, Device, VertexBufferLayout};
-
+// TODO return data in struct
 pub fn init_buffer_data(device: &Device) -> (Buffer, VertexBufferLayout<'static>) {
     let vertices: &[f32] = &[
         0.0, 0.0, 0.5, 1.0, 0.0, 0.0, //
