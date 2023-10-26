@@ -12,7 +12,7 @@ use winit::{
 
 use crate::triangle::triangle_mesh::init_buffer_data;
 
-pub struct Renderer<'a> {
+pub struct Renderer {
     event_loop: Option<EventLoop<()>>,
     window: Option<Window>,
     // device setup
@@ -26,13 +26,13 @@ pub struct Renderer<'a> {
     uniform_buffer: Option<Buffer>,
     bind_group: Option<BindGroup>,
     render_pipeline: Option<RenderPipeline>,
-    // triangle mesh
+    // mesh
     buffer: Option<Buffer>,
-    buffer_layout: Option<VertexBufferLayout<'a>>,
+    buffer_layout: Option<VertexBufferLayout<'static>>,
 }
 
-impl Renderer<'_> {
-    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) -> Renderer<'a>{
+impl Renderer {
+    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) -> Renderer {
         Renderer {
             event_loop: Some(event_loop),
             window: Some(window),
@@ -50,14 +50,12 @@ impl Renderer<'_> {
         }
     }
 
-    pub async fn init(&mut self){
+    pub async fn start(&mut self) {
         self.setup_device().await;
-        // TODO fix borrow checker
         let device = self.device.as_ref().unwrap();
         let (buffer, buffer_layout) = init_buffer_data(device);
-        self.buffer_layout = Some(buffer_layout);
         self.buffer = Some(buffer);
-
+        self.buffer_layout = Some(buffer_layout);
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
     }
     /// **Data structures relationships:**
@@ -111,6 +109,7 @@ impl Renderer<'_> {
     fn make_pipeline(&mut self, shader_path: Cow<str>) {
         let device = self.device.as_ref().unwrap();
         let texture_format = self.texture_format.as_ref().unwrap();
+        let buffer_layout = self.buffer_layout.take().unwrap();
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("storage-buffer-for-triangle"),
@@ -163,7 +162,7 @@ impl Renderer<'_> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[], // TODO buffer
+                buffers: &[buffer_layout], // TODO buffer
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -184,17 +183,16 @@ impl Renderer<'_> {
         self.render_pipeline = Some(render_pipeline);
     }
 
-    fn render(&self) {
-        let window = self.window.as_ref().unwrap();
-        let device = self.device.as_ref().unwrap();
-        let queue = self.queue.as_ref().unwrap();
-        let buffer = self.uniform_buffer.as_ref().unwrap();
-        let texture_format = self.texture_format.as_ref().unwrap();
-        let surface = self.surface.as_ref().unwrap();
-        let adapter = self.adapter.as_ref().unwrap();
-        let render_pipeline = self.render_pipeline.as_ref().unwrap();
-        let buffer = self.uniform_buffer.as_ref().unwrap();
-        let bind_group = self.bind_group.as_ref().unwrap();
+    fn render(&mut self) {
+        let window = self.window.take().unwrap();
+        let device = self.device.take().unwrap();
+        let queue = self.queue.take().unwrap();
+        let texture_format = self.texture_format.take().unwrap();
+        let surface = self.surface.take().unwrap();
+        let adapter = self.adapter.take().unwrap();
+        let render_pipeline = self.render_pipeline.take().unwrap();
+        let buffer = self.buffer.take().unwrap();
+        let bind_group = self.bind_group.take().unwrap();
 
         let size = window.inner_size();
         let projection =
@@ -218,11 +216,8 @@ impl Renderer<'_> {
             },
         );
 
-        queue.write_buffer(buffer, 64, bytemuck::cast_slice(view.as_ref()));
-        queue.write_buffer(buffer, 128, bytemuck::cast_slice(projection.as_ref()));
-
-        let command_encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        queue.write_buffer(&buffer, 64, bytemuck::cast_slice(view.as_ref()));
+        queue.write_buffer(&buffer, 128, bytemuck::cast_slice(projection.as_ref()));
 
         let swapchain_capabilities = surface.get_capabilities(&adapter);
 
@@ -239,11 +234,12 @@ impl Renderer<'_> {
         surface.configure(&device, &config);
 
         self.event_loop
-            .as_ref()
+            .take()
             .unwrap()
             .run(move |event, _, control_flow| {
                 let mut t = 0.;
-
+                let mut command_encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 match event {
                     Event::RedrawRequested(_) | Event::MainEventsCleared => {
                         t += 0.1;
@@ -251,7 +247,7 @@ impl Renderer<'_> {
                             t -= 2.0 * 3.1415;
                         }
                         let rotate = glam::Mat4::from_rotation_z(t);
-                        queue.write_buffer(buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
+                        queue.write_buffer(&buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
 
                         let texture = surface
                             .get_current_texture()
@@ -260,7 +256,7 @@ impl Renderer<'_> {
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
 
-                        let render_pass =
+                        let mut render_pass =
                             command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                                 label: None,
                                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -278,12 +274,13 @@ impl Renderer<'_> {
                                 })],
                                 depth_stencil_attachment: None,
                             });
-                        render_pass.set_pipeline(render_pipeline);
+                        render_pass.set_pipeline(&render_pipeline);
                         render_pass.set_vertex_buffer(0, buffer.slice(..));
-                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.draw(0..3, 0..1);
                         render_pass.end_pipeline_statistics_query();
-                        queue.submit([command_encoder.finish()]);
+                        std::mem::drop(render_pass);
+                        queue.submit(Some(command_encoder.finish()));
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
