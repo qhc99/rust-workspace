@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use wgpu::{
-    Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, SurfaceTexture,
-    TextureFormat, VertexBufferLayout,
+    Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, TextureFormat,
+    VertexBufferLayout,
 };
 use winit::{
     event::{Event, WindowEvent},
@@ -27,7 +27,7 @@ pub struct Renderer {
     bind_group: Option<BindGroup>,
     render_pipeline: Option<RenderPipeline>,
     // mesh
-    buffer: Option<Buffer>,
+    vertex_buffer: Option<Buffer>,
     buffer_layout: Option<VertexBufferLayout<'static>>,
 }
 
@@ -45,7 +45,7 @@ impl Renderer {
             uniform_buffer: None,
             bind_group: None,
             render_pipeline: None,
-            buffer: None,
+            vertex_buffer: None,
             buffer_layout: None,
         }
     }
@@ -54,7 +54,7 @@ impl Renderer {
         self.setup_device().await;
         let device = self.device.as_ref().unwrap();
         let (buffer, buffer_layout) = init_buffer_data(device);
-        self.buffer = Some(buffer);
+        self.vertex_buffer = Some(buffer);
         self.buffer_layout = Some(buffer_layout);
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
         self.render();
@@ -192,7 +192,7 @@ impl Renderer {
         let surface = self.surface.take().unwrap();
         let adapter = self.adapter.take().unwrap();
         let render_pipeline = self.render_pipeline.take().unwrap();
-        let buffer = self.buffer.take().unwrap();
+        let vertex_buffer = self.vertex_buffer.take().unwrap();
         let uniform_buffer = self.uniform_buffer.take().unwrap();
         let bind_group = self.bind_group.take().unwrap();
 
@@ -230,13 +230,12 @@ impl Renderer {
                         // On macos the window needs to be redrawn manually after resizing
                         window.request_redraw();
                     }
-                    Event::RedrawRequested(_)| Event::MainEventsCleared => {
+                    Event::RedrawRequested(_) | Event::MainEventsCleared => {
                         // | Event::MainEventsCleared
-                        t += 0.01;
+                        t += 0.03;
                         if t > 2.0 * std::f32::consts::PI {
                             t -= 2.0 * std::f32::consts::PI;
                         }
-                        log::info!(">>>t={}",t);
                         let projection = glam::Mat4::perspective_rh_gl(
                             std::f32::consts::PI / 4.,
                             800. / 600.,
@@ -244,7 +243,7 @@ impl Renderer {
                             10.,
                         );
 
-                        let view = glam::Mat4::look_to_rh(
+                        let view = glam::Mat4::look_at_rh(
                             glam::Vec3 {
                                 x: -2.,
                                 y: 0.,
@@ -273,16 +272,15 @@ impl Renderer {
                             bytemuck::cast_slice(projection.as_ref()),
                         );
                         let rotate = glam::Mat4::from_rotation_z(t);
-                        queue.write_buffer(&buffer, 0, bytemuck::cast_slice(rotate.as_ref()));
+                        queue.write_buffer(
+                            &uniform_buffer,
+                            0,
+                            bytemuck::cast_slice(rotate.as_ref()),
+                        );
 
-                        let res = surface.get_current_texture();
-                        let texture: SurfaceTexture;
-                        if res.is_ok() {
-                            texture = res.unwrap();
-                        } else {
-                            log::warn!("{:?}", res);
-                            return;
-                        }
+                        let texture = surface
+                            .get_current_texture()
+                            .expect("Failed to load texture.");
                         let texture_view = texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -306,10 +304,9 @@ impl Renderer {
                                 depth_stencil_attachment: None,
                             });
                         render_pass.set_pipeline(&render_pipeline);
-                        render_pass.set_vertex_buffer(0, buffer.slice(..));
+                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                         render_pass.set_bind_group(0, &bind_group, &[]);
                         render_pass.draw(0..3, 0..1);
-                        // render_pass.end_pipeline_statistics_query();
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
                         texture.present();
