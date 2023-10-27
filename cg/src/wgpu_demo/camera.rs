@@ -1,16 +1,16 @@
 use glam::{vec3, Mat4, Vec3};
 
 pub struct Camera {
-    position: glam::Vec3,
-    eulers: glam::Vec3,
-    view: glam::Mat4,
-    forwards: glam::Vec3,
-    right: glam::Vec3,
-    up: glam::Vec3,
+    position: Vec3,
+    eulers: Vec3,
+    view: Mat4,
+    forwards: Vec3,
+    right: Vec3,
+    up: Vec3,
 }
 
 impl Camera {
-    pub fn new(position: glam::Vec3, theta: f32, phi: f32) -> Self {
+    pub fn new(position: Vec3, theta: f32, phi: f32) -> Self {
         Camera {
             position: position,
             eulers: Vec3::new(0., phi, theta),
