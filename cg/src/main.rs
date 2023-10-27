@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 #![allow(clippy::needless_return)]
-use triangle::Renderer;
+use wgpu_demo::Renderer;
 use wgpu::{Instance, InstanceDescriptor};
 use winit::{event_loop::EventLoop, window::Window};
 
-mod triangle;
+mod wgpu_demo;
 
 #[tokio::main]
 async fn main() {
