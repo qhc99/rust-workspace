@@ -181,7 +181,7 @@ impl<V> IntoIterator for DLinkList<V> {
         }
     }
 }
-// TODO return view
+
 #[derive(Debug)]
 pub struct DLinkListIter<V> {
     list: DLinkList<V>,

@@ -71,4 +71,3 @@ fn dlink_list_iter() {
     assert_eq!(iter.next().unwrap().replace(1), 1);
 }
 
-// TODO test insert after
