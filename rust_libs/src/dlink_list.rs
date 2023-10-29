@@ -48,6 +48,7 @@ impl<V> PartialEq for DNode<V> {
     }
 }
 
+/// Prefer to use stdlib
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct DLinkList<V> {
