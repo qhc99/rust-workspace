@@ -1,4 +1,4 @@
-use glam::{vec3, Mat4};
+use glam::vec3;
 
 use super::{camera::Camera, triangle::Triangle};
 

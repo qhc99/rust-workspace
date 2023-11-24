@@ -12,7 +12,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(position: Vec3, theta: f32, phi: f32) -> Self {
         Camera {
-            position: position,
+            position,
             eulers: Vec3::new(0., phi, theta),
             view: Mat4::ZERO,
             forwards: Vec3::ZERO,

@@ -11,3 +11,9 @@ winit = "0.28.7"
 bytemuck = "1.14.0"
 log = "0.4.20"
 glam = "0.24.2"
+
+[lints.clippy]
+needless_return = "allow"
+
+[lints.rust]
+unused = "allow"

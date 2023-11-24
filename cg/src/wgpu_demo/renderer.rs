@@ -312,7 +312,7 @@ impl Renderer {
 
                         let texture = surface
                             .get_current_texture()
-                            .expect("Failed to load texture.");
+                            .expect("Failed to load texture."); // TODO handle surface error
                         let texture_view = texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());

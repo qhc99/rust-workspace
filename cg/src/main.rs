@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-#![allow(clippy::needless_return)]
 use wgpu_demo::Renderer;
 use wgpu::{Instance, InstanceDescriptor};
 use winit::{event_loop::EventLoop, window::Window};
@@ -8,7 +6,6 @@ mod wgpu_demo;
 
 #[tokio::main]
 async fn main() {
-    // Open a connection to the mini-redis address.
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
     std::env::set_var("RUST_LOG", "warn");

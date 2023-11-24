@@ -11,7 +11,7 @@ impl Triangle {
         let mut e = Vec3::ZERO;
         e[2] = theta;
         Triangle {
-            position: position,
+            position,
             eulers: e,
             model: Mat4::ZERO,
         }
