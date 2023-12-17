@@ -97,6 +97,7 @@ pub fn naive_mat_mul(arr1: &mut [Vec<f32>], arr2: &mut [Vec<f32>], arr_res: &mut
     let start = Instant::now();
     for i in 0..size_a {
         for j in 0..size_c {
+            arr_res[i][j] = 0.;
             for k in 0..size_b {
                 arr_res[i][j] += arr1[i][k] * arr2[k][j];
             }
@@ -224,9 +225,9 @@ fn locality_mat_mul_par(
 }
 
 pub fn mat_mul_profile_demo() {
-    const SIZE_A: usize = 1300;
-    const SIZE_B: usize = 1300;
-    const SIZE_C: usize = 1300;
+    const SIZE_A: usize = 1000;
+    const SIZE_B: usize = 1000;
+    const SIZE_C: usize = 1000;
     let mut arr1 = vec![vec![0.; SIZE_B]; SIZE_A];
     let mut arr2 = vec![vec![0.; SIZE_C]; SIZE_B];
     let mut arr_res = vec![vec![0.; SIZE_C]; SIZE_A];
