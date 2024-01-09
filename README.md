@@ -7,3 +7,5 @@ Proof of concepts
 Frequently used algorithms and data structures in leetcode
 ## asm, vm, compiler
 nand2tetris projects
+## cg
+webgpu and computer graphics
