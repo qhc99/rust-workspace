@@ -95,6 +95,10 @@ impl<V> DLinkList<V> {
         self.size
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
     pub fn insert_first(&mut self, val: V) {
         self.size += 1;
         DLinkList::insert_after(val, self.head.unwrap_ref());

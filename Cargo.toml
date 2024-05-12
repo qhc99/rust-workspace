@@ -1,2 +1,2 @@
 [workspace]
-members = ["cg"]
+members = ["rust_libs"]
