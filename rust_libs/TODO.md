@@ -1,5 +1,5 @@
 DisjointSet
 KMP
+AvlTree
 TernaryTrie
-RBTree
 GrahamScan
