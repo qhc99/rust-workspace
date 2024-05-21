@@ -7,3 +7,6 @@ edition = "2021"
 regex = "1.9.6"
 xml = "0.8.10"
 derive_more = "0.99.17"
+
+[lints.clippy]
+needless_return = "allow"

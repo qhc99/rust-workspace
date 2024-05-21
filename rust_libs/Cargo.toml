@@ -3,8 +3,10 @@ name = "rust_libs"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-strip = true
-lto = true
+[lints.clippy]
+needless_return = "allow"
+
+[lints.rust]
+unused = "allow"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

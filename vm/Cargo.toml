@@ -3,7 +3,5 @@ name = "vm"
 version = "0.1.0"
 edition = "2018"
 
-[lib]
-name = "vm"
-crate-type = ["cdylib"]
-path = "src/lib.rs"
+[lints.clippy]
+needless_return = "allow"

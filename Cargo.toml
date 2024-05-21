@@ -1,2 +1,9 @@
 [workspace]
-members = ["rust_libs"]
+members = ["rust_libs", "asm", "cg", "compiler", "playground","vm"]
+resolver = "2"
+
+[profile.release]
+strip = true
+lto = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

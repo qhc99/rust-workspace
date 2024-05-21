@@ -21,7 +21,7 @@ struct MatPartition {
 }
 
 impl MatPartition {
-    pub fn new(mat: &Vec<Vec<f32>>, size_block: usize) -> Self {
+    pub fn new(mat: &[Vec<f32>], size_block: usize) -> Self {
         let m = mat.len();
         let n = mat[0].len();
         let rows = (m as f32 / size_block as f32).ceil() as usize;
@@ -116,9 +116,9 @@ pub fn naive_mat_mul(arr1: &mut [Vec<f32>], arr2: &mut [Vec<f32>], arr_res: &mut
 }
 
 fn locality_mat_mul(
-    arr1: &mut Vec<Vec<f32>>,
-    arr2: &mut Vec<Vec<f32>>,
-    arr_res: &mut Vec<Vec<f32>>,
+    arr1: &mut [Vec<f32>],
+    arr2: &mut [Vec<f32>],
+    arr_res: &mut [Vec<f32>],
     w_s: usize,
 ) {
     let size_a: usize = arr1.len();

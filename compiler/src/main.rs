@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![allow(clippy::needless_return)]
 #[macro_use]
 extern crate derive_more;
 

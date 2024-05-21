@@ -1,4 +1,3 @@
-#![allow(clippy::needless_return)]
 use std::{
     collections::HashMap,
     env,
@@ -26,7 +25,7 @@ fn main() -> io::Result<()> {
 
     let mut clean_lines = Vec::<String>::new();
     // strip comment and all splaces
-    for line in lines.into_iter().flatten() {
+    for line in lines.into_iter().map_while(Result::ok) {
         let s = strip_comment(line.as_str()).replace(' ', "");
         if !s.is_empty() {
             clean_lines.push(s);
@@ -295,7 +294,7 @@ fn compile(asm: &Vec<&str>) -> Vec<String> {
 }
 
 fn strip_asm_label_and_sym<'a>(
-    clean_lines: &'a Vec<String>,
+    clean_lines: &'a [String],
     symbol_table: &mut HashMap<&'a str, i32>,
 ) -> Vec<&'a str> {
     let mut clean_no_label_lines = Vec::<&'a str>::with_capacity(clean_lines.len());

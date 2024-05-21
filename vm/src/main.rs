@@ -1,5 +1,3 @@
-#![allow(clippy::needless_return)]
-
 use program::compile_single_file;
 
 mod code_writer;

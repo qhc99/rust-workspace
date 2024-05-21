@@ -1,1 +1,0 @@
-add "prefer_vec_with_capacity_to_reserve" lint to clippy
