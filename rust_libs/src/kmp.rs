@@ -7,7 +7,7 @@ pub trait Kmp {
         let s = self.to_ref_u8_slice();
         let p = pattern.to_ref_u8_slice();
 
-        if (p.len() == 0) || (s.len() == 0) {
+        if (p.is_empty()) || (s.is_empty()) {
             return None;
         }
 

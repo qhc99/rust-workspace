@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust_libs", "playground", "neatpad_rs", "cg"]
+members = ["rust_libs", "playground", "cg"]
 resolver = "2"
 
 [profile.release]

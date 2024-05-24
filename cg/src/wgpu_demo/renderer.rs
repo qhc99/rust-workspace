@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use wgpu::{
     Adapter, BindGroup, Buffer, Device, Instance, Queue, RenderPipeline, Surface, TextureFormat,
@@ -16,7 +16,7 @@ use super::triangle_mesh::TriangleMesh;
 
 pub struct Renderer<'w> {
     event_loop: Option<EventLoop<()>>,
-    window: &'w Window,
+    window:Arc<Window>,
     // device setup
     instance: Option<Instance>,
     surface: Option<Surface<'w>>,
@@ -33,10 +33,10 @@ pub struct Renderer<'w> {
 }
 
 impl<'w> Renderer<'w> {
-    pub async fn new(event_loop: EventLoop<()>, window: &'w Window) -> Renderer<'w> {
+    pub async fn new(event_loop: EventLoop<()>, window: Window) -> Renderer<'w> {
         Renderer {
             event_loop: Some(event_loop),
-            window,
+            window: Arc::new(window),
             instance: None,
             surface: None,
             adapter: None,
@@ -58,16 +58,16 @@ impl<'w> Renderer<'w> {
     }
     /// **Data structures relationships:**
     ///
-    /// - Instance -> Surface
+    /// - Instance(Window) -> Surface
     ///
-    /// - (Instance, Surface) -> Adapter
+    /// - [Instance, Surface] -> Adapter
     ///
-    /// - Adapter -> (Device, Queue)
+    /// - Adapter -> [Device, Queue]
     ///
     /// - (Surface, Adapter) -> TextureFormat
     async fn setup_device(&mut self) {
         let instance = Instance::default();
-        let surface = instance.create_surface(self.window).unwrap();
+        let surface = instance.create_surface(self.window.clone()).unwrap();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -198,7 +198,7 @@ impl<'w> Renderer<'w> {
 
     /// **Simplified logics**
     ///
-    /// - (Surface, Adapter) -> SurfaceCapabilities -> SurfaceConfiguration
+    /// - [Surface, Adapter] -> SurfaceCapabilities -> SurfaceConfiguration
     ///
     /// - Surface.config(Device, SurfaceConfiguration)
     ///
@@ -208,15 +208,9 @@ impl<'w> Renderer<'w> {
     ///
     /// - Device -> CommandEncoder
     ///
-    /// - (CommandEncoder, TextureView) -> RenderPass
+    /// - [CommandEncoder, TextureView] -> RenderPass
     ///
-    /// - RenderPass.set_pipeline(RenderPipeline);
-    ///
-    /// - RenderPass.set_vertex_buffer(vertex_Buffer)
-    ///
-    /// - RenderPass.set_bind_group(BindGroup)
-    ///
-    /// - RenderPass.draw()
+    /// - RenderPass setup
     ///
     /// - Queue.submit(CommandEncoder.finish());
     ///
