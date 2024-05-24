@@ -6,11 +6,12 @@ mod wgpu_demo;
 
 #[tokio::main]
 async fn main() {
-    let event_loop = EventLoop::new();
-    let window = Window::new(&event_loop).unwrap();
+    let event_loop = EventLoop::new().unwrap();
+    let mut builder = winit::window::WindowBuilder::new();
+    let window = Box::leak(Box::new(builder.build(&event_loop).unwrap()));
     std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
-    let mut render = Renderer::new(event_loop, window).await;
+    let mut render = Box::leak(Box::new(Renderer::new(event_loop, &window).await));
     render.start().await;
 }
 

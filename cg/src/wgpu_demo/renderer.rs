@@ -5,18 +5,21 @@ use wgpu::{
 };
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     window::Window,
 };
 
+use wgpu::*;
+extern crate wgpu;
+
 use super::triangle_mesh::TriangleMesh;
 
-pub struct Renderer {
+pub struct Renderer<'w> {
     event_loop: Option<EventLoop<()>>,
-    window: Option<Window>,
+    window: &'w Window,
     // device setup
     instance: Option<Instance>,
-    surface: Option<Surface>,
+    surface: Option<Surface<'w>>,
     adapter: Option<Adapter>,
     device: Option<Device>,
     queue: Option<Queue>,
@@ -29,11 +32,11 @@ pub struct Renderer {
     triangle_mesh: Option<TriangleMesh>,
 }
 
-impl Renderer {
-    pub async fn new<'a>(event_loop: EventLoop<()>, window: Window) -> Renderer {
+impl<'w> Renderer<'w> {
+    pub async fn new(event_loop: EventLoop<()>, window: &'w Window) -> Renderer<'w> {
         Renderer {
             event_loop: Some(event_loop),
-            window: Some(window),
+            window,
             instance: None,
             surface: None,
             adapter: None,
@@ -47,7 +50,7 @@ impl Renderer {
         }
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&'w mut self) {
         self.setup_device().await;
         self.create_assets();
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
@@ -63,9 +66,8 @@ impl Renderer {
     ///
     /// - (Surface, Adapter) -> TextureFormat
     async fn setup_device(&mut self) {
-        let window = self.window.as_ref().unwrap();
         let instance = Instance::default();
-        let surface = unsafe { instance.create_surface(window) }.unwrap();
+        let surface = instance.create_surface(self.window).unwrap();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -80,9 +82,9 @@ impl Renderer {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("device-for-triangle"),
-                    features: wgpu::Features::empty(),
+                    required_features: wgpu::Features::empty(),
                     // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                    limits: wgpu::Limits::downlevel_webgl2_defaults()
+                    required_limits: wgpu::Limits::downlevel_webgl2_defaults()
                         .using_resolution(adapter.limits()),
                 },
                 None,
@@ -172,11 +174,13 @@ impl Renderer {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[vertex_buffer_layout],
+                compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(texture_format.to_owned().into())],
+                compilation_options: PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -202,23 +206,22 @@ impl Renderer {
     ///
     /// - Surface -> SurfaceTexture -> TextureView
     ///
-    /// - Device -> CommandEncoder 
-    /// 
+    /// - Device -> CommandEncoder
+    ///
     /// - (CommandEncoder, TextureView) -> RenderPass
-    /// 
+    ///
     /// - RenderPass.set_pipeline(RenderPipeline);
-    /// 
+    ///
     /// - RenderPass.set_vertex_buffer(vertex_Buffer)
-    /// 
+    ///
     /// - RenderPass.set_bind_group(BindGroup)
-    /// 
+    ///
     /// - RenderPass.draw()
-    /// 
+    ///
     /// - Queue.submit(CommandEncoder.finish());
-    /// 
-    /// - SurfaceTexture.present(); 
+    ///
+    /// - SurfaceTexture.present();
     fn render(&mut self) {
-        let window = self.window.take().unwrap();
         let device = self.device.take().unwrap();
         let queue = self.queue.take().unwrap();
         let texture_format = self.texture_format.take().unwrap();
@@ -235,7 +238,7 @@ impl Renderer {
         let uniform_buffer = self.uniform_buffer.take().unwrap();
         let bind_group = self.bind_group.take().unwrap();
 
-        let size = window.inner_size();
+        let size = self.window.inner_size();
 
         let swapchain_capabilities = surface.get_capabilities(&adapter);
 
@@ -247,6 +250,7 @@ impl Renderer {
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: swapchain_capabilities.alpha_modes[0],
             view_formats: vec![],
+            desired_maximum_frame_latency: 2,
         };
 
         surface.configure(&device, &config);
@@ -284,7 +288,7 @@ impl Renderer {
         self.event_loop
             .take()
             .unwrap()
-            .run(move |event, _, control_flow| {
+            .run(move |event, control_flow| {
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::Resized(size),
@@ -295,9 +299,12 @@ impl Renderer {
                         config.height = size.height;
                         surface.configure(&device, &config);
                         // On macos the window needs to be redrawn manually after resizing
-                        window.request_redraw();
+                        self.window.request_redraw();
                     }
-                    Event::RedrawRequested(_) | Event::MainEventsCleared => {
+                    Event::WindowEvent {
+                        event: WindowEvent::RedrawRequested,
+                        ..
+                    }  => {
                         t += 0.05;
                         if t > 2.0 * std::f32::consts::PI {
                             t -= 2.0 * std::f32::consts::PI;
@@ -332,10 +339,12 @@ impl Renderer {
                                             b: 0.25,
                                             a: 1.,
                                         }),
-                                        store: true,
+                                        store: StoreOp::Store,
                                     },
                                 })],
                                 depth_stencil_attachment: None,
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
                             });
                         render_pass.set_pipeline(&render_pipeline);
                         render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
@@ -344,11 +353,12 @@ impl Renderer {
                         std::mem::drop(render_pass);
                         queue.submit(Some(command_encoder.finish()));
                         texture.present(); // one extra step compared to javascript
+                        self.window.request_redraw();
                     }
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
                         ..
-                    } => *control_flow = ControlFlow::Exit,
+                    } => control_flow.exit(),
                     _ => {}
                 }
             });

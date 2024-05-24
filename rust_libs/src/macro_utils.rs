@@ -9,3 +9,17 @@ macro_rules! vec2d {
         }
     };
 }
+
+#[macro_export]
+macro_rules! f_loc {
+    () => {
+        concat!(file!(), ",", line!(), ":", column!())
+    };
+}
+
+#[macro_export]
+macro_rules! f_msg {
+    ($msg:expr) => {
+        concat!(file!(), ",", line!(), ":", column!(), " - ", $msg)
+    };
+}
