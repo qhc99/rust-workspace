@@ -10,8 +10,8 @@ async fn main() {
     let window = builder.build(&event_loop).unwrap();
     std::env::set_var("RUST_LOG", "warn");
     env_logger::init();
-    let mut render = Box::leak(Box::new(Renderer::new(event_loop, window).await));
-    render.start().await;
+    let mut render = Renderer::new(event_loop, window).await;
+    render = render.start().await;
 }
 
 
