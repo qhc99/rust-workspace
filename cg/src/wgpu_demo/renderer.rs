@@ -50,12 +50,11 @@ impl<'w> Renderer<'w> {
         }
     }
 
-    pub async fn start(mut self)->Self {
+    pub async fn start(mut self){
         self.setup_device().await;
         self.create_assets();
         self.make_pipeline(Cow::Borrowed(include_str!("triangle.wgsl")));
         self.render();
-        return self;
     }
     /// **Data structures relationships:**
     ///
