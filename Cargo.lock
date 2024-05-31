@@ -1198,6 +1198,7 @@ dependencies = [
  "rand",
  "rayon",
  "regex",
+ "rust_libs",
  "serde",
 ]
 
