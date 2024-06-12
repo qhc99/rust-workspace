@@ -1,0 +1,19 @@
+[package]
+name = "cg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = "0.20.0"
+tokio = { version = "1.37", features = ["full"] }
+env_logger = "0.11"
+winit = "0.29"
+bytemuck = { version = "1.14", features = ["derive"] }
+log = "0.4"
+glam = "0.27"
+
+[lints.clippy]
+needless_return = "allow"
+
+[lints.rust]
+unused = "allow"
