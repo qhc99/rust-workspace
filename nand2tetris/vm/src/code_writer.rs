@@ -128,7 +128,7 @@ M=-1
         self.out
             .write_all(
                 "
-@0 // arithmetic double operaotr
+@0 // arithmetic double operator
 AM=M-1
 D=M
 A=A-1"
