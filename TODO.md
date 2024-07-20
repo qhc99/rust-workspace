@@ -1,3 +1,5 @@
-- Projects:
+- TODO Projects:
+    - Chip 8 Emulator
     - Linux debugger
-    - Emulator
+    - rCore OS
+    
