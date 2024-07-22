@@ -67,7 +67,7 @@ impl Kmp for &str {
     }
 }
 
-impl Kmp for &Path {
+impl Kmp for Path {
     fn to_ref_u8_slice(&self) -> &[u8] {
         return self.as_os_str().as_encoded_bytes();
     }
