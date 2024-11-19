@@ -1,4 +1,4 @@
-cargo build
+cargo build --release
 # strip is not necessary for qemu version >= 7.0.0
 rust-objcopy --strip-all target/riscv64gc-unknown-none-elf/release/rcore_os -O binary target/riscv64gc-unknown-none-elf/release/rcore_os.bin
 qemu-system-riscv64 \
