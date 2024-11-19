@@ -12,17 +12,8 @@ use std::f32;
 /// # Panics
 ///
 /// This function will panic if the length of `data` or `output` is less than `rows * cols`.
-pub fn sobel(data: &[u8], output: &mut [f32], rows: usize, cols: usize) {
-    // Ensure that the input slices have sufficient length
-    assert!(
-        data.len() >= rows * cols,
-        "Input data slice is smaller than expected."
-    );
-    assert!(
-        output.len() >= rows * cols,
-        "Output data slice is smaller than expected."
-    );
-
+#[no_mangle]
+pub extern "C" fn sobel(data: &[u8], output: &mut [f32], rows: usize, cols: usize) {
     // Iterate over each pixel, skipping the border pixels
     for r in 1..rows-1 {
         for c in 1..cols-1 {
@@ -50,3 +41,5 @@ pub fn sobel(data: &[u8], output: &mut [f32], rows: usize, cols: usize) {
         }
     }
 }
+
+pub fn main(){}

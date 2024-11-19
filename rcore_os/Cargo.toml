@@ -1,0 +1,14 @@
+[package]
+name = "rcore_os"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[profile.release]
+debug = true
+
+[[bin]]
+name = "rcore_os"
+path = "src/main.rs"
+harness = false

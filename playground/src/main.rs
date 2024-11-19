@@ -1,10 +1,10 @@
-#![allow(clippy::needless_range_loop)]
-#![allow(dead_code)]
+// #![allow(clippy::needless_range_loop)]
+// #![allow(dead_code)]
 
 use sobel::sobel;
-mod mat_mul;
-mod dir_tree_size;
-mod claire_voyant;
+// mod mat_mul;
+// mod dir_tree_size;
+// mod claire_voyant;
 mod sobel;
 fn main(){
     let t: Vec<u8> = vec![1,2];
