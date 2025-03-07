@@ -186,9 +186,9 @@ fn locality_mat_mul_par(
 
     reset_mat(arr1, arr2);
 
-    let arr1 = arr1 as *mut Vec<Vec<f32>> as usize;
-    let arr2 = arr2 as *mut Vec<Vec<f32>> as usize;
-    let arr3 = arr_res as *mut Vec<Vec<f32>> as usize;
+    let arr1 = arr1 as *mut Vec<Vec<f32>> as *mut () as usize;
+    let arr2 = arr2 as *mut Vec<Vec<f32>> as *mut () as usize;
+    let arr3 = arr_res as *mut Vec<Vec<f32>> as *mut () as usize;
 
     let p1 = &p1 as *const MatPartition as usize;
     let p2 = &p2 as *const MatPartition as usize;
