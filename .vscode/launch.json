@@ -2,6 +2,22 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "debug playground",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-p",
+                    "playground"
+                ]
+            },
+            "args": [],
+            "env": {
+                "PATH": "/home/qhc/.cargo/bin:${env:PATH}"
+              }
+        },
+        {
             "name": "asm debug demo",
             "type": "cppvsdbg",
             "request": "launch",
