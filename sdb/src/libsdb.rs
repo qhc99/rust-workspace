@@ -12,6 +12,8 @@ use nix::unistd::execvp;
 use nix::unistd::fork;
 use std::process::exit;
 
+
+/// Not async-signal-safe 
 pub fn attach(args: &[&str]) -> Pid {
     let mut pid = Pid::from_raw(0);
     if args.len() == 3 && args[1] == "-p" {
