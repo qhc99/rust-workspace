@@ -3,11 +3,14 @@
 use std::ffi::CString;
 
 use nix::sys::ptrace::attach as nix_attach;
+use nix::sys::ptrace::cont;
 use nix::sys::ptrace::traceme;
+use nix::sys::wait::{WaitPidFlag, waitpid};
 use nix::unistd::ForkResult;
 use nix::unistd::Pid;
 use nix::unistd::execvp;
 use nix::unistd::fork;
+use std::process::exit;
 
 pub fn attach(args: &[&str]) -> Pid {
     let mut pid = Pid::from_raw(0);
@@ -41,4 +44,34 @@ pub fn attach(args: &[&str]) -> Pid {
         }
     }
     return pid;
+}
+
+pub fn resume(pid: Pid) {
+    if cont(pid, None).is_err() {
+        eprintln!("Couldn't continue");
+        exit(-1);
+    }
+}
+
+pub fn wait_on_signal(pid: Pid) {
+    let options = WaitPidFlag::from_bits(0);
+    if waitpid(pid, options).is_err() {
+        eprintln!("waitpid failed");
+        exit(-1);
+    }
+}
+
+pub fn handle_command(pid: Pid, line: &str) {
+    let args: Vec<&str> = line
+        .split(" ")
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect();
+    let cmd = args[0];
+    if cmd.starts_with("continue") {
+        resume(pid);
+        wait_on_signal(pid);
+    } else {
+        eprintln!("Unknown command");
+    }
 }
