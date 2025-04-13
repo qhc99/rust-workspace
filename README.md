@@ -2,7 +2,7 @@
 nand2tetris projects
 
 ## sdb
-https://github.com/TartanLlama/sdb/tree/main
+Port of C++ https://github.com/TartanLlama/sdb/tree/main
 
 ## leetcode
 Solutions in rust for leetcode
