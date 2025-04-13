@@ -6,10 +6,11 @@ use libsdb::wait_on_signal;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::{env, process::exit};
+mod libsdb;
+use libsdb::handle_command;
+
 #[cfg(target_os = "linux")]
 fn main() {
-    use libsdb::handle_command;
-
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {

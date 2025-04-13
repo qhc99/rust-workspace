@@ -12,6 +12,7 @@ use nix::unistd::execvp;
 use nix::unistd::fork;
 use std::process::exit;
 
+pub mod process;
 
 /// Not async-signal-safe 
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html

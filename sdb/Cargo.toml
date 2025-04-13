@@ -6,7 +6,7 @@ edition = "2024"
 
 [lib]
 name = "libsdb"
-path = "src/libsdb.rs"
+path = "src/libsdb/mod.rs"
 
 [[bin]]
 name = "sdb"
