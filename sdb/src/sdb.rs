@@ -1,8 +1,12 @@
-#![cfg(target_os = "linux")]
 use std::{env, process::exit};
 
 use libsdb::attach;
 use nix::sys::wait::{WaitPidFlag, waitpid};
+
+#[cfg(not(target_os = "linux"))]
+compile_error!("No supported on non-linux system.");
+
+#[cfg(target_os = "linux")]
 fn main() {
     let args: Vec<String> = env::args().collect();
 

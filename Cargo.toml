@@ -1,5 +1,6 @@
 [workspace]
 members = ["rust_libs", "playground", "sdb"]
+resolver = "3"
 
 [profile.release]
 strip = true
