@@ -25,6 +25,8 @@ pub fn attach(args: &[&str]) -> Pid {
         let program_path = CString::new(args[1]).unwrap();
         let fork_res;
         unsafe {
+            // unsafe in signal handler context
+            // https://man7.org/linux/man-pages/man7/signal-safety.7.html
             fork_res = fork();
         }
         if let Ok(ForkResult::Child) = fork_res {
