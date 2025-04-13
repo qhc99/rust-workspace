@@ -14,6 +14,7 @@ use std::process::exit;
 
 
 /// Not async-signal-safe 
+/// https://man7.org/linux/man-pages/man7/signal-safety.7.html
 pub fn attach(args: &[&str]) -> Pid {
     let mut pid = Pid::from_raw(0);
     if args.len() == 3 && args[1] == "-p" {
@@ -31,7 +32,6 @@ pub fn attach(args: &[&str]) -> Pid {
         let fork_res;
         unsafe {
             // unsafe in signal handler context
-            // https://man7.org/linux/man-pages/man7/signal-safety.7.html
             fork_res = fork();
         }
         if let Ok(ForkResult::Child) = fork_res {
