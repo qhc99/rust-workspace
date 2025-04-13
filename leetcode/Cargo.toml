@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 
-[profile.release]
-strip = true
-lto = true
-
 [dependencies]
 rustc_version_runtime = "0.2.1"
 rust_libs ={ path = "../rust_libs"}

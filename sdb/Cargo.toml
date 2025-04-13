@@ -1,0 +1,17 @@
+[package]
+name = "sdb"
+version = "0.1.0"
+edition = "2024"
+
+
+[lib]
+name = "libsdb"
+path = "src/libsdb.rs"
+
+[[bin]]
+name = "sdb"
+path = "src/sdb.rs"
+
+[dependencies.nix]
+features = ["process", "ptrace"]
+version = "0.29.0"

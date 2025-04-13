@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust_libs", "playground"]
+members = ["rust_libs", "playground", "sdb"]
 
 [profile.release]
 strip = true
