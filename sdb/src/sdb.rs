@@ -4,7 +4,7 @@ compile_error!("No supported on non-linux system.");
 use libsdb::attach;
 use libsdb::wait_on_signal;
 use rustyline::error::ReadlineError;
-use rustyline::{DefaultEditor, Result};
+use rustyline::DefaultEditor;
 use std::{env, process::exit};
 #[cfg(target_os = "linux")]
 fn main() {
