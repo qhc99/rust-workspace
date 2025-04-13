@@ -9,7 +9,7 @@ use nix::unistd::Pid;
 use nix::unistd::execvp;
 use nix::unistd::fork;
 
-fn attach(args: &[&str]) -> Pid {
+pub fn attach(args: &[&str]) -> Pid {
     let mut pid = Pid::from_raw(0);
     if args.len() == 3 && args[1] == "-p" {
         pid = Pid::from_raw(args[2].parse().unwrap());
