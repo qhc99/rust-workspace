@@ -13,8 +13,9 @@ use nix::unistd::fork;
 use std::process::exit;
 
 pub mod process;
+pub mod sdb_error;
 
-/// Not async-signal-safe 
+/// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
 pub fn attach(args: &[&str]) -> Pid {
     let mut pid = Pid::from_raw(0);
@@ -44,6 +45,8 @@ pub fn attach(args: &[&str]) -> Pid {
                 eprintln!("Exec failed");
                 return Pid::from_raw(-1);
             }
+        } else {
+            eprintln!("Fork failed");
         }
     }
     return pid;
