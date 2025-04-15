@@ -313,6 +313,7 @@ dependencies = [
 name = "sdb"
 version = "0.1.0"
 dependencies = [
+ "log",
  "nix",
  "rustyline",
  "zydis",

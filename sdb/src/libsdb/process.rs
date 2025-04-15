@@ -1,4 +1,7 @@
-use nix::sys::ptrace::attach as nix_attach;
+use nix::sys::{
+    ptrace::{attach as nix_attach, detach},
+    wait::{WaitPidFlag, waitpid},
+};
 use std::{ffi::CString, path::Path};
 
 use nix::{
@@ -7,8 +10,11 @@ use nix::{
 };
 
 use super::sdb_error::SdbError;
+use super::utils::ResultLogExt;
+use nix::sys::signal::Signal;
+use nix::sys::signal::kill;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ProcessState {
     Stopped,
     Running,
@@ -69,7 +75,7 @@ impl Process {
     }
 
     pub fn attach(pid: Pid) -> Result<Box<Process>, SdbError> {
-        if pid <= Pid::from_raw(0) {
+        if pid.as_raw() <= 0 {
             return SdbError::new("Invalid pid");
         }
         if let Err(errno) = nix_attach(pid) {
@@ -78,5 +84,22 @@ impl Process {
         let proc = Process::new(pid, false);
         proc.wait_on_signal();
         return Ok(Box::new(proc));
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        if self.pid.as_raw() != 0 {
+            if self.state == ProcessState::Running {
+                kill(self.pid, Signal::SIGSTOP).log_error();
+                waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
+            }
+            detach(self.pid, None).log_error();
+            kill(self.pid, Signal::SIGCONT).log_error();
+            if self.terminate_on_end {
+                kill(self.pid, Signal::SIGKILL).log_error();
+                waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
+            }
+        }
     }
 }
