@@ -14,7 +14,7 @@ pub mod process;
 pub mod sdb_error;
 mod utils;
 use process::{Process, ProcessState, StopReason};
-use utils::ResultLogExt;
+pub use utils::ResultLogExt;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
@@ -26,21 +26,6 @@ pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
     } else {
         let program_path = CString::new(args[1]).unwrap();
         return Process::launch(Path::new(program_path.to_str().unwrap()));
-    }
-}
-
-pub fn resume(pid: Pid) {
-    if cont(pid, None).is_err() {
-        log::error!("Couldn't continue");
-        exit(-1);
-    }
-}
-
-pub fn wait_on_signal(pid: Pid) {
-    let options = WaitPidFlag::from_bits(0);
-    if waitpid(pid, options).is_err() {
-        log::error!("waitpid failed");
-        exit(-1);
     }
 }
 
@@ -70,7 +55,7 @@ fn print_stop_reason(process: &Box<Process>, reason: StopReason) {
     log::info!("{msg}");
 }
 
-pub fn handle_command(process: &mut Box<Process>, line: &str) {
+pub fn handle_command(process: &mut Box<Process>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line
         .split(" ")
         .into_iter()
@@ -78,12 +63,11 @@ pub fn handle_command(process: &mut Box<Process>, line: &str) {
         .collect();
     let cmd = args[0];
     if cmd.starts_with("continue") {
-        process.resume().log_error();
-        match process.wait_on_signal() {
-            Ok(reason) => print_stop_reason(process, reason),
-            res => res.log_error(),
-        }
+        process.resume()?;
+        let reason = process.wait_on_signal()?;
+        print_stop_reason(process, reason);
     } else {
         log::error!("Unknown command");
     }
+    Ok(())
 }

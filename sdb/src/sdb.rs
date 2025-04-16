@@ -1,10 +1,10 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("No supported on non-linux system.");
 
-use libsdb::attach;
-use libsdb::wait_on_signal;
-use rustyline::error::ReadlineError;
+use libsdb::process::Process;
+use libsdb::{ResultLogExt, attach};
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use std::{env, process::exit};
 mod libsdb;
 use libsdb::handle_command;
@@ -18,9 +18,14 @@ fn main() {
         exit(-1);
     }
     let args_slice: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let pid = attach(&args_slice);
-    wait_on_signal(pid);
+    let process = attach(&args_slice);
+    match process {
+        Ok(mut process) => main_loop(&mut process),
+        err => err.log_error(),
+    }
+}
 
+fn main_loop(process: &mut Box<Process>) {
     let mut rl = DefaultEditor::new().unwrap();
     loop {
         let readline = rl.readline(">> ");
@@ -35,22 +40,23 @@ fn main() {
                     }
                 } else {
                     line_str = &line;
-                    rl.add_history_entry(line.clone()).expect("Fail to save history");
+                    rl.add_history_entry(line.clone())
+                        .expect("Fail to save history");
                 }
-                if !line_str.is_empty(){
-                    handle_command(pid, line_str);
+                if !line_str.is_empty() {
+                    handle_command(process, line_str).log_error();
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
+                log::error!("CTRL-C");
                 break;
             }
             Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
+                log::error!("CTRL-D");
                 break;
             }
             Err(err) => {
-                println!("Error: {:?}", err);
+                log::error!("Readline Error: {:?}", err);
                 break;
             }
         }
