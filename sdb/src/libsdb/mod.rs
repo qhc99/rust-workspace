@@ -1,61 +1,37 @@
 #![cfg(target_os = "linux")]
 
 use std::ffi::CString;
+use std::path::Path;
 
-use nix::sys::ptrace::attach as nix_attach;
 use nix::sys::ptrace::cont;
-use nix::sys::ptrace::traceme;
+use nix::sys::signal::Signal;
 use nix::sys::wait::{WaitPidFlag, waitpid};
-use nix::unistd::ForkResult;
 use nix::unistd::Pid;
-use nix::unistd::execvp;
-use nix::unistd::fork;
+use sdb_error::SdbError;
 use std::process::exit;
 
 pub mod process;
 pub mod sdb_error;
 mod utils;
+use process::{Process, ProcessState, StopReason};
+use utils::ResultLogExt;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
-pub fn attach(args: &[&str]) -> Pid {
+pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
     let mut pid = Pid::from_raw(0);
     if args.len() == 3 && args[1] == "-p" {
         pid = Pid::from_raw(args[2].parse().unwrap());
-        if pid <= Pid::from_raw(0) {
-            eprintln!("Invalid pid");
-            return Pid::from_raw(-1);
-        }
-        if nix_attach(pid).is_err() {
-            eprintln!("Could not attach");
-            return Pid::from_raw(-1);
-        }
+        return Process::attach(pid);
     } else {
         let program_path = CString::new(args[1]).unwrap();
-        let fork_res;
-        unsafe {
-            // unsafe in signal handler context
-            fork_res = fork();
-        }
-        if let Ok(ForkResult::Child) = fork_res {
-            if traceme().is_err() {
-                eprintln!("Tracing failed");
-                return Pid::from_raw(-1);
-            }
-            if execvp(&program_path, &[&program_path]).is_err() {
-                eprintln!("Exec failed");
-                return Pid::from_raw(-1);
-            }
-        } else {
-            eprintln!("Fork failed");
-        }
+        return Process::launch(Path::new(program_path.to_str().unwrap()));
     }
-    return pid;
 }
 
 pub fn resume(pid: Pid) {
     if cont(pid, None).is_err() {
-        eprintln!("Couldn't continue");
+        log::error!("Couldn't continue");
         exit(-1);
     }
 }
@@ -63,12 +39,38 @@ pub fn resume(pid: Pid) {
 pub fn wait_on_signal(pid: Pid) {
     let options = WaitPidFlag::from_bits(0);
     if waitpid(pid, options).is_err() {
-        eprintln!("waitpid failed");
+        log::error!("waitpid failed");
         exit(-1);
     }
 }
 
-pub fn handle_command(pid: Pid, line: &str) {
+fn print_stop_reason(process: &Box<Process>, reason: StopReason) {
+    let pid = process.pid();
+    let msg_start = format!("Process {pid}");
+    let msg = match reason.reason {
+        ProcessState::Exited => {
+            let info = reason.info;
+            format!("{msg_start} exited with status {info}")
+        }
+        ProcessState::Terminated => {
+            let signal: Signal = reason.info.try_into().unwrap();
+            let sig_str = signal.as_str();
+            format!("{msg_start} terminated with signal {sig_str}")
+        }
+        ProcessState::Stopped => {
+            let signal: Signal = reason.info.try_into().unwrap();
+            let sig_str = signal.as_str();
+            format!("{msg_start} stopped with signal {sig_str}")
+        }
+        ProcessState::Running => {
+            log::error!("Incorrect state");
+            String::new()
+        }
+    };
+    log::info!("{msg}");
+}
+
+pub fn handle_command(process: &mut Box<Process>, line: &str) {
     let args: Vec<&str> = line
         .split(" ")
         .into_iter()
@@ -76,9 +78,12 @@ pub fn handle_command(pid: Pid, line: &str) {
         .collect();
     let cmd = args[0];
     if cmd.starts_with("continue") {
-        resume(pid);
-        wait_on_signal(pid);
+        process.resume().log_error();
+        match process.wait_on_signal() {
+            Ok(reason) => print_stop_reason(process, reason),
+            res => res.log_error(),
+        }
     } else {
-        eprintln!("Unknown command");
+        log::error!("Unknown command");
     }
 }

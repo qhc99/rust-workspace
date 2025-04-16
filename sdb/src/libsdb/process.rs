@@ -1,6 +1,6 @@
 use nix::sys::{
     ptrace::{attach as nix_attach, detach},
-    wait::{WaitPidFlag, waitpid},
+    wait::{WaitPidFlag, WaitStatus, waitpid},
 };
 use std::{ffi::CString, path::Path};
 
@@ -11,17 +11,47 @@ use nix::{
 
 use super::sdb_error::SdbError;
 use super::utils::ResultLogExt;
+use nix::sys::ptrace::cont;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ProcessState {
+pub enum ProcessState {
     Stopped,
     Running,
     Exited,
     Terminated,
 }
-struct Process {
+
+pub struct StopReason {
+    pub reason: ProcessState,
+    pub info: i32,
+}
+
+impl StopReason {
+    fn new(status: WaitStatus) -> Result<Self, SdbError> {
+        if let WaitStatus::Exited(_, info) = status {
+            return Ok( StopReason {
+                reason: ProcessState::Exited,
+                info,
+            });
+        } else if let WaitStatus::Signaled(_, info, _) = status {
+            return Ok(StopReason {
+                reason: ProcessState::Terminated,
+                info: info as i32,
+            });
+        } else if let WaitStatus::Stopped(_, info) = status {
+            return Ok(StopReason {
+                reason: ProcessState::Stopped,
+                info: info as i32,
+            });
+        }
+
+        SdbError::new("Stopped process returns running state")
+    }
+}
+
+pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // true
     state: ProcessState,    // Stopped
@@ -40,13 +70,25 @@ impl Process {
         Pid::from(self.pid)
     }
 
-    pub fn resume(&self) {}
+    pub fn resume(&mut self) -> Result<(), SdbError> {
+        if let Err(errno) = cont(self.pid, None) {
+            return SdbError::errno("Could not resume", errno);
+        }
+        self.state = ProcessState::Running;
+        Ok(())
+    }
 
     pub fn state(&self) -> ProcessState {
         self.state
     }
 
-    pub fn wait_on_signal(&self) {}
+    pub fn wait_on_signal(&self) -> Result<StopReason, SdbError> {
+        let wait_status = waitpid(self.pid, WaitPidFlag::from_bits(0));
+        return match wait_status {
+            Err(errno) => SdbError::errno("waitpid failed", errno),
+            Ok(status) => Ok(StopReason::new(status)?),
+        };
+    }
 
     pub fn launch(path: &Path) -> Result<Box<Process>, SdbError> {
         let fork_res;
@@ -70,7 +112,7 @@ impl Process {
         }
 
         let proc = Process::new(pid, true);
-        proc.wait_on_signal();
+        proc.wait_on_signal()?;
         return Ok(Box::new(proc));
     }
 
@@ -82,7 +124,7 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false);
-        proc.wait_on_signal();
+        proc.wait_on_signal()?;
         return Ok(Box::new(proc));
     }
 }
