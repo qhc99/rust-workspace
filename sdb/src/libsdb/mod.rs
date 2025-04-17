@@ -9,6 +9,7 @@ use sdb_error::SdbError;
 
 pub mod process;
 pub mod sdb_error;
+mod pipe;
 mod utils;
 use process::{Process, ProcessState, StopReason};
 pub use utils::ResultLogExt;

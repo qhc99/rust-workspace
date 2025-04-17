@@ -1,6 +1,9 @@
-use nix::sys::{
-    ptrace::{attach as nix_attach, detach},
-    wait::{WaitPidFlag, WaitStatus, waitpid},
+use nix::{
+    errno::Errno,
+    sys::{
+        ptrace::{attach as nix_attach, detach},
+        wait::{WaitPidFlag, WaitStatus, waitpid},
+    },
 };
 use std::{ffi::CString, path::Path};
 
@@ -8,6 +11,8 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+
+use super::pipe::Pipe;
 
 use super::sdb_error::SdbError;
 use super::utils::ResultLogExt;
@@ -90,8 +95,11 @@ impl Process {
         };
     }
 
+    fn exit_with_error(pipe: &Pipe, msg: &str, errno: Errno) {}
+
     pub fn launch(path: &Path) -> Result<Box<Process>, SdbError> {
         let fork_res;
+        let channel = Pipe::new(true);
         let mut pid = Pid::from_raw(0);
         unsafe {
             // unsafe in signal handler context
