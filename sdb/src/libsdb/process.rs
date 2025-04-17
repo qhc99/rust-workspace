@@ -31,7 +31,7 @@ pub struct StopReason {
 impl StopReason {
     fn new(status: WaitStatus) -> Result<Self, SdbError> {
         if let WaitStatus::Exited(_, info) = status {
-            return Ok( StopReason {
+            return Ok(StopReason {
                 reason: ProcessState::Exited,
                 info,
             });
@@ -103,6 +103,7 @@ impl Process {
                 return SdbError::errno("Tracing failed", errno);
             }
             if execvp(&path_str, &[&path_str]).is_err() {
+                eprintln!("Exec failed");
                 return SdbError::new("Exec failed");
             }
         } else if let Ok(ForkResult::Parent { child }) = fork_res {
@@ -143,5 +144,28 @@ impl Drop for Process {
                 waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    use std::path::Path;
+
+    fn process_exists(pid: Pid) -> bool {
+        return kill(pid, None).is_ok();
+    }
+
+    #[test]
+    fn launch_success() {
+        let proc = super::Process::launch(Path::new("yes"));
+        assert!(process_exists(proc.unwrap().pid()));
+    }
+
+    #[test]
+    fn launch_no_such_program() {
+        let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"));
+        assert!(proc.is_err());
     }
 }

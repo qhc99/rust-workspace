@@ -3,12 +3,9 @@
 use std::ffi::CString;
 use std::path::Path;
 
-use nix::sys::ptrace::cont;
 use nix::sys::signal::Signal;
-use nix::sys::wait::{WaitPidFlag, waitpid};
 use nix::unistd::Pid;
 use sdb_error::SdbError;
-use std::process::exit;
 
 pub mod process;
 pub mod sdb_error;
@@ -19,9 +16,8 @@ pub use utils::ResultLogExt;
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
 pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
-    let mut pid = Pid::from_raw(0);
     if args.len() == 3 && args[1] == "-p" {
-        pid = Pid::from_raw(args[2].parse().unwrap());
+        let pid = Pid::from_raw(args[2].parse().unwrap());
         return Process::attach(pid);
     } else {
         let program_path = CString::new(args[1]).unwrap();
