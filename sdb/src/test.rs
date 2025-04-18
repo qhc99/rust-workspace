@@ -36,3 +36,17 @@ fn process_attach_success() {
 fn process_attach_invalid_pid() {
     assert!(Process::attach(Pid::from_raw(0)).is_err());
 }
+
+#[test]
+fn process_resume_success(){
+    let mut proc = super::Process::launch(Path::new("../target/debug/loop_assign"), true).unwrap();
+    proc.resume().ok();
+    let status = get_process_state(proc.pid());
+    assert!(status == "R" || status == "S");
+
+    let target = super::Process::launch(Path::new("../target/debug/loop_assign"), false).unwrap();
+    let mut proc = Process::attach(target.pid()).unwrap();
+    proc.resume().ok();
+    let status = get_process_state(proc.pid());
+    assert!(status == "R" || status == "S");
+}
