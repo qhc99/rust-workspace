@@ -6,12 +6,9 @@ use libsdb::{ResultLogExt, attach};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use std::{env, process::exit};
-mod libsdb;
 use libsdb::handle_command;
-
-#[cfg(test)]
+mod libsdb;
 mod test;
-#[cfg(test)]
 mod test_utils;
 
 #[cfg(target_os = "linux")]
