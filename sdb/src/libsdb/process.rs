@@ -5,7 +5,7 @@ use nix::{
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
-use std::{ffi::CString, path::Path};
+use std::{ffi::CString, path::Path, process::exit};
 
 use nix::{
     sys::ptrace::traceme,
@@ -95,11 +95,15 @@ impl Process {
         };
     }
 
-    fn exit_with_error(pipe: &Pipe, msg: &str, errno: Errno) {}
+    fn exit_with_error(channel: &Pipe, msg: &str, errno: Errno) -> ! {
+        let err_str = errno.desc();
+        channel.write(format!("{msg}: {err_str}").as_bytes()).ok();
+        exit(-1);
+    }
 
     pub fn launch(path: &Path) -> Result<Box<Process>, SdbError> {
         let fork_res;
-        let channel = Pipe::new(true);
+        let mut channel = Pipe::new(true)?;
         let mut pid = Pid::from_raw(0);
         unsafe {
             // unsafe in signal handler context
@@ -107,15 +111,24 @@ impl Process {
         }
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
+            channel.close_read();
             if let Err(errno) = traceme() {
-                return SdbError::errno("Tracing failed", errno);
+                Process::exit_with_error(&channel, "Tracing failed", errno);
             }
             if execvp(&path_str, &[&path_str]).is_err() {
-                eprintln!("Exec failed");
-                return SdbError::new("Exec failed");
+                Process::exit_with_error(&channel, "Exec failed", Errno::from_raw(0));
             }
         } else if let Ok(ForkResult::Parent { child }) = fork_res {
             pid = child;
+            channel.close_write();
+            let data = channel.read();
+            channel.close_read();
+            if let Ok(msg) = data {
+                if msg.len() > 0 {
+                    waitpid(pid, WaitPidFlag::from_bits(0)).ok();
+                    return SdbError::new(std::str::from_utf8(&msg).unwrap());
+                }
+            }
         } else {
             return SdbError::new("Fork failed");
         }

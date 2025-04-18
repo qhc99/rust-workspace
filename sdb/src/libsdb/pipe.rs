@@ -6,7 +6,7 @@ use nix::unistd::write;
 use std::os::fd::{AsRawFd, OwnedFd};
 
 pub struct Pipe {
-    fds: [Option<Box<OwnedFd>>; 2],
+    fds: [Option<OwnedFd>; 2],
 }
 
 impl Pipe {
@@ -20,7 +20,7 @@ impl Pipe {
             OFlag::from_bits(0).unwrap()
         }) {
             Ok((read, write)) => Ok(Pipe {
-                fds: [Some(Box::new(read)), Some(Box::new(write))],
+                fds: [Some(read), Some(write)],
             }),
             Err(errno) => SdbError::errno("Pipe creation failed", errno),
         }
@@ -34,11 +34,11 @@ impl Pipe {
         self.fds[Pipe::WRITE_FD].as_ref().unwrap().as_raw_fd()
     }
 
-    pub fn release_read(&mut self) -> Box<OwnedFd> {
+    pub fn release_read(&mut self) -> OwnedFd {
         let fd = self.fds[Pipe::READ_FD].take();
         return fd.unwrap();
     }
-    pub fn release_write(&mut self) -> Box<OwnedFd> {
+    pub fn release_write(&mut self) -> OwnedFd {
         let fd = self.fds[Pipe::WRITE_FD].take();
         return fd.unwrap();
     }
@@ -63,11 +63,5 @@ impl Pipe {
             Ok(_) => Ok(()),
             Err(errno) => SdbError::errno("Could not read from pipe", errno),
         }
-    }
-}
-
-impl Drop for Pipe {
-    fn drop(&mut self) {
-        todo!()
     }
 }
