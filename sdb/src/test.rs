@@ -31,8 +31,7 @@ fn build_target_just_exit() -> RustcBuilder {
 fn process_attach_success() {
     let bin = build_target_loop_assign();
     let target = Process::launch(bin.target_path(), false).unwrap();
-    let res = Process::attach(target.pid()).unwrap();
-    let t = get_process_state(target.pid());
+    let _proc = Process::attach(target.pid()).unwrap();
     assert!(get_process_state(target.pid()) == "t");
 }
 
