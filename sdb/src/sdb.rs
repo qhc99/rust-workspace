@@ -11,6 +11,8 @@ use libsdb::handle_command;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_utils;
 
 #[cfg(target_os = "linux")]
 fn main() {
