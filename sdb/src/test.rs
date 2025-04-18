@@ -22,13 +22,13 @@ fn get_process_state(pid: Pid) -> String {
 
 #[test]
 fn process_attach_success() {
-    let status = Command::new("cargo")
+    let _ = Command::new("cargo")
         .args(&["build"])
         .current_dir("resource")
         .status()
         .unwrap();
     let target = Process::launch(Path::new("../target/debug/loop_assign"), false).unwrap();
-    let proc = Process::attach(target.pid()).unwrap();
+    let _ = Process::attach(target.pid()).unwrap();
     assert!(get_process_state(target.pid()) == "t");
 }
 
