@@ -9,6 +9,9 @@ use std::{env, process::exit};
 mod libsdb;
 use libsdb::handle_command;
 
+#[cfg(test)]
+mod test;
+
 #[cfg(target_os = "linux")]
 fn main() {
     let args: Vec<String> = env::args().collect();

@@ -22,7 +22,7 @@ pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
         return Process::attach(pid);
     } else {
         let program_path = CString::new(args[1]).unwrap();
-        return Process::launch(Path::new(program_path.to_str().unwrap()));
+        return Process::launch(Path::new(program_path.to_str().unwrap()), true);
     }
 }
 

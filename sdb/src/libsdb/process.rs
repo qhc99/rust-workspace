@@ -60,14 +60,16 @@ pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // true
     state: ProcessState,    // Stopped
+    is_attached: bool,      // true
 }
 
 impl Process {
-    fn new(pid: Pid, terminate_on_end: bool) -> Self {
+    fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Self {
         Self {
             pid,
             terminate_on_end,
             state: ProcessState::Stopped,
+            is_attached,
         }
     }
 
@@ -98,10 +100,10 @@ impl Process {
     fn exit_with_error(channel: &Pipe, msg: &str, errno: Errno) -> ! {
         let err_str = errno.desc();
         channel.write(format!("{msg}: {err_str}").as_bytes()).ok();
-        exit(-1);
+        exit(-1)
     }
 
-    pub fn launch(path: &Path) -> Result<Box<Process>, SdbError> {
+    pub fn launch(path: &Path, debug: bool /*true*/) -> Result<Box<Process>, SdbError> {
         let fork_res;
         let mut channel = Pipe::new(true)?;
         let mut pid = Pid::from_raw(0);
@@ -112,8 +114,10 @@ impl Process {
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
             channel.close_read();
-            if let Err(errno) = traceme() {
-                Process::exit_with_error(&channel, "Tracing failed", errno);
+            if debug {
+                if let Err(errno) = traceme() {
+                    Process::exit_with_error(&channel, "Tracing failed", errno);
+                }
             }
             if execvp(&path_str, &[&path_str]).is_err() {
                 Process::exit_with_error(&channel, "Exec failed", Errno::from_raw(0));
@@ -133,8 +137,10 @@ impl Process {
             return SdbError::new("Fork failed");
         }
 
-        let proc = Process::new(pid, true);
-        proc.wait_on_signal()?;
+        let proc = Process::new(pid, true, debug);
+        if debug {
+            proc.wait_on_signal()?;
+        }
         return Ok(Box::new(proc));
     }
 
@@ -145,7 +151,7 @@ impl Process {
         if let Err(errno) = nix_attach(pid) {
             return SdbError::errno("Could not attach", errno);
         }
-        let proc = Process::new(pid, false);
+        let proc = Process::new(pid, false, true);
         proc.wait_on_signal()?;
         return Ok(Box::new(proc));
     }
@@ -154,12 +160,14 @@ impl Process {
 impl Drop for Process {
     fn drop(&mut self) {
         if self.pid.as_raw() != 0 {
-            if self.state == ProcessState::Running {
-                kill(self.pid, Signal::SIGSTOP).log_error();
-                waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
+            if self.is_attached {
+                if self.state == ProcessState::Running {
+                    kill(self.pid, Signal::SIGSTOP).log_error();
+                    waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
+                }
+                detach(self.pid, None).log_error();
+                kill(self.pid, Signal::SIGCONT).log_error();
             }
-            detach(self.pid, None).log_error();
-            kill(self.pid, Signal::SIGCONT).log_error();
             if self.terminate_on_end {
                 kill(self.pid, Signal::SIGKILL).log_error();
                 waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
@@ -179,14 +187,14 @@ mod tests {
     }
 
     #[test]
-    fn launch_success() {
-        let proc = super::Process::launch(Path::new("yes"));
+    fn process_launch_success() {
+        let proc = super::Process::launch(Path::new("yes"), true);
         assert!(process_exists(proc.unwrap().pid()));
     }
 
     #[test]
-    fn launch_no_such_program() {
-        let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"));
+    fn process_launch_no_such_program() {
+        let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"), true);
         assert!(proc.is_err());
     }
 }
