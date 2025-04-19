@@ -39,8 +39,7 @@ macro_rules! fpr_size {
     };
 }
 
-static FPR_DEFS: Lazy<Vec<(String, String, String, String, String, String)>> = Lazy::new(|| {
-    // Capture 3 groups: name, number, alias
+static REG_TABLE: Lazy<Vec<(String, String, String, String, String, String)>> = Lazy::new(|| {
     let mut res = Vec::<(String, String, String, String, String, String)>::new();
     
     let re = Regex::new(r"DEFINE_GPR_64\((.+?),(.+?)\)").expect("regex compilation failed");
