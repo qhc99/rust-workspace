@@ -5,14 +5,15 @@ use std::path::Path;
 
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
-use sdb_error::SdbError;
-
-pub mod process;
-pub mod sdb_error;
-mod pipe;
-mod utils;
 use process::{Process, ProcessState, StopReason};
+use sdb_error::SdbError;
 pub use utils::ResultLogExt;
+
+mod pipe;
+pub mod process;
+mod register_info;
+pub mod sdb_error;
+mod utils;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
