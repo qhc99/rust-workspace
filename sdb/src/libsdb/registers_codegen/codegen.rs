@@ -11,7 +11,6 @@ use syn::LitStr;
 
 #[proc_macro]
 pub fn generate_registers(input: TokenStream) -> TokenStream {
-
     let arg = syn::parse_macro_input!(input as LitStr);
     let file_path = arg.value();
     let path = std::env::current_dir().unwrap();
@@ -62,7 +61,6 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
         let name = cap.get(1).unwrap().as_str().trim();
         let super_ = cap.get(2).unwrap().as_str().trim();
         let ident = format_ident!("{super_}");
-
         push(
             format_ident!("{name}"),
             quote! {-1},
@@ -93,7 +91,6 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
         let name = cap.get(1).unwrap().as_str().trim();
         let super_ = cap.get(2).unwrap().as_str().trim();
         let ident = format_ident!("{super_}");
-
         push(
             format_ident!("{name}"),
             quote! {-1},
@@ -109,7 +106,6 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
         let name = cap.get(1).unwrap().as_str().trim();
         let super_ = cap.get(2).unwrap().as_str().trim();
         let ident = format_ident!("{super_}");
-
         push(
             format_ident!("{name}"),
             quote! {-1},
@@ -126,7 +122,6 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
         let dwarf_id = cap.get(2).unwrap().as_str().trim().parse::<i32>().unwrap();
         let user_name = cap.get(3).unwrap().as_str().trim();
         let ident = format_ident!("{user_name}");
-
         push(
             format_ident!("{name}"),
             quote! {#dwarf_id},
@@ -139,7 +134,13 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_ST\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap.get(1).unwrap().as_str().trim().parse::<usize>().unwrap();
+        let number = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .parse::<usize>()
+            .unwrap();
         let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
         let name = Box::leak(Box::new(format!("st{number}")));
         let name = name.as_str();
@@ -155,12 +156,16 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_MM\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap.get(1).unwrap().as_str().trim().parse::<usize>().unwrap();
+        let number = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .parse::<usize>()
+            .unwrap();
         let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
-        let name = format!("mm{number}");
-        let name = name.as_str();
         push(
-            format_ident!("{name}"),
+            format_ident!("mm{number}"),
             quote! {41+#number_i32},
             quote! {8},
             quote!(fpr_offset!(st_space)+#number*16),
@@ -171,15 +176,19 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_XMM\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap.get(1).unwrap().as_str().trim().parse::<usize>().unwrap();
+        let number = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .parse::<usize>()
+            .unwrap();
         let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
-        let name = format!("xmm{number}");
-        let name = name.as_str();
         push(
-            format_ident!("{name}"),
+            format_ident!("xmm{number}"),
             quote! {17+#number_i32},
             quote! {16},
-            quote!(fpr_offset!(st_space)+#number*16),
+            quote!(fpr_offset!(xmm_space)+#number*16),
             quote!(RegisterType::Fpr),
             quote!(RegisterFormat::Vector),
         );
@@ -190,10 +199,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
         let number = cap.get(1).unwrap().as_str().trim();
         let num = number.parse::<usize>().unwrap();
         let offset = offset_of!(user, u_debugreg) + num * 8;
-        let name = format!("dr{number}");
-        let name = name.as_str();
         push(
-            format_ident!("{name}"),
+            format_ident!("dr{number}"),
             quote! {-1},
             quote! {8},
             quote!(#offset),

@@ -1,7 +1,4 @@
 use core::mem::offset_of;
-use core::mem::size_of;
-use std::fs;
-use std::path::Path;
 use libc::user;
 use libc::user_fpregs_struct;
 use libc::user_regs_struct;
@@ -17,12 +14,6 @@ macro_rules! gpr_offset {
 macro_rules! fpr_offset {
     ($reg:ident) => {
         offset_of!(user, i387) + offset_of!(user_fpregs_struct, $reg)
-    };
-}
-
-macro_rules! dr_offset {
-    ($number:ident) => {
-        offset_of!(user, u_debugreg) + number * 8
     };
 }
 
