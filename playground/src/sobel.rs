@@ -15,23 +15,23 @@ use std::f32;
 #[no_mangle]
 pub extern "C" fn sobel(data: &[u8], output: &mut [f32], rows: usize, cols: usize) {
     // Iterate over each pixel, skipping the border pixels
-    for r in 1..rows-1 {
-        for c in 1..cols-1 {
+    for r in 1..rows - 1 {
+        for c in 1..cols - 1 {
             // Calculate Gx using the Sobel kernel for the x-direction
             let gx = -(data[(r - 1) * cols + (c - 1)] as i32)
-                     + data[(r - 1) * cols + (c + 1)] as i32
-                     + (-2 * data[r * cols + (c - 1)] as i32)
-                     + (2 * data[r * cols + (c + 1)] as i32)
-                     + -(data[(r + 1) * cols + (c - 1)] as i32)
-                     + data[(r + 1) * cols + (c + 1)] as i32;
+                + data[(r - 1) * cols + (c + 1)] as i32
+                + (-2 * data[r * cols + (c - 1)] as i32)
+                + (2 * data[r * cols + (c + 1)] as i32)
+                + -(data[(r + 1) * cols + (c - 1)] as i32)
+                + data[(r + 1) * cols + (c + 1)] as i32;
 
             // Calculate Gy using the Sobel kernel for the y-direction
             let gy = -(data[(r - 1) * cols + (c - 1)] as i32)
-                     - 2 * (data[(r - 1) * cols + c] as i32)
-                     - (data[(r - 1) * cols + (c + 1)] as i32)
-                     + data[(r + 1) * cols + (c - 1)] as i32
-                     + 2 * (data[(r + 1) * cols + c] as i32)
-                     + data[(r + 1) * cols + (c + 1)] as i32;
+                - 2 * (data[(r - 1) * cols + c] as i32)
+                - (data[(r - 1) * cols + (c + 1)] as i32)
+                + data[(r + 1) * cols + (c - 1)] as i32
+                + 2 * (data[(r + 1) * cols + c] as i32)
+                + data[(r + 1) * cols + (c + 1)] as i32;
 
             // Compute the gradient magnitude
             let magnitude = ((gx as f32) * (gx as f32) + (gy as f32) * (gy as f32)).sqrt();
@@ -42,4 +42,4 @@ pub extern "C" fn sobel(data: &[u8], output: &mut [f32], rows: usize, cols: usiz
     }
 }
 
-pub fn main(){}
+pub fn main() {}

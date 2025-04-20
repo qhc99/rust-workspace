@@ -36,9 +36,7 @@ fn compute_partial_match_table(p: &[u8]) -> Vec<usize> {
     let mut i = 1usize;
     let mut j = 0usize;
 
-    for i in 1..p.len(){
-        
-    }
+    for i in 1..p.len() {}
 
     return next;
 }

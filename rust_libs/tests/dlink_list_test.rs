@@ -70,4 +70,3 @@ fn dlink_list_iter() {
     assert_eq!(iter.next().unwrap().replace(2), 2);
     assert_eq!(iter.next().unwrap().replace(1), 1);
 }
-

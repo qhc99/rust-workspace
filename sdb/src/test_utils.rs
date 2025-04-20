@@ -1,11 +1,15 @@
 #![cfg(test)]
-use std::{fs, path::{Path, PathBuf}, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub struct RustcBuilder {
     output_path: PathBuf,
 }
-use std::sync::atomic::{AtomicI32, Ordering};
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 static GLOBAL_COUNT: Lazy<AtomicI32> = Lazy::new(|| AtomicI32::new(0));
 
@@ -26,7 +30,7 @@ impl RustcBuilder {
         RustcBuilder { output_path }
     }
 
-    pub fn target_path(&self) -> &Path{
+    pub fn target_path(&self) -> &Path {
         self.output_path.as_path()
     }
 }

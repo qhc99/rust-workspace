@@ -69,4 +69,3 @@ pub fn handle_command(process: &mut Box<Process>, line: &str) -> Result<(), SdbE
     }
     Ok(())
 }
-

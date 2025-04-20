@@ -1,12 +1,12 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("No supported on non-linux system.");
 
+use libsdb::handle_command;
 use libsdb::process::Process;
 use libsdb::{ResultLogExt, attach};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use std::{env, process::exit};
-use libsdb::handle_command;
 mod libsdb;
 mod test;
 mod test_utils;

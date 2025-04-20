@@ -60,4 +60,3 @@ pub struct RegisterInfo {
     type_: RegisterType,
     format: RegisterFormat,
 }
-
