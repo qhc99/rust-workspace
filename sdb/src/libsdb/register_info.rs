@@ -34,21 +34,24 @@ macro_rules! fpr_size {
 
 generate_registers!("sdb/resource/reg_info.txt");
 
-enum RegisterType {
+#[derive(Debug)]
+pub enum RegisterType {
     Gpr, // General purpose register
     SubGpr,
     Fpr, // Float point register
     Dr,  // Debug register
 }
 
-enum RegisterFormat {
+#[derive(Debug)]
+pub enum RegisterFormat {
     Uint,
     DoubleFloat,
     LongDouble,
     Vector,
 }
 
-struct RegisterInfo {
+#[derive(Debug)]
+pub struct RegisterInfo {
     id: RegisterId,
     name: &'static str,
     dwarf_id: i32,
