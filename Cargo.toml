@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust_libs", "playground", "sdb"]
+members = ["rust_libs", "sdb"]
 resolver = "3"
 
 [profile.release]

@@ -54,10 +54,7 @@ fn print_stop_reason(process: &Process, reason: StopReason) {
 }
 
 pub fn handle_command(process: &mut Box<Process>, line: &str) -> Result<(), SdbError> {
-    let args: Vec<&str> = line
-        .split(" ")
-        .filter(|s| !s.is_empty())
-        .collect();
+    let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
     if cmd.starts_with("continue") {
         process.resume()?;
