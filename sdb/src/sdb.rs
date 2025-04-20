@@ -34,9 +34,9 @@ fn main_loop(process: &mut Box<Process>) {
         match readline {
             Ok(line) => {
                 let mut line_str: &str = "";
-                if line == "" {
+                if line.is_empty() {
                     let histroy = rl.history();
-                    let prev = histroy.iter().rev().next();
+                    let prev = histroy.iter().next_back();
                     if let Some(res) = prev {
                         line_str = res;
                     }

@@ -17,7 +17,7 @@ rustyline = "15.0.0"
 zydis = "4.1.1"
 log = "0.4"
 once_cell = "1.21.0"
-register_codegen = { path = "src/libsdb/registers_codegen" }
+register_codegen = { path = "src/libsdb/codegen" }
 
 [dependencies.nix]
 features = ["process", "ptrace"]

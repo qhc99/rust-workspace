@@ -15,5 +15,4 @@ syn = "2.0.100"
 quote = "1.0.40"
 
 [dependencies.nix]
-features = ["process", "ptrace"]
 version = "0.29.0"

@@ -74,7 +74,7 @@ impl Process {
     }
 
     pub fn pid(&self) -> Pid {
-        Pid::from(self.pid)
+        self.pid
     }
 
     pub fn resume(&mut self) -> Result<(), SdbError> {
@@ -128,7 +128,7 @@ impl Process {
             let data = channel.read();
             channel.close_read();
             if let Ok(msg) = data {
-                if msg.len() > 0 {
+                if !msg.is_empty() {
                     waitpid(pid, WaitPidFlag::from_bits(0)).ok();
                     return SdbError::new(std::str::from_utf8(&msg).unwrap());
                 }

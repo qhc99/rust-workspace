@@ -27,7 +27,7 @@ pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
     }
 }
 
-fn print_stop_reason(process: &Box<Process>, reason: StopReason) {
+fn print_stop_reason(process: &Process, reason: StopReason) {
     let pid = process.pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
@@ -56,7 +56,6 @@ fn print_stop_reason(process: &Box<Process>, reason: StopReason) {
 pub fn handle_command(process: &mut Box<Process>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line
         .split(" ")
-        .into_iter()
         .filter(|s| !s.is_empty())
         .collect();
     let cmd = args[0];

@@ -16,7 +16,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
     let path = std::env::current_dir().unwrap();
     let current_path = path.to_str().unwrap();
     let content = fs::read_to_string(Path::new(&file_path))
-        .expect(format!("{current_path}, cannot read {file_path}").as_str());
+        .unwrap_or_else(|_| panic!("{current_path}, cannot read {file_path}"));
 
     let mut variants = Vec::new();
     let mut infos = Vec::new();
