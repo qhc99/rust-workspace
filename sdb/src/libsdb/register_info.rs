@@ -34,7 +34,7 @@ macro_rules! fpr_size {
 
 generate_registers!("sdb/resource/reg_info.txt");
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum RegisterType {
     Gpr, // General purpose register
     SubGpr,
@@ -42,7 +42,7 @@ pub enum RegisterType {
     Dr,  // Debug register
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum RegisterFormat {
     Uint,
     DoubleFloat,
@@ -50,7 +50,7 @@ pub enum RegisterFormat {
     Vector,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RegisterInfo {
     id: RegisterId,
     name: &'static str,
@@ -59,4 +59,30 @@ pub struct RegisterInfo {
     offset: usize,
     type_: RegisterType,
     format: RegisterFormat,
+}
+
+use super::sdb_error::SdbError; // adjust this to your actual module path
+
+pub fn register_info_by_id(id: RegisterId) -> Result<RegisterInfo, SdbError> {
+    GRegisterInfos
+        .iter()
+        .find(|info| info.id == id)
+        .copied()
+        .ok_or_else(|| SdbError::new("Can't find register info"))
+}
+
+pub fn register_info_by_name(name: &str) -> Result<RegisterInfo, SdbError> {
+    GRegisterInfos
+        .iter()
+        .find(|info| info.name == name)
+        .copied()
+        .ok_or_else(|| SdbError::new("Can't find register info"))
+}
+
+pub fn register_info_by_dwarf(dwarf_id: i32) -> Result<RegisterInfo, SdbError> {
+    GRegisterInfos
+        .iter()
+        .find(|info| info.dwarf_id == dwarf_id)
+        .copied()
+        .ok_or_else(|| SdbError::new("Can't find register info"))
 }

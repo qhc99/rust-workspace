@@ -210,7 +210,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
     }
 
     let expanded = quote! {
-        #[derive(Debug)]
+        #[derive(Debug, Clone, Copy, Eq, PartialEq)]
         pub enum RegisterId { #( #variants, )* }
 
         pub static GRegisterInfos: &[RegisterInfo] = &[

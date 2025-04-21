@@ -52,7 +52,7 @@ impl StopReason {
             });
         }
 
-        SdbError::new("Stopped process returns running state")
+        SdbError::err("Stopped process returns running state")
     }
 }
 
@@ -130,11 +130,11 @@ impl Process {
             if let Ok(msg) = data {
                 if !msg.is_empty() {
                     waitpid(pid, WaitPidFlag::from_bits(0)).ok();
-                    return SdbError::new(std::str::from_utf8(&msg).unwrap());
+                    return SdbError::err(std::str::from_utf8(&msg).unwrap());
                 }
             }
         } else {
-            return SdbError::new("Fork failed");
+            return SdbError::err("Fork failed");
         }
 
         let proc = Process::new(pid, true, debug);
@@ -146,7 +146,7 @@ impl Process {
 
     pub fn attach(pid: Pid) -> Result<Box<Process>, SdbError> {
         if pid.as_raw() <= 0 {
-            return SdbError::new("Invalid pid");
+            return SdbError::err("Invalid pid");
         }
         if let Err(errno) = nix_attach(pid) {
             return SdbError::errno("Could not attach", errno);

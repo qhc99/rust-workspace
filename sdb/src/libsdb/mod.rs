@@ -12,7 +12,9 @@ pub use utils::ResultLogExt;
 mod pipe;
 pub mod process;
 mod register_info;
+mod registers;
 pub mod sdb_error;
+mod types;
 mod utils;
 
 /// Not async-signal-safe

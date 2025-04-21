@@ -11,11 +11,18 @@ pub struct SdbError {
 impl Error for SdbError {}
 
 impl SdbError {
-    pub fn new<T>(s: &str) -> Result<T, SdbError> {
+    pub fn err<T>(s: &str) -> Result<T, SdbError> {
         Err(SdbError {
             details: s.to_owned(),
             errno: Errno::UnknownErrno,
         })
+    }
+
+    pub fn new(s: &str) -> SdbError {
+        SdbError {
+            details: s.to_owned(),
+            errno: Errno::UnknownErrno,
+        }
     }
 
     pub fn errno<T>(s: &str, errno: Errno) -> Result<T, SdbError> {
