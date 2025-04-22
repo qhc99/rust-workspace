@@ -42,7 +42,7 @@ pub enum RegisterType {
     Dr,  // Debug register
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterFormat {
     Uint,
     DoubleFloat,
@@ -52,13 +52,13 @@ pub enum RegisterFormat {
 
 #[derive(Debug, Clone, Copy)]
 pub struct RegisterInfo {
-    id: RegisterId,
-    name: &'static str,
-    dwarf_id: i32,
-    size: usize,
-    offset: usize,
-    type_: RegisterType,
-    format: RegisterFormat,
+    pub id: RegisterId,
+    pub name: &'static str,
+    pub dwarf_id: i32,
+    pub size: usize,
+    pub offset: usize,
+    pub type_: RegisterType,
+    pub format: RegisterFormat,
 }
 
 use super::sdb_error::SdbError; // adjust this to your actual module path
