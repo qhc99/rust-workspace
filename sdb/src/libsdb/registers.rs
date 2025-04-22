@@ -6,6 +6,7 @@ use super::register_info::RegisterInfo;
 use super::register_info::register_info_by_id;
 use super::types::{Byte64, Byte128};
 use nix::libc::user;
+use softfloat_wrapper::F128;
 
 struct Registers<'a> {
     data: user,
@@ -23,7 +24,7 @@ enum RegisterValue {
     I64(i64),
     F32(f32),
     F64(f64),
-    F128(f64), // TODO
+    F128(F128),
     Byte64(Byte64),
     Byte128(Byte128),
 }
@@ -52,6 +53,7 @@ impl_from_register_value!(i32, I32);
 impl_from_register_value!(i64, I64);
 impl_from_register_value!(f32, F32);
 impl_from_register_value!(f64, F64);
+impl_from_register_value!(F128, F128);
 impl_from_register_value!(Byte64, Byte64);
 impl_from_register_value!(Byte128, Byte128);
 

@@ -16,6 +16,7 @@ mod registers;
 pub mod sdb_error;
 mod types;
 mod utils;
+mod bit;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
