@@ -3,6 +3,7 @@ use libc::user;
 use libc::user_fpregs_struct;
 use libc::user_regs_struct;
 use nix::libc;
+use num_enum::TryFromPrimitive;
 use register_codegen::generate_registers;
 
 macro_rules! gpr_offset {

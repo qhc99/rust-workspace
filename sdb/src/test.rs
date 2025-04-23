@@ -60,6 +60,6 @@ fn process_resume_terminated() {
     let bin = build_target_just_exit();
     let proc = super::Process::launch(bin.target_path(), true).unwrap();
     proc.borrow_mut().resume().ok();
-    proc.borrow().wait_on_signal().ok();
+    proc.borrow_mut().wait_on_signal().ok();
     assert!(proc.borrow_mut().resume().is_err());
 }

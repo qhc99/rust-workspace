@@ -1,7 +1,7 @@
 use nix::{
     errno::Errno,
     sys::{
-        ptrace::{attach as nix_attach, detach, getregs, write_user},
+        ptrace::{attach as nix_attach, detach, getregs, read_user, write_user},
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
@@ -21,6 +21,10 @@ use std::{
     process::exit,
     rc::Rc,
 };
+
+use super::register_info::register_info_by_id;
+
+use super::register_info::RegisterId;
 
 use super::registers::Registers;
 
@@ -108,11 +112,19 @@ impl Process {
         self.state
     }
 
-    pub fn wait_on_signal(&self) -> Result<StopReason, SdbError> {
+    pub fn wait_on_signal(&mut self) -> Result<StopReason, SdbError> {
         let wait_status = waitpid(self.pid, WaitPidFlag::from_bits(0));
         return match wait_status {
             Err(errno) => SdbError::errno("waitpid failed", errno),
-            Ok(status) => Ok(StopReason::new(status)?),
+            Ok(status) => {
+                let reason = StopReason::new(status)?;
+                self.state = reason.reason;
+
+                if self.is_attached && self.state == ProcessState::Stopped {
+                    self.read_all_registers()?;
+                }
+                Ok(reason)
+            }
         };
     }
 
@@ -161,7 +173,7 @@ impl Process {
 
         let proc = Process::new(pid, true, debug);
         if debug {
-            proc.borrow().wait_on_signal()?;
+            proc.borrow_mut().wait_on_signal()?;
         }
         return Ok(proc);
     }
@@ -174,7 +186,7 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false, true);
-        proc.borrow().wait_on_signal()?;
+        proc.borrow_mut().wait_on_signal()?;
         return Ok(proc);
     }
 
@@ -218,7 +230,21 @@ impl Process {
             }
         }
         for i in 0..8 {
-            todo!()
+            let id = RegisterId::dr0 as i32 + i;
+            let info = register_info_by_id(RegisterId::try_from(id).unwrap())?;
+
+            match read_user(self.pid, info.offset as *mut c_void) {
+                Ok(data) => {
+                    self.registers
+                        .as_deref()
+                        .unwrap()
+                        .borrow_mut()
+                        .data
+                        .0
+                        .u_debugreg[i as usize] = data as u64;
+                }
+                Err(errno) => SdbError::errno("Could not read debug register", errno)?,
+            };
         }
 
         Ok(())

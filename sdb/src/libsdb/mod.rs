@@ -1,8 +1,9 @@
 #![cfg(target_os = "linux")]
+#![allow(dead_code)]
 
 use std::cell::RefCell;
-use std::{ffi::CString, rc::Rc};
 use std::path::Path;
+use std::{ffi::CString, rc::Rc};
 
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -10,6 +11,7 @@ use process::{Process, ProcessState, StopReason};
 use sdb_error::SdbError;
 pub use utils::ResultLogExt;
 
+mod bit;
 mod pipe;
 pub mod process;
 mod register_info;
@@ -17,7 +19,6 @@ mod registers;
 pub mod sdb_error;
 mod types;
 mod utils;
-mod bit;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
@@ -62,7 +63,7 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
     let cmd = args[0];
     if cmd.starts_with("continue") {
         process.borrow_mut().resume()?;
-        let reason = process.borrow().wait_on_signal()?;
+        let reason = process.borrow_mut().wait_on_signal()?;
         print_stop_reason(process, reason);
     } else {
         log::error!("Unknown command");

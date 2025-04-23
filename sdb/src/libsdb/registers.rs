@@ -31,7 +31,6 @@ unsafe impl AnyBitPattern for User {}
 unsafe impl Zeroable for User {}
 
 impl Default for User {
-
     fn default() -> Self {
         // SAFETY: all-zero is a valid bit-pattern for `libc::user`
         unsafe { Self(zeroed()) }
@@ -99,7 +98,10 @@ impl_from_register_value!(Byte128, Byte128);
 
 impl Registers {
     pub fn new(proc: Weak<RefCell<Process>>) -> Self {
-        Self { data: User::default(), process: proc }
+        Self {
+            data: User::default(),
+            process: proc,
+        }
     }
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = as_bytes(&self.data);
