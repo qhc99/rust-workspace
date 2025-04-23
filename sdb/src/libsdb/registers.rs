@@ -18,6 +18,7 @@ use bytemuck::NoUninit;
 use bytemuck::Zeroable;
 use nix::libc::user;
 use softfloat_wrapper::F128;
+use std::mem::zeroed;
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
@@ -28,6 +29,14 @@ unsafe impl NoUninit for User {}
 unsafe impl AnyBitPattern for User {}
 
 unsafe impl Zeroable for User {}
+
+impl Default for User {
+
+    fn default() -> Self {
+        // SAFETY: all-zero is a valid bit-pattern for `libc::user`
+        unsafe { Self(zeroed()) }
+    }
+}
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
@@ -90,7 +99,7 @@ impl_from_register_value!(Byte128, Byte128);
 
 impl Registers {
     pub fn new(proc: Weak<RefCell<Process>>) -> Self {
-        todo!()
+        Self { data: User::default(), process: proc }
     }
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = as_bytes(&self.data);

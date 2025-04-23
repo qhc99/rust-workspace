@@ -1,7 +1,7 @@
 use nix::{
     errno::Errno,
     sys::{
-        ptrace::{attach as nix_attach, detach, getregs},
+        ptrace::{attach as nix_attach, detach, getregs, write_user},
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
@@ -16,6 +16,7 @@ use nix::{
 use std::{
     cell::{Ref, RefCell, RefMut},
     ffi::CString,
+    os::raw::c_void,
     path::Path,
     process::exit,
     rc::Rc,
@@ -178,6 +179,21 @@ impl Process {
     }
 
     pub fn write_user_area(&self, offset: usize, data: u64) -> Result<(), SdbError> {
+        match write_user(self.pid, offset as *mut c_void, data.try_into().unwrap()) {
+            Ok(_) => Ok(()),
+            Err(errno) => SdbError::errno("Could not write user area", errno),
+        }
+    }
+
+    pub fn get_registers(&self) -> Ref<'_, Registers> {
+        self.registers.as_deref().unwrap().borrow()
+    }
+
+    pub fn get_registers_mut(&mut self) -> RefMut<'_, Registers> {
+        self.registers.as_deref().unwrap().borrow_mut()
+    }
+
+    pub fn read_all_registers(&self) -> Result<(), SdbError> {
         let regs = getregs(self.pid);
         match regs {
             Ok(data) => {
@@ -201,21 +217,12 @@ impl Process {
                 );
             }
         }
-        for i in 0..8{
+        for i in 0..8 {
             todo!()
         }
+
         Ok(())
     }
-
-    pub fn get_registers(&self) -> Ref<'_, Registers> {
-        self.registers.as_deref().unwrap().borrow()
-    }
-
-    pub fn get_registers_mut(&mut self) -> RefMut<'_, Registers> {
-        self.registers.as_deref().unwrap().borrow_mut()
-    }
-
-    pub fn read_all_registers() {}
 }
 
 impl Drop for Process {
