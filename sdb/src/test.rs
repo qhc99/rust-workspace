@@ -31,8 +31,8 @@ fn build_target_just_exit() -> RustcBuilder {
 fn process_attach_success() {
     let bin = build_target_loop_assign();
     let target = Process::launch(bin.target_path(), false).unwrap();
-    let _proc = Process::attach(target.pid()).unwrap();
-    assert!(get_process_state(target.pid()) == "t");
+    let _proc = Process::attach(target.borrow().pid()).unwrap();
+    assert!(get_process_state(target.borrow().pid()) == "t");
 }
 
 #[test]
@@ -43,23 +43,23 @@ fn process_attach_invalid_pid() {
 #[test]
 fn process_resume_success() {
     let bin = build_target_loop_assign();
-    let mut proc = super::Process::launch(bin.target_path(), true).unwrap();
-    proc.resume().ok();
-    let status = get_process_state(proc.pid());
+    let proc = super::Process::launch(bin.target_path(), true).unwrap();
+    proc.borrow_mut().resume().ok();
+    let status = get_process_state(proc.borrow().pid());
     assert!(status == "R" || status == "S");
 
     let target = super::Process::launch(bin.target_path(), false).unwrap();
-    let mut proc = Process::attach(target.pid()).unwrap();
-    proc.resume().ok();
-    let status = get_process_state(proc.pid());
+    let proc = Process::attach(target.borrow().pid()).unwrap();
+    proc.borrow_mut().resume().ok();
+    let status = get_process_state(proc.borrow().pid());
     assert!(status == "R" || status == "S");
 }
 
 #[test]
 fn process_resume_terminated() {
     let bin = build_target_just_exit();
-    let mut proc = super::Process::launch(bin.target_path(), true).unwrap();
-    proc.resume().ok();
-    proc.wait_on_signal().ok();
-    assert!(proc.resume().is_err());
+    let proc = super::Process::launch(bin.target_path(), true).unwrap();
+    proc.borrow_mut().resume().ok();
+    proc.borrow().wait_on_signal().ok();
+    assert!(proc.borrow_mut().resume().is_err());
 }

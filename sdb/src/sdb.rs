@@ -6,6 +6,8 @@ use libsdb::process::Process;
 use libsdb::{ResultLogExt, attach};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::{env, process::exit};
 mod libsdb;
 mod test;
@@ -22,12 +24,12 @@ fn main() {
     let args_slice: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let process = attach(&args_slice);
     match process {
-        Ok(mut process) => main_loop(&mut process),
+        Ok(process) => main_loop(&process),
         err => err.log_error(),
     }
 }
 
-fn main_loop(process: &mut Box<Process>) {
+fn main_loop(process: &Rc<RefCell<Process>>) {
     let mut rl = DefaultEditor::new().unwrap();
     loop {
         let readline = rl.readline(">> ");

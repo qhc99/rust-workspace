@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
-use std::ffi::CString;
+use std::cell::RefCell;
+use std::{ffi::CString, rc::Rc};
 use std::path::Path;
 
 use nix::sys::signal::Signal;
@@ -20,7 +21,7 @@ mod bit;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
-pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
+pub fn attach(args: &[&str]) -> Result<Rc<RefCell<Process>>, SdbError> {
     if args.len() == 3 && args[1] == "-p" {
         let pid = Pid::from_raw(args[2].parse().unwrap());
         return Process::attach(pid);
@@ -30,8 +31,8 @@ pub fn attach(args: &[&str]) -> Result<Box<Process>, SdbError> {
     }
 }
 
-fn print_stop_reason(process: &Process, reason: StopReason) {
-    let pid = process.pid();
+fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
+    let pid = process.borrow().pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
         ProcessState::Exited => {
@@ -56,12 +57,12 @@ fn print_stop_reason(process: &Process, reason: StopReason) {
     log::info!("{msg}");
 }
 
-pub fn handle_command(process: &mut Box<Process>, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
     if cmd.starts_with("continue") {
-        process.resume()?;
-        let reason = process.wait_on_signal()?;
+        process.borrow_mut().resume()?;
+        let reason = process.borrow().wait_on_signal()?;
         print_stop_reason(process, reason);
     } else {
         log::error!("Unknown command");

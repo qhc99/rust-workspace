@@ -1,16 +1,27 @@
 use nix::{
     errno::Errno,
     sys::{
-        ptrace::{attach as nix_attach, detach},
+        ptrace::{attach as nix_attach, detach, getregs},
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
-use std::{ffi::CString, path::Path, process::exit};
 
+use nix::libc::__errno_location;
+use nix::libc::PTRACE_GETFPREGS;
+use nix::libc::ptrace;
 use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    ffi::CString,
+    path::Path,
+    process::exit,
+    rc::Rc,
+};
+
+use super::registers::Registers;
 
 use super::pipe::Pipe;
 
@@ -61,16 +72,23 @@ pub struct Process {
     terminate_on_end: bool, // true
     state: ProcessState,    // Stopped
     is_attached: bool,      // true
+    registers: Option<Rc<RefCell<Registers>>>,
 }
 
 impl Process {
-    fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Self {
-        Self {
+    fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<RefCell<Self>> {
+        let res = Self {
             pid,
             terminate_on_end,
             state: ProcessState::Stopped,
             is_attached,
-        }
+            registers: None,
+        };
+
+        let res = Rc::new(RefCell::new(res));
+        res.borrow_mut().registers =
+            Some(Rc::new(RefCell::new(Registers::new(Rc::downgrade(&res)))));
+        res
     }
 
     pub fn pid(&self) -> Pid {
@@ -103,7 +121,10 @@ impl Process {
         exit(-1)
     }
 
-    pub fn launch(path: &Path, debug: bool /*true*/) -> Result<Box<Process>, SdbError> {
+    pub fn launch(
+        path: &Path,
+        debug: bool, /*true*/
+    ) -> Result<Rc<RefCell<Process>>, SdbError> {
         let fork_res;
         let mut channel = Pipe::new(true)?;
         let mut pid = Pid::from_raw(0);
@@ -139,12 +160,12 @@ impl Process {
 
         let proc = Process::new(pid, true, debug);
         if debug {
-            proc.wait_on_signal()?;
+            proc.borrow().wait_on_signal()?;
         }
-        return Ok(Box::new(proc));
+        return Ok(proc);
     }
 
-    pub fn attach(pid: Pid) -> Result<Box<Process>, SdbError> {
+    pub fn attach(pid: Pid) -> Result<Rc<RefCell<Process>>, SdbError> {
         if pid.as_raw() <= 0 {
             return SdbError::err("Invalid pid");
         }
@@ -152,9 +173,49 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false, true);
-        proc.wait_on_signal()?;
-        return Ok(Box::new(proc));
+        proc.borrow().wait_on_signal()?;
+        return Ok(proc);
     }
+
+    pub fn write_user_area(&self, offset: usize, data: u64) -> Result<(), SdbError> {
+        let regs = getregs(self.pid);
+        match regs {
+            Ok(data) => {
+                self.registers.as_deref().unwrap().borrow_mut().data.0.regs = data;
+                Ok(())
+            }
+            Err(errno) => SdbError::errno("Could not read GPR registers", errno),
+        }?;
+
+        unsafe {
+            if ptrace(
+                PTRACE_GETFPREGS,
+                self.pid,
+                0,
+                &self.registers.as_deref().unwrap().borrow_mut().data.0.i387,
+            ) < 0
+            {
+                return SdbError::errno(
+                    "Could not read FPR registers",
+                    Errno::from_raw(*__errno_location()),
+                );
+            }
+        }
+        for i in 0..8{
+            todo!()
+        }
+        Ok(())
+    }
+
+    pub fn get_registers(&self) -> Ref<'_, Registers> {
+        self.registers.as_deref().unwrap().borrow()
+    }
+
+    pub fn get_registers_mut(&mut self) -> RefMut<'_, Registers> {
+        self.registers.as_deref().unwrap().borrow_mut()
+    }
+
+    pub fn read_all_registers() {}
 }
 
 impl Drop for Process {
@@ -189,7 +250,7 @@ mod tests {
     #[test]
     fn process_launch_success() {
         let proc = super::Process::launch(Path::new("yes"), true);
-        assert!(process_exists(proc.unwrap().pid()));
+        assert!(process_exists(proc.unwrap().borrow().pid()));
     }
 
     #[test]

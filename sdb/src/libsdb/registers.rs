@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Weak;
+
 use super::register_info::RegisterFormat;
 
 use super::sdb_error::SdbError;
@@ -18,7 +21,7 @@ use softfloat_wrapper::F128;
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub struct User(user);
+pub struct User(pub user);
 
 unsafe impl NoUninit for User {} // now allowed: trait OR type is local
 
@@ -32,12 +35,12 @@ unsafe impl AnyBitPattern for f128 {}
 
 unsafe impl NoUninit for f128 {}
 
-struct Registers<'a> {
-    data: User,
-    process: &'a Process,
+pub struct Registers {
+    pub data: User,
+    process: Weak<RefCell<Process>>,
 }
 
-enum RegisterValue {
+pub enum RegisterValue {
     U8(u8),
     U16(u16),
     U32(u32),
@@ -81,7 +84,11 @@ impl_from_register_value!(f128, F128);
 impl_from_register_value!(Byte64, Byte64);
 impl_from_register_value!(Byte128, Byte128);
 
-impl Registers<'_> {
+impl Registers {
+
+    pub fn new(proc: Weak<RefCell<Process>>)-> Self {
+        todo!()
+    }
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = as_bytes(&self.data);
         match info.format {
@@ -108,7 +115,8 @@ impl Registers<'_> {
             ))),
         }
     }
-    fn write(&self, info: &RegisterInfo, mut value: RegisterValue) {
+
+    fn write(&self, info: &RegisterInfo, mut value: RegisterValue) -> Result<(), SdbError>  {
         let bytes = as_bytes(&self.data);
         match &mut value {
             RegisterValue::U8(v) if size_of::<u8>() == info.size => {
@@ -165,6 +173,11 @@ impl Registers<'_> {
             }
             _ => panic!("sdb::register::write called with mismatched register and value sizes"),
         }
+        self.process
+            .upgrade()
+            .unwrap().borrow()
+            .write_user_area(info.offset, from_bytes(&bytes[..info.offset]))?;
+        Ok(())
     }
 
     pub fn read_by_id_as<T>(&self, id: RegisterId) -> Result<T, SdbError>
