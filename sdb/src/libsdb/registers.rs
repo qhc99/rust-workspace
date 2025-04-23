@@ -23,7 +23,11 @@ use softfloat_wrapper::F128;
 #[derive(Clone, Copy)]
 pub struct User(pub user);
 
-unsafe impl NoUninit for User {} // now allowed: trait OR type is local
+unsafe impl NoUninit for User {}
+
+unsafe impl AnyBitPattern for User {}
+
+unsafe impl Zeroable for User {}
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
@@ -85,8 +89,7 @@ impl_from_register_value!(Byte64, Byte64);
 impl_from_register_value!(Byte128, Byte128);
 
 impl Registers {
-
-    pub fn new(proc: Weak<RefCell<Process>>)-> Self {
+    pub fn new(proc: Weak<RefCell<Process>>) -> Self {
         todo!()
     }
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
@@ -116,66 +119,55 @@ impl Registers {
         }
     }
 
-    fn write(&self, info: &RegisterInfo, mut value: RegisterValue) -> Result<(), SdbError>  {
-        let bytes = as_bytes(&self.data);
+    fn write(&mut self, info: &RegisterInfo, mut value: RegisterValue) -> Result<(), SdbError> {
+        let bytes = as_bytes_mut(&mut self.data);
+        let slice = &mut bytes[info.offset..info.offset + info.size];
         match &mut value {
             RegisterValue::U8(v) if size_of::<u8>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<u8>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::U16(v) if size_of::<u16>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<u16>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::U32(v) if size_of::<u32>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<u32>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::U64(v) if size_of::<u64>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<u64>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::I8(v) if size_of::<i8>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<i8>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::I16(v) if size_of::<i16>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<i16>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::I32(v) if size_of::<i32>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<i32>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::I64(v) if size_of::<i64>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<i64>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::F32(v) if size_of::<f32>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<f32>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::F64(v) if size_of::<f64>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<f64>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::F128(v) if size_of::<f128>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<f128>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::Byte64(v) if size_of::<Byte64>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<Byte64>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             RegisterValue::Byte128(v) if size_of::<Byte128>() == info.size => {
-                let src = &bytes[info.offset..info.offset + size_of::<Byte128>()];
-                as_bytes_mut(v).copy_from_slice(src);
+                slice.copy_from_slice(as_bytes(v));
             }
             _ => panic!("sdb::register::write called with mismatched register and value sizes"),
         }
         self.process
             .upgrade()
-            .unwrap().borrow()
+            .unwrap()
+            .borrow()
             .write_user_area(info.offset, from_bytes(&bytes[..info.offset]))?;
         Ok(())
     }
@@ -189,9 +181,9 @@ impl Registers {
         Ok(T::from(value))
     }
 
-    pub fn write_by_id(&self, id: RegisterId, value: RegisterValue) -> Result<(), SdbError> {
+    pub fn write_by_id(&mut self, id: RegisterId, value: RegisterValue) -> Result<(), SdbError> {
         let info = register_info_by_id(id)?;
-        self.write(&info, value);
+        self.write(&info, value)?;
         Ok(())
     }
 }
