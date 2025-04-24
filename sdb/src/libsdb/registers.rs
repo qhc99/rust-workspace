@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Weak;
 
+use super::register_info::RegisterType;
+
 use super::register_info::RegisterFormat;
 
 use super::sdb_error::SdbError;
@@ -15,6 +17,7 @@ use super::register_info::register_info_by_id;
 use super::types::{Byte64, Byte128};
 use bytemuck::AnyBitPattern;
 use bytemuck::NoUninit;
+use bytemuck::Pod;
 use bytemuck::Zeroable;
 use nix::libc::user;
 use softfloat_wrapper::F128;
@@ -39,13 +42,24 @@ impl Default for User {
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub struct f128(F128);
+#[allow(non_camel_case_types)]
+pub struct f128(pub F128);
+
+impl From<f32> for f128{
+    fn from(value: f32) -> Self {
+        Self(F128::from_f32(value))
+    }
+}
+
+impl From<f64> for f128{
+    fn from(value: f64) -> Self {
+        Self(F128::from_f64(value))
+    }
+}
 
 unsafe impl Zeroable for f128 {}
 
-unsafe impl AnyBitPattern for f128 {}
-
-unsafe impl NoUninit for f128 {}
+unsafe impl Pod for f128 {}
 
 pub struct Registers {
     pub data: User,
@@ -106,7 +120,7 @@ impl Registers {
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = as_bytes(&self.data);
         match info.format {
-            RegisterFormat::Uint => match info.size {
+            RegisterFormat::UInt => match info.size {
                 1 => Ok(RegisterValue::U8(from_bytes::<u8>(&bytes[info.offset..]))),
                 2 => Ok(RegisterValue::U16(from_bytes::<u16>(&bytes[info.offset..]))),
                 4 => Ok(RegisterValue::U32(from_bytes::<u32>(&bytes[info.offset..]))),
@@ -173,13 +187,23 @@ impl Registers {
             RegisterValue::Byte128(v) if size_of::<Byte128>() == info.size => {
                 slice.copy_from_slice(as_bytes(v));
             }
-            _ => panic!("sdb::register::write called with mismatched register and value sizes"),
+            _ => panic!("register::write called with mismatched register and value sizes"),
         }
-        self.process
-            .upgrade()
-            .unwrap()
-            .borrow()
-            .write_user_area(info.offset, from_bytes(&bytes[..info.offset]))?;
+        if info.type_ == RegisterType::Fpr {
+            self.process
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .write_fprs(&mut self.data.0.i387)?;
+        } else {
+            let aligned_offset = info.offset & !0b111;
+            self.process
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .write_user_area(info.offset, from_bytes(&bytes[..aligned_offset]))?;
+        }
+
         Ok(())
     }
 

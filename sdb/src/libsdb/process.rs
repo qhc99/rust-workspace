@@ -1,5 +1,6 @@
 use nix::{
     errno::Errno,
+    libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, user_fpregs_struct, user_regs_struct},
     sys::{
         ptrace::{attach as nix_attach, detach, getregs, read_user, write_user},
         wait::{WaitPidFlag, WaitStatus, waitpid},
@@ -220,7 +221,7 @@ impl Process {
                 PTRACE_GETFPREGS,
                 self.pid,
                 0,
-                &self.registers.as_deref().unwrap().borrow_mut().data.0.i387,
+                &mut self.registers.as_deref().unwrap().borrow_mut().data.0.i387,
             ) < 0
             {
                 return SdbError::errno(
@@ -248,6 +249,30 @@ impl Process {
         }
 
         Ok(())
+    }
+
+    pub fn write_gprs(&self, gprs: &mut user_regs_struct) -> Result<(), SdbError> {
+        unsafe {
+            if ptrace(PTRACE_SETREGS, self.pid, 0, gprs) < 0 {
+                return SdbError::errno(
+                    "Could not write GPR registers",
+                    Errno::from_raw(*__errno_location()),
+                );
+            }
+            Ok(())
+        }
+    }
+
+    pub fn write_fprs(&self, fprs: &mut user_fpregs_struct) -> Result<(), SdbError> {
+        unsafe {
+            if ptrace(PTRACE_SETFPREGS, self.pid, 0, fprs) < 0 {
+                return SdbError::errno(
+                    "Could not write FPR registers",
+                    Errno::from_raw(*__errno_location()),
+                );
+            }
+            Ok(())
+        }
     }
 }
 

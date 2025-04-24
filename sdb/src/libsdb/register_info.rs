@@ -35,7 +35,7 @@ macro_rules! fpr_size {
 
 generate_registers!("sdb/resource/reg_info.txt");
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterType {
     Gpr, // General purpose register
     SubGpr,
@@ -45,7 +45,7 @@ pub enum RegisterType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterFormat {
-    Uint,
+    UInt,
     DoubleFloat,
     LongDouble,
     Vector,

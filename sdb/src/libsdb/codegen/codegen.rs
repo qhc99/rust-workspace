@@ -205,7 +205,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote! {8},
             quote!(#offset),
             quote!(RegisterType::Dr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
