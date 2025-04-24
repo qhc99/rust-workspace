@@ -52,7 +52,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote!(8),
             quote!(gpr_offset!(#ident)),
             quote!(RegisterType::Gpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
@@ -67,7 +67,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote! {4},
             quote!(gpr_offset!(#ident)),
             quote!(RegisterType::SubGpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
@@ -82,7 +82,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote! {2},
             quote!(gpr_offset!(#ident)),
             quote!(RegisterType::SubGpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
@@ -97,7 +97,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote! {1},
             quote!(gpr_offset!(#ident) + 1),
             quote!(RegisterType::SubGpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
@@ -112,7 +112,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote! {1},
             quote!(gpr_offset!(#ident)),
             quote!(RegisterType::SubGpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
@@ -128,7 +128,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
             quote!(fpr_size!(#ident)),
             quote!(fpr_offset!(#ident)),
             quote!(RegisterType::Fpr),
-            quote!(RegisterFormat::Uint),
+            quote!(RegisterFormat::UInt),
         );
     }
 
