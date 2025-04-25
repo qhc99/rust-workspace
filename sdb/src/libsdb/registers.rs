@@ -111,6 +111,20 @@ impl_from_register_value!(f128, F128);
 impl_from_register_value!(Byte64, Byte64);
 impl_from_register_value!(Byte128, Byte128);
 
+macro_rules! write_cases {
+    ( $value:expr, $slice:expr, $info:expr, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
+        match $value {
+            $(
+                RegisterValue::$variant(v)
+                    if size_of::<$ty>() == $info.size => {
+                        $slice.copy_from_slice(as_bytes(&v));
+                    }
+            )+
+            _ => panic!("register::write called with mismatched register and value sizes"),
+        }
+    };
+}
+
 impl Registers {
     pub fn new(proc: Weak<RefCell<Process>>) -> Self {
         Self {
@@ -145,51 +159,19 @@ impl Registers {
         }
     }
 
+    
+
     fn write(&mut self, info: &RegisterInfo, mut value: RegisterValue) -> Result<(), SdbError> {
         let bytes = as_bytes_mut(&mut self.data);
         let slice = &mut bytes[info.offset..info.offset + info.size];
-        match &mut value {
-            RegisterValue::U8(v) if size_of::<u8>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::U16(v) if size_of::<u16>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::U32(v) if size_of::<u32>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::U64(v) if size_of::<u64>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::I8(v) if size_of::<i8>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::I16(v) if size_of::<i16>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::I32(v) if size_of::<i32>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::I64(v) if size_of::<i64>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::F32(v) if size_of::<f32>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::F64(v) if size_of::<f64>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::F128(v) if size_of::<f128>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::Byte64(v) if size_of::<Byte64>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            RegisterValue::Byte128(v) if size_of::<Byte128>() == info.size => {
-                slice.copy_from_slice(as_bytes(v));
-            }
-            _ => panic!("register::write called with mismatched register and value sizes"),
-        }
+
+        write_cases!(
+            value, slice, info,
+            /* unsigned  */ U8 => u8,   U16 => u16, U32 => u32, U64 => u64,
+            /* signed    */ I8 => i8,   I16 => i16, I32 => i32, I64 => i64,
+            /* floats    */ F32 => f32, F64 => f64, F128 => f128,
+            /* vectors   */ Byte64 => Byte64, Byte128 => Byte128,
+        );
         if info.type_ == RegisterType::Fpr {
             self.process
                 .upgrade()
