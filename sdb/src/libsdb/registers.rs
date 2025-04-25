@@ -236,7 +236,7 @@ macro_rules! impl_widen_float {
                 match info.format {
                     RegisterFormat::DoubleFloat => to_byte128(self as f64),
                     RegisterFormat::LongDouble  => to_byte128(f128::from(self)),
-                    _                           => panic!("Unhandled match"),
+                    _                           => to_byte128(self),
                 }
             }
         }
@@ -255,10 +255,10 @@ macro_rules! impl_widen_signed {
                         2 => to_byte128(self as i16),
                         4 => to_byte128(self as i32),
                         8 => to_byte128(self as i64),
-                        _ => panic!("Unhandled match"),
+                        _ => to_byte128(self),
                     }
                 } else {
-                    panic!("Unhandled match")
+                    to_byte128(self)
                 }
             }
         }
