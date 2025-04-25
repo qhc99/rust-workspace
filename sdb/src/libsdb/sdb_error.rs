@@ -1,5 +1,5 @@
-use std::{error::Error, fmt::Display};
 use nix::errno::Errno;
+use std::{error::Error, fmt::Display};
 
 #[derive(Debug)]
 pub struct SdbError {

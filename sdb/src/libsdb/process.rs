@@ -1,3 +1,15 @@
+use super::pipe::Pipe;
+use super::register_info::RegisterId;
+use super::register_info::register_info_by_id;
+use super::registers::Registers;
+use super::sdb_error::SdbError;
+use super::utils::ResultLogExt;
+use nix::libc::__errno_location;
+use nix::libc::PTRACE_GETFPREGS;
+use nix::libc::ptrace;
+use nix::sys::ptrace::cont;
+use nix::sys::signal::Signal;
+use nix::sys::signal::kill;
 use nix::{
     errno::Errno,
     libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, user_fpregs_struct, user_regs_struct},
@@ -6,9 +18,6 @@ use nix::{
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
-use nix::libc::__errno_location;
-use nix::libc::PTRACE_GETFPREGS;
-use nix::libc::ptrace;
 use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
@@ -21,15 +30,6 @@ use std::{
     process::exit,
     rc::Rc,
 };
-use super::register_info::register_info_by_id;
-use super::register_info::RegisterId;
-use super::registers::Registers;
-use super::pipe::Pipe;
-use super::sdb_error::SdbError;
-use super::utils::ResultLogExt;
-use nix::sys::ptrace::cont;
-use nix::sys::signal::Signal;
-use nix::sys::signal::kill;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ProcessState {

@@ -1,16 +1,14 @@
-use std::cell::RefCell;
-use std::rc::Weak;
-use super::register_info::RegisterType;
-use super::register_info::RegisterFormat;
-use super::sdb_error::SdbError;
 use super::bit::as_bytes;
 use super::bit::as_bytes_mut;
 use super::bit::from_bytes;
 use super::bit::to_byte128;
 use super::process::Process;
+use super::register_info::RegisterFormat;
 use super::register_info::RegisterId;
 use super::register_info::RegisterInfo;
+use super::register_info::RegisterType;
 use super::register_info::register_info_by_id;
+use super::sdb_error::SdbError;
 use super::types::{Byte64, Byte128};
 use bytemuck::AnyBitPattern;
 use bytemuck::NoUninit;
@@ -18,7 +16,9 @@ use bytemuck::Pod;
 use bytemuck::Zeroable;
 use nix::libc::user;
 use softfloat_wrapper::F128;
+use std::cell::RefCell;
 use std::mem::zeroed;
+use std::rc::Weak;
 
 #[repr(transparent)]
 #[derive(Clone, Copy)]

@@ -1,13 +1,13 @@
 #![cfg(target_os = "linux")]
 #![allow(dead_code)]
 
-use std::cell::RefCell;
-use std::path::Path;
-use std::{ffi::CString, rc::Rc};
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use process::{Process, ProcessState, StopReason};
 use sdb_error::SdbError;
+use std::cell::RefCell;
+use std::path::Path;
+use std::{ffi::CString, rc::Rc};
 
 mod bit;
 mod pipe;
@@ -17,9 +17,8 @@ mod types;
 mod utils;
 
 pub use utils::ResultLogExt;
-pub mod sdb_error;
 pub mod process;
-
+pub mod sdb_error;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html

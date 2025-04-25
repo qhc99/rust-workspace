@@ -1,11 +1,11 @@
 #![cfg(test)]
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
 };
-use once_cell::sync::Lazy;
-use std::sync::atomic::{AtomicI32, Ordering};
 pub struct RustcBuilder {
     output_path: PathBuf,
 }
