@@ -1,5 +1,4 @@
 use std::{error::Error, fmt::Display};
-
 use nix::errno::Errno;
 
 #[derive(Debug)]

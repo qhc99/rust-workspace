@@ -6,7 +6,6 @@ use nix::{
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
-
 use nix::libc::__errno_location;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
@@ -22,15 +21,10 @@ use std::{
     process::exit,
     rc::Rc,
 };
-
 use super::register_info::register_info_by_id;
-
 use super::register_info::RegisterId;
-
 use super::registers::Registers;
-
 use super::pipe::Pipe;
-
 use super::sdb_error::SdbError;
 use super::utils::ResultLogExt;
 use nix::sys::ptrace::cont;

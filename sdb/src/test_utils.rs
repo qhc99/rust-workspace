@@ -4,13 +4,11 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicI32, Ordering};
 pub struct RustcBuilder {
     output_path: PathBuf,
 }
-use once_cell::sync::Lazy;
-use std::sync::atomic::{AtomicI32, Ordering};
-
 static GLOBAL_COUNT: Lazy<AtomicI32> = Lazy::new(|| AtomicI32::new(0));
 
 impl RustcBuilder {

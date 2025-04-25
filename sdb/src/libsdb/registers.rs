@@ -1,12 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Weak;
-
 use super::register_info::RegisterType;
-
 use super::register_info::RegisterFormat;
-
 use super::sdb_error::SdbError;
-
 use super::bit::as_bytes;
 use super::bit::as_bytes_mut;
 use super::bit::from_bytes;

@@ -4,21 +4,22 @@
 use std::cell::RefCell;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
-
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use process::{Process, ProcessState, StopReason};
 use sdb_error::SdbError;
-pub use utils::ResultLogExt;
 
 mod bit;
 mod pipe;
-pub mod process;
 mod register_info;
 mod registers;
-pub mod sdb_error;
 mod types;
 mod utils;
+
+pub use utils::ResultLogExt;
+pub mod sdb_error;
+pub mod process;
+
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html

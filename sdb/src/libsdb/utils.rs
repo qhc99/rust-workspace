@@ -1,5 +1,4 @@
 use nix::Result as NixResult;
-
 use super::sdb_error::SdbError;
 
 pub trait ResultLogExt<T> {
