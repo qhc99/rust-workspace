@@ -278,7 +278,7 @@ macro_rules! impl_widen_identity {
     )+};
 }
 
-impl_widen_identity!(u8, u16, u32, u64, Byte64, Byte128);
+impl_widen_identity!(u8, u16, u32, u64, f128, Byte64, Byte128);
 
 #[inline]
 pub fn widen<T: Widen>(info: &RegisterInfo, value: T) -> Byte128 {
