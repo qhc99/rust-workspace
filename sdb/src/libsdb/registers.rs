@@ -159,8 +159,6 @@ impl Registers {
         }
     }
 
-    
-
     fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
         let bytes = as_bytes_mut(&mut self.data);
         let slice = &mut bytes[info.offset..info.offset + info.size];
