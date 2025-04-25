@@ -10,6 +10,7 @@ use super::sdb_error::SdbError;
 use super::bit::as_bytes;
 use super::bit::as_bytes_mut;
 use super::bit::from_bytes;
+use super::bit::to_byte128;
 use super::process::Process;
 use super::register_info::RegisterId;
 use super::register_info::RegisterInfo;
@@ -45,13 +46,13 @@ impl Default for User {
 #[allow(non_camel_case_types)]
 pub struct f128(pub F128);
 
-impl From<f32> for f128{
+impl From<f32> for f128 {
     fn from(value: f32) -> Self {
         Self(F128::from_f32(value))
     }
 }
 
-impl From<f64> for f128{
+impl From<f64> for f128 {
     fn from(value: f64) -> Self {
         Self(F128::from_f64(value))
     }
@@ -221,4 +222,65 @@ impl Registers {
         self.write(&info, value)?;
         Ok(())
     }
+}
+
+pub trait Widen {
+    fn widen(self, info: &RegisterInfo) -> Byte128;
+}
+
+macro_rules! impl_widen_float {
+    ($($t:ty),+ $(,)?) => {$(
+        impl Widen for $t {
+            #[inline]
+            fn widen(self, info: &RegisterInfo) -> Byte128 {
+                match info.format {
+                    RegisterFormat::DoubleFloat => to_byte128(self as f64),
+                    RegisterFormat::LongDouble  => to_byte128(f128::from(self)),
+                    _                           => panic!("Unhandled match"),
+                }
+            }
+        }
+    )+};
+}
+
+impl_widen_float!(f32, f64);
+
+macro_rules! impl_widen_signed {
+    ($($t:ty),+ $(,)?) => {$(
+        impl Widen for $t {
+            #[inline]
+            fn widen(self, info: &RegisterInfo) -> Byte128 {
+                if info.format == RegisterFormat::UInt {
+                    match info.size {
+                        2 => to_byte128(self as i16),
+                        4 => to_byte128(self as i32),
+                        8 => to_byte128(self as i64),
+                        _ => panic!("Unhandled match"),
+                    }
+                } else {
+                    panic!("Unhandled match")
+                }
+            }
+        }
+    )+};
+}
+
+impl_widen_signed!(i8, i16, i32, i64);
+
+macro_rules! impl_widen_identity {
+    ($($t:ty),+) => {$(
+        impl Widen for $t {
+            #[inline]
+            fn widen(self, _info: &RegisterInfo) -> Byte128 {
+                to_byte128(self)
+            }
+        }
+    )+};
+}
+
+impl_widen_identity!(u8, u16, u32, u64, Byte64, Byte128);
+
+#[inline]
+pub fn widen<T: Widen>(info: &RegisterInfo, value: T) -> Byte128 {
+    value.widen(info)
 }
