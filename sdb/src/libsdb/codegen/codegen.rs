@@ -58,8 +58,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_GPR_32\((.+?),(.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let name = cap.get(1).unwrap().as_str().trim();
-        let super_ = cap.get(2).unwrap().as_str().trim();
+        let name = cap[1].trim();
+        let super_ = cap[2].trim();
         let ident = format_ident!("{super_}");
         push(
             format_ident!("{name}"),
@@ -73,8 +73,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_GPR_16\((.+?),(.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let name = cap.get(1).unwrap().as_str().trim();
-        let super_ = cap.get(2).unwrap().as_str().trim();
+        let name = cap[1].trim();
+        let super_ = cap[2].trim();
         let ident = format_ident!("{super_}");
         push(
             format_ident!("{name}"),
@@ -88,8 +88,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_GPR_8H\((.+?),(.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let name = cap.get(1).unwrap().as_str().trim();
-        let super_ = cap.get(2).unwrap().as_str().trim();
+        let name = cap[1].trim();
+        let super_ = cap[2].trim();
         let ident = format_ident!("{super_}");
         push(
             format_ident!("{name}"),
@@ -103,8 +103,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_GPR_8L\((.+?),(.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let name = cap.get(1).unwrap().as_str().trim();
-        let super_ = cap.get(2).unwrap().as_str().trim();
+        let name = cap[1].trim();
+        let super_ = cap[2].trim();
         let ident = format_ident!("{super_}");
         push(
             format_ident!("{name}"),
@@ -118,9 +118,9 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FPR\((.+?),(.+?),(.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let name = cap.get(1).unwrap().as_str().trim();
-        let dwarf_id = cap.get(2).unwrap().as_str().trim().parse::<i32>().unwrap();
-        let user_name = cap.get(3).unwrap().as_str().trim();
+        let name = cap[1].trim();
+        let dwarf_id = cap[2].trim().parse::<i32>().unwrap();
+        let user_name = cap[3].trim();
         let ident = format_ident!("{user_name}");
         push(
             format_ident!("{name}"),
@@ -134,14 +134,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_ST\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap
-            .get(1)
-            .unwrap()
-            .as_str()
-            .trim()
-            .parse::<usize>()
-            .unwrap();
-        let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
+        let number = cap[1].trim().parse::<usize>().unwrap();
+        let number_i32 = cap[1].trim().parse::<i32>().unwrap();
         let name = Box::leak(Box::new(format!("st{number}")));
         let name = name.as_str();
         push(
@@ -156,14 +150,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_MM\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap
-            .get(1)
-            .unwrap()
-            .as_str()
-            .trim()
-            .parse::<usize>()
-            .unwrap();
-        let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
+        let number = cap[1].trim().parse::<usize>().unwrap();
+        let number_i32 = cap[1].trim().parse::<i32>().unwrap();
         push(
             format_ident!("mm{number}"),
             quote! {41+#number_i32},
@@ -176,14 +164,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_FP_XMM\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap
-            .get(1)
-            .unwrap()
-            .as_str()
-            .trim()
-            .parse::<usize>()
-            .unwrap();
-        let number_i32 = cap.get(1).unwrap().as_str().trim().parse::<i32>().unwrap();
+        let number = cap[1].trim().parse::<usize>().unwrap();
+        let number_i32 = cap[1].trim().parse::<i32>().unwrap();
         push(
             format_ident!("xmm{number}"),
             quote! {17+#number_i32},
@@ -196,7 +178,7 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
 
     let re = Regex::new(r"DEFINE_DR\((.+?)\)").expect("regex compilation failed");
     for cap in re.captures_iter(&content) {
-        let number = cap.get(1).unwrap().as_str().trim();
+        let number = cap[1].trim();
         let num = number.parse::<usize>().unwrap();
         let offset = offset_of!(user, u_debugreg) + num * 8;
         push(
