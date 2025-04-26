@@ -108,7 +108,7 @@ impl_from_register_value!(Byte64, Byte64);
 impl_from_register_value!(Byte128, Byte128);
 
 macro_rules! write_cases {
-    ( $value:expr, $slice:expr, $info:expr, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
+    ( $value:ident, $slice:ident, $info:ident, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
         match $value {
             $(
                 RegisterValue::$variant(v)
