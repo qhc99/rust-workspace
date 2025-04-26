@@ -184,10 +184,7 @@ impl Registers {
         Ok(())
     }
 
-    pub fn read_by_id_as<T>(&self, id: RegisterId) -> Result<T, SdbError>
-    where
-        T: From<RegisterValue>,
-    {
+    pub fn read_by_id_as<T: From<RegisterValue>>(&self, id: RegisterId) -> Result<T, SdbError> {
         let info = register_info_by_id(id)?;
         let value = self.read(&info)?;
         Ok(T::from(value))

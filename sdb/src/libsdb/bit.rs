@@ -7,24 +7,15 @@ use bytemuck::bytes_of;
 use bytemuck::bytes_of_mut;
 use bytemuck::pod_read_unaligned;
 
-pub fn from_bytes<T>(bytes: &[u8]) -> T
-where
-    T: AnyBitPattern + 'static,
-{
+pub fn from_bytes<T: AnyBitPattern + 'static>(bytes: &[u8]) -> T {
     pod_read_unaligned(bytes)
 }
 
-pub fn as_bytes<T>(from: &T) -> &[u8]
-where
-    T: NoUninit + 'static,
-{
+pub fn as_bytes<T: NoUninit + 'static>(from: &T) -> &[u8] {
     bytes_of(from)
 }
 
-pub fn as_bytes_mut<T>(from: &mut T) -> &mut [u8]
-where
-    T: AnyBitPattern + NoUninit + 'static,
-{
+pub fn as_bytes_mut<T: AnyBitPattern + NoUninit + 'static>(from: &mut T) -> &mut [u8] {
     bytes_of_mut(from)
 }
 
