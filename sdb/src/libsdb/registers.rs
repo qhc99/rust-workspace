@@ -178,7 +178,7 @@ impl Registers {
                 .upgrade()
                 .unwrap()
                 .borrow()
-                .write_user_area(info.offset, from_bytes(&bytes[..aligned_offset]))?;
+                .write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]))?;
         }
 
         Ok(())

@@ -25,7 +25,7 @@ use nix::{
 };
 use std::os::fd::AsRawFd;
 use std::{
-    cell::{Ref, RefCell, RefMut},
+    cell::RefCell,
     ffi::CString,
     os::raw::c_void,
     path::Path,
@@ -200,13 +200,10 @@ impl Process {
         }
     }
 
-    pub fn get_registers(&self) -> Ref<'_, Registers> {
-        self.registers.as_deref().unwrap().borrow()
+    pub fn get_registers(&self) -> Rc<RefCell<Registers>> {
+        self.registers.clone().unwrap()
     }
 
-    pub fn get_registers_mut(&mut self) -> RefMut<'_, Registers> {
-        self.registers.as_deref().unwrap().borrow_mut()
-    }
 
     pub fn read_all_registers(&self) -> Result<(), SdbError> {
         let regs = getregs(self.pid);

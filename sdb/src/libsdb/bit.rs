@@ -7,8 +7,9 @@ use bytemuck::bytes_of;
 use bytemuck::bytes_of_mut;
 use bytemuck::pod_read_unaligned;
 
-pub fn from_bytes<T: AnyBitPattern + 'static>(bytes: &[u8]) -> T {
-    pod_read_unaligned(bytes)
+pub fn from_bytes<To: Pod>(bytes: &[u8]) -> To {
+    let slice = &bytes[..size_of::<To>()];
+    pod_read_unaligned(slice)
 }
 
 pub fn as_bytes<T: NoUninit + 'static>(from: &T) -> &[u8] {

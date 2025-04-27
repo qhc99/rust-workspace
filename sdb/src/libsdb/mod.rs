@@ -10,15 +10,15 @@ use std::path::Path;
 use std::{ffi::CString, rc::Rc};
 
 mod bit;
-mod pipe;
-mod register_info;
-mod registers;
 mod types;
 mod utils;
 
 pub use utils::ResultLogExt;
 pub mod process;
 pub mod sdb_error;
+pub mod pipe;
+pub mod registers;
+pub mod register_info;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html

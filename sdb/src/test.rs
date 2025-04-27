@@ -6,7 +6,8 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::process::Process;
+use libsdb::register_info::RegisterId;
+use libsdb::{pipe::Pipe, process::Process, registers::RegisterValue};
 use nix::unistd::Pid;
 
 fn get_process_state(pid: Pid) -> String {
@@ -25,6 +26,10 @@ fn build_target_loop_assign() -> BinBuilder {
 
 fn build_target_just_exit() -> BinBuilder {
     BinBuilder::rustc("resource", "just_exit.rs")
+}
+
+fn build_target_reg_write() -> BinBuilder {
+    BinBuilder::asm("resource", "reg_write.s")
 }
 
 #[test]
@@ -62,4 +67,27 @@ fn process_resume_terminated() {
     proc.borrow_mut().resume().ok();
     proc.borrow_mut().wait_on_signal().ok();
     assert!(proc.borrow_mut().resume().is_err());
+}
+
+#[test]
+fn write_registers() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let target = build_target_reg_write();
+    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    channel.close_write();
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+
+    proc.borrow()
+        .get_registers().borrow_mut()
+        .write_by_id(RegisterId::rsi, RegisterValue::U64(0xcafecafe))
+        .unwrap();
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+
+    let output = channel.read().unwrap();
+    let str = String::from_utf8(output).unwrap();
+    assert_eq!(str, "0xcafecafe")
 }
