@@ -72,7 +72,7 @@ pub enum RegisterValue {
 }
 
 /* --- blanket impls for the primitive types you actually care about --- */
-macro_rules! impl_from_register_value {
+macro_rules! impl_register_value_conversion {
     ($t:ty, $p:ident) => {
         impl From<RegisterValue> for $t {
             fn from(val: RegisterValue) -> Self {
@@ -82,25 +82,7 @@ macro_rules! impl_from_register_value {
                 }
             }
         }
-    };
-}
 
-impl_from_register_value!(u8, U8);
-impl_from_register_value!(u16, U16);
-impl_from_register_value!(u32, U32);
-impl_from_register_value!(u64, U64);
-impl_from_register_value!(i8, I8);
-impl_from_register_value!(i16, I16);
-impl_from_register_value!(i32, I32);
-impl_from_register_value!(i64, I64);
-impl_from_register_value!(f32, F32);
-impl_from_register_value!(f64, F64);
-impl_from_register_value!(f128, F128);
-impl_from_register_value!(Byte64, Byte64);
-impl_from_register_value!(Byte128, Byte128);
-
-macro_rules! impl_into_register_value {
-    ($t:ty, $p:ident) => {
         impl From<$t> for RegisterValue {
             #[inline]
             fn from(val: $t) -> Self {
@@ -110,19 +92,20 @@ macro_rules! impl_into_register_value {
     };
 }
 
-impl_into_register_value!(u8, U8);
-impl_into_register_value!(u16, U16);
-impl_into_register_value!(u32, U32);
-impl_into_register_value!(u64, U64);
-impl_into_register_value!(i8, I8);
-impl_into_register_value!(i16, I16);
-impl_into_register_value!(i32, I32);
-impl_into_register_value!(i64, I64);
-impl_into_register_value!(f32, F32);
-impl_into_register_value!(f64, F64);
-impl_into_register_value!(f128, F128);
-impl_into_register_value!(Byte64, Byte64);
-impl_into_register_value!(Byte128, Byte128);
+impl_register_value_conversion!(u8, U8);
+impl_register_value_conversion!(u16, U16);
+impl_register_value_conversion!(u32, U32);
+impl_register_value_conversion!(u64, U64);
+impl_register_value_conversion!(i8, I8);
+impl_register_value_conversion!(i16, I16);
+impl_register_value_conversion!(i32, I32);
+impl_register_value_conversion!(i64, I64);
+impl_register_value_conversion!(f32, F32);
+impl_register_value_conversion!(f64, F64);
+impl_register_value_conversion!(f128, F128);
+impl_register_value_conversion!(Byte64, Byte64);
+impl_register_value_conversion!(Byte128, Byte128);
+
 
 macro_rules! write_cases {
     ( $value:ident, $slice:ident, $info:ident, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
