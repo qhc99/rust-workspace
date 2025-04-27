@@ -7,7 +7,7 @@ use std::{
 
 use super::test_utils::BinBuilder;
 use libsdb::register_info::RegisterId;
-use libsdb::{pipe::Pipe, process::Process, registers::RegisterValue};
+use libsdb::{pipe::Pipe, process::Process};
 use nix::unistd::Pid;
 
 fn get_process_state(pid: Pid) -> String {
@@ -70,7 +70,7 @@ fn write_registers_rsi() {
     proc.borrow()
         .get_registers()
         .borrow_mut()
-        .write_by_id(RegisterId::rsi, RegisterValue::U64(0xcafecafe))
+        .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
         .unwrap();
 
     proc.borrow_mut().resume().unwrap();
@@ -94,7 +94,7 @@ fn write_registers_mm0() {
     proc.borrow()
         .get_registers()
         .borrow_mut()
-        .write_by_id(RegisterId::mm0, RegisterValue::U64(0xba5eba11))
+        .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
         .unwrap();
 
     proc.borrow_mut().resume().unwrap();
