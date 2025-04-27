@@ -46,14 +46,14 @@ impl AsBytes for User {
 
 pub fn to_byte64<T: AsBytes>(src: T) -> Byte64 {
     let mut out: Byte64 = [0; 8];
-    let src_bytes = &src.as_bytes();
+    let src_bytes = src.as_bytes();
     out[..src_bytes.len()].copy_from_slice(src_bytes);
     out
 }
 
 pub fn to_byte128<T: AsBytes>(src: T) -> Byte128 {
     let mut out: Byte128 = [0; 16];
-    let src_bytes = &src.as_bytes();
+    let src_bytes = src.as_bytes();
     out[..src_bytes.len()].copy_from_slice(src_bytes);
     out
 }
