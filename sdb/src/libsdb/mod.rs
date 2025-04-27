@@ -14,11 +14,11 @@ mod types;
 mod utils;
 
 pub use utils::ResultLogExt;
-pub mod process;
-pub mod sdb_error;
 pub mod pipe;
-pub mod registers;
+pub mod process;
 pub mod register_info;
+pub mod registers;
+pub mod sdb_error;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html

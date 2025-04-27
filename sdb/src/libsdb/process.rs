@@ -24,14 +24,7 @@ use nix::{
     unistd::{ForkResult, Pid, execvp, fork},
 };
 use std::os::fd::AsRawFd;
-use std::{
-    cell::RefCell,
-    ffi::CString,
-    os::raw::c_void,
-    path::Path,
-    process::exit,
-    rc::Rc,
-};
+use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ProcessState {
@@ -146,8 +139,8 @@ impl Process {
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
             channel.close_read();
-            if let Some(fd) = stdout_replacement{
-                if let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd()){
+            if let Some(fd) = stdout_replacement {
+                if let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd()) {
                     Process::exit_with_error(&channel, "Stdout replacement failed", errno);
                 }
             }
@@ -203,7 +196,6 @@ impl Process {
     pub fn get_registers(&self) -> Rc<RefCell<Registers>> {
         self.registers.clone().unwrap()
     }
-
 
     pub fn read_all_registers(&self) -> Result<(), SdbError> {
         let regs = getregs(self.pid);

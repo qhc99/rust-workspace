@@ -80,7 +80,8 @@ fn write_registers() {
     proc.borrow_mut().wait_on_signal().unwrap();
 
     proc.borrow()
-        .get_registers().borrow_mut()
+        .get_registers()
+        .borrow_mut()
         .write_by_id(RegisterId::rsi, RegisterValue::U64(0xcafecafe))
         .unwrap();
 
