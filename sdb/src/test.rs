@@ -20,21 +20,9 @@ fn get_process_state(pid: Pid) -> String {
     return String::from_utf8_lossy(&line.as_bytes()[idx + 2..idx + 3]).to_string();
 }
 
-fn build_target_loop_assign() -> BinBuilder {
-    BinBuilder::rustc("resource", "loop_assign.rs")
-}
-
-fn build_target_just_exit() -> BinBuilder {
-    BinBuilder::rustc("resource", "just_exit.rs")
-}
-
-fn build_target_reg_write() -> BinBuilder {
-    BinBuilder::asm("resource", "reg_write.s")
-}
-
 #[test]
 fn process_attach_success() {
-    let bin = build_target_loop_assign();
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let target = Process::launch(bin.target_path(), false, None).unwrap();
     let _proc = Process::attach(target.borrow().pid()).unwrap();
     assert!(get_process_state(target.borrow().pid()) == "t");
@@ -47,7 +35,7 @@ fn process_attach_invalid_pid() {
 
 #[test]
 fn process_resume_success() {
-    let bin = build_target_loop_assign();
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
     proc.borrow_mut().resume().ok();
     let status = get_process_state(proc.borrow().pid());
@@ -62,7 +50,7 @@ fn process_resume_success() {
 
 #[test]
 fn process_resume_terminated() {
-    let bin = build_target_just_exit();
+    let bin = BinBuilder::rustc("resource", "just_exit.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
     proc.borrow_mut().resume().ok();
     proc.borrow_mut().wait_on_signal().ok();
@@ -70,10 +58,10 @@ fn process_resume_terminated() {
 }
 
 #[test]
-fn write_registers() {
+fn write_registers_rsi() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let target = build_target_reg_write();
+    let target = BinBuilder::asm("resource", "reg_rsi_write.s");
     let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     proc.borrow_mut().resume().unwrap();
@@ -91,4 +79,28 @@ fn write_registers() {
     let output = channel.read().unwrap();
     let str = String::from_utf8(output).unwrap();
     assert_eq!(str, "0xcafecafe")
+}
+
+#[test]
+fn write_registers_mm0() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let target = BinBuilder::asm("resource", "reg_mm0_write.s");
+    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    channel.close_write();
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+
+    proc.borrow()
+        .get_registers()
+        .borrow_mut()
+        .write_by_id(RegisterId::mm0, RegisterValue::U64(0xba5eba11))
+        .unwrap();
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+
+    let output = channel.read().unwrap();
+    let str = String::from_utf8(output).unwrap();
+    assert_eq!(str, "0xba5eba11")
 }
