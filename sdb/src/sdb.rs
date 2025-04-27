@@ -63,7 +63,7 @@ fn main_loop(process: &Rc<RefCell<Process>>) {
                 break;
             }
             Err(err) => {
-                log::error!("Readline Error: {:?}", err);
+                log::error!("Readline Error: {err}");
                 break;
             }
         }

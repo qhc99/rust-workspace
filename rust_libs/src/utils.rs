@@ -8,7 +8,7 @@ pub trait MapErrMsg<E> {
 impl<T> MapErrMsg<Result<T>> for Result<T> {
     fn log_err(self, msg: &str) -> Result<T> {
         if self.is_err() {
-            eprintln!("{}", msg);
+            eprintln!("{msg}");
         }
         self
     }

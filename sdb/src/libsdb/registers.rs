@@ -32,7 +32,7 @@ impl Default for User {
 pub struct NightlyF128(pub f128);
 
 impl NightlyF128 {
-    pub fn new(val: f128) ->Self{
+    pub fn new(val: f128) -> Self {
         Self(val)
     }
 }
@@ -153,7 +153,7 @@ impl Registers {
             value, slice, info,
             /* unsigned  */ U8 => u8,   U16 => u16, U32 => u32, U64 => u64,
             /* signed    */ I8 => i8,   I16 => i16, I32 => i32, I64 => i64,
-            /* floats    */ F32 => f32, F64 => f64, F128 => f128,
+            /* floats    */ F32 => f32, F64 => f64, F128 => NightlyF128,
             /* vectors   */ Byte64 => Byte64, Byte128 => Byte128,
         );
         if info.type_ == RegisterType::Fpr {

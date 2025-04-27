@@ -6,8 +6,8 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::{register_info::RegisterId, registers::NightlyF128};
 use libsdb::{pipe::Pipe, process::Process};
+use libsdb::{register_info::RegisterId, registers::NightlyF128};
 use nix::unistd::Pid;
 
 fn get_process_state(pid: Pid) -> String {

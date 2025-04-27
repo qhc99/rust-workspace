@@ -1,5 +1,5 @@
-#![cfg(target_os = "linux")]
 #![feature(f128)]
+#![cfg(target_os = "linux")]
 #![allow(dead_code)]
 
 use nix::sys::signal::Signal;
