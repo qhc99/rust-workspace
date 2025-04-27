@@ -10,6 +10,7 @@ use nix::libc::ptrace;
 use nix::sys::ptrace::cont;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
+use nix::unistd::dup2;
 use nix::{
     errno::Errno,
     libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, user_fpregs_struct, user_regs_struct},
@@ -22,6 +23,7 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use std::os::fd::AsRawFd;
 use std::{
     cell::{Ref, RefCell, RefMut},
     ffi::CString,
@@ -132,6 +134,7 @@ impl Process {
     pub fn launch(
         path: &Path,
         debug: bool, /*true*/
+        stdout_replacement: Option<i32>,
     ) -> Result<Rc<RefCell<Process>>, SdbError> {
         let fork_res;
         let mut channel = Pipe::new(true)?;
@@ -143,6 +146,11 @@ impl Process {
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
             channel.close_read();
+            if let Some(fd) = stdout_replacement{
+                if let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd()){
+                    Process::exit_with_error(&channel, "Stdout replacement failed", errno);
+                }
+            }
             if debug {
                 if let Err(errno) = traceme() {
                     Process::exit_with_error(&channel, "Tracing failed", errno);
@@ -301,13 +309,13 @@ mod tests {
 
     #[test]
     fn process_launch_success() {
-        let proc = super::Process::launch(Path::new("yes"), true);
+        let proc = super::Process::launch(Path::new("yes"), true, None);
         assert!(process_exists(proc.unwrap().borrow().pid()));
     }
 
     #[test]
     fn process_launch_no_such_program() {
-        let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"), true);
+        let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"), true, None);
         assert!(proc.is_err());
     }
 }

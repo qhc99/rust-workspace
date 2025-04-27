@@ -6,13 +6,13 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-pub struct RustcBuilder {
+pub struct BinBuilder {
     output_path: PathBuf,
 }
 static GLOBAL_COUNT: Lazy<AtomicI32> = Lazy::new(|| AtomicI32::new(0));
 
-impl RustcBuilder {
-    pub fn new(dir: &str, source: &str) -> Self {
+impl BinBuilder {
+    pub fn rustc(dir: &str, source: &str) -> Self {
         let current_dir = PathBuf::from(dir);
         let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
         let output_name = source.strip_suffix(".rs").unwrap();
@@ -25,7 +25,23 @@ impl RustcBuilder {
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
-        RustcBuilder { output_path }
+        BinBuilder { output_path }
+    }
+
+    pub fn asm(dir: &str, source: &str) -> Self {
+        let current_dir = PathBuf::from(dir);
+        let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
+        let output_name = source.strip_suffix(".s").unwrap();
+        let output_name = format!("{output_name}_{suffix}");
+        let status = Command::new("gcc")
+            .args(&["-pie", "-o", &output_name, source])
+            .current_dir(&current_dir)
+            .status()
+            .expect("Failed to run gcc");
+        assert!(status.success(), "Compilation failed");
+        let mut output_path = current_dir.clone();
+        output_path.push(output_name);
+        BinBuilder { output_path }
     }
 
     pub fn target_path(&self) -> &Path {
@@ -33,7 +49,7 @@ impl RustcBuilder {
     }
 }
 
-impl Drop for RustcBuilder {
+impl Drop for BinBuilder {
     fn drop(&mut self) {
         if self.output_path.exists() {
             if let Err(e) = fs::remove_file(&self.output_path) {
