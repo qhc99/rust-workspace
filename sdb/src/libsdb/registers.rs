@@ -1,5 +1,4 @@
-use super::bit::as_bytes;
-use super::bit::as_bytes_mut;
+use super::bit::AsBytes;
 use super::bit::from_bytes;
 use super::bit::to_byte128;
 use super::process::Process;
@@ -10,8 +9,6 @@ use super::register_info::RegisterType;
 use super::register_info::register_info_by_id;
 use super::sdb_error::SdbError;
 use super::types::{Byte64, Byte128};
-use bytemuck::AnyBitPattern;
-use bytemuck::NoUninit;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use nix::libc::user;
@@ -24,15 +21,10 @@ use std::rc::Weak;
 #[derive(Clone, Copy)]
 pub struct User(pub user);
 
-unsafe impl NoUninit for User {}
-
-unsafe impl AnyBitPattern for User {}
-
 unsafe impl Zeroable for User {}
 
 impl Default for User {
     fn default() -> Self {
-        // SAFETY: all-zero is a valid bit-pattern for `libc::user`
         unsafe { Self(zeroed()) }
     }
 }
@@ -113,7 +105,7 @@ macro_rules! write_cases {
             $(
                 RegisterValue::$variant(v)
                     if size_of::<$ty>() == $info.size => {
-                        $slice.copy_from_slice(as_bytes(&v));
+                        $slice.copy_from_slice(v.as_bytes());
                     }
             )+
             _ => panic!("register::write called with mismatched register and value sizes"),
@@ -124,12 +116,12 @@ macro_rules! write_cases {
 impl Registers {
     pub fn new(proc: Weak<RefCell<Process>>) -> Self {
         Self {
-            data: User::default(),
+            data: User::default(), // TODO fix
             process: proc,
         }
     }
     fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
-        let bytes = as_bytes(&self.data);
+        let bytes = self.data.as_bytes();
         match info.format {
             RegisterFormat::UInt => match info.size {
                 1 => Ok(RegisterValue::U8(from_bytes::<u8>(&bytes[info.offset..]))),
@@ -156,7 +148,7 @@ impl Registers {
     }
 
     fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
-        let bytes = as_bytes_mut(&mut self.data);
+        let bytes = self.data.as_bytes_mut();
         let slice = &mut bytes[info.offset..info.offset + info.size];
 
         write_cases!(

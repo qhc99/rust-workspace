@@ -1,3 +1,8 @@
+use std::mem;
+use std::slice;
+
+use super::registers::User;
+
 use super::types::Byte64;
 use super::types::Byte128;
 use bytemuck::AnyBitPattern;
@@ -12,12 +17,32 @@ pub fn from_bytes<To: Pod>(bytes: &[u8]) -> To {
     pod_read_unaligned(slice)
 }
 
-pub fn as_bytes<T: NoUninit + 'static>(from: &T) -> &[u8] {
-    bytes_of(from)
+pub trait AsBytes {
+    fn as_bytes(&self) -> &[u8];
+
+    fn as_bytes_mut(&mut self) -> &mut [u8];
 }
 
-pub fn as_bytes_mut<T: AnyBitPattern + NoUninit + 'static>(from: &mut T) -> &mut [u8] {
-    bytes_of_mut(from)
+impl<T: NoUninit + AnyBitPattern + 'static> AsBytes for T {
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        bytes_of(self)
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        bytes_of_mut(self)
+    }
+}
+
+impl AsBytes for User {
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self as *const User as *const u8, mem::size_of::<User>()) }
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self as *const User as *mut u8, mem::size_of::<User>()) }
+    }
 }
 
 pub fn to_byte64<T: Pod>(src: T) -> Byte64 {
