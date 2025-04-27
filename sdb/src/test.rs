@@ -6,7 +6,7 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::register_info::RegisterId;
+use libsdb::{register_info::RegisterId, registers::NightlyF128};
 use libsdb::{pipe::Pipe, process::Process};
 use nix::unistd::Pid;
 
@@ -58,49 +58,57 @@ fn process_resume_terminated() {
 }
 
 #[test]
-fn write_registers_rsi() {
+fn write_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let target = BinBuilder::asm("resource", "reg_rsi_write.s");
+    let target = BinBuilder::asm("resource", "reg_write.s");
     let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     proc.borrow_mut().resume().unwrap();
     proc.borrow_mut().wait_on_signal().unwrap();
 
-    proc.borrow()
-        .get_registers()
-        .borrow_mut()
-        .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
-        .unwrap();
+    {
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
+            .unwrap();
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+        proc.borrow_mut().resume().unwrap();
+        proc.borrow_mut().wait_on_signal().unwrap();
 
-    let output = channel.read().unwrap();
-    let str = String::from_utf8(output).unwrap();
-    assert_eq!(str, "0xcafecafe")
-}
+        let output = channel.read().unwrap();
+        let str = String::from_utf8(output).unwrap();
+        assert_eq!(str, "0xcafecafe");
+    }
 
-#[test]
-fn write_registers_mm0() {
-    let close_on_exec = false;
-    let mut channel = Pipe::new(close_on_exec).unwrap();
-    let target = BinBuilder::asm("resource", "reg_mm0_write.s");
-    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
-    channel.close_write();
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    {
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
+            .unwrap();
 
-    proc.borrow()
-        .get_registers()
-        .borrow_mut()
-        .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
-        .unwrap();
+        proc.borrow_mut().resume().unwrap();
+        proc.borrow_mut().wait_on_signal().unwrap();
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+        let output = channel.read().unwrap();
+        let str = String::from_utf8(output).unwrap();
+        assert_eq!(str, "0xba5eba11")
+    }
 
-    let output = channel.read().unwrap();
-    let str = String::from_utf8(output).unwrap();
-    assert_eq!(str, "0xba5eba11")
+    {
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::xmm0, NightlyF128::new(42.24 as f128))
+            .unwrap();
+
+        proc.borrow_mut().resume().unwrap();
+        proc.borrow_mut().wait_on_signal().unwrap();
+
+        let output = channel.read().unwrap();
+        let str = String::from_utf8(output).unwrap();
+        assert_eq!(str, "42.24");
+    }
 }

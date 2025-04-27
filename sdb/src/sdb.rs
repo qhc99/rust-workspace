@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![feature(f128)]
 
 #[cfg(not(target_os = "linux"))]
 compile_error!("No supported on non-linux system.");

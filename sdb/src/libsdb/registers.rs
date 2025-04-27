@@ -12,7 +12,6 @@ use super::types::{Byte64, Byte128};
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use nix::libc::user;
-use softfloat_wrapper::F128;
 use std::cell::RefCell;
 use std::mem::zeroed;
 use std::rc::Weak;
@@ -28,27 +27,19 @@ impl Default for User {
         unsafe { Self(zeroed()) }
     }
 }
-
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-#[allow(non_camel_case_types)]
-pub struct f128(pub F128);
+pub struct NightlyF128(pub f128);
 
-impl From<f32> for f128 {
-    fn from(value: f32) -> Self {
-        Self(F128::from_f32(value))
+impl NightlyF128 {
+    pub fn new(val: f128) ->Self{
+        Self(val)
     }
 }
 
-impl From<f64> for f128 {
-    fn from(value: f64) -> Self {
-        Self(F128::from_f64(value))
-    }
-}
+unsafe impl Pod for NightlyF128 {}
 
-unsafe impl Zeroable for f128 {}
-
-unsafe impl Pod for f128 {}
+unsafe impl Zeroable for NightlyF128 {}
 
 pub struct Registers {
     pub data: User,
@@ -66,7 +57,7 @@ pub enum RegisterValue {
     I64(i64),
     F32(f32),
     F64(f64),
-    F128(f128),
+    F128(NightlyF128),
     Byte64(Byte64),
     Byte128(Byte128),
 }
@@ -102,10 +93,9 @@ impl_register_value_conversion!(i32, I32);
 impl_register_value_conversion!(i64, I64);
 impl_register_value_conversion!(f32, F32);
 impl_register_value_conversion!(f64, F64);
-impl_register_value_conversion!(f128, F128);
+impl_register_value_conversion!(NightlyF128, F128);
 impl_register_value_conversion!(Byte64, Byte64);
 impl_register_value_conversion!(Byte128, Byte128);
-
 
 macro_rules! write_cases {
     ( $value:ident, $slice:ident, $info:ident, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
@@ -141,7 +131,7 @@ impl Registers {
             RegisterFormat::DoubleFloat => {
                 Ok(RegisterValue::F64(from_bytes::<f64>(&bytes[info.offset..])))
             }
-            RegisterFormat::LongDouble => Ok(RegisterValue::F128(from_bytes::<f128>(
+            RegisterFormat::LongDouble => Ok(RegisterValue::F128(from_bytes::<NightlyF128>(
                 &bytes[info.offset..],
             ))),
             RegisterFormat::Vector if info.size == 8 => {
@@ -212,7 +202,7 @@ macro_rules! impl_widen_float {
             fn widen(self, info: &RegisterInfo) -> Byte128 {
                 match info.format {
                     RegisterFormat::DoubleFloat => to_byte128(self as f64),
-                    RegisterFormat::LongDouble  => to_byte128(f128::from(self)),
+                    RegisterFormat::LongDouble  => to_byte128(NightlyF128::new(self as f128)),
                     _                           => to_byte128(self),
                 }
             }
@@ -255,7 +245,7 @@ macro_rules! impl_widen_identity {
     )+};
 }
 
-impl_widen_identity!(u8, u16, u32, u64, f128, Byte64, Byte128);
+impl_widen_identity!(u8, u16, u32, u64, NightlyF128, Byte64, Byte128);
 
 #[inline]
 pub fn widen<T: Widen>(info: &RegisterInfo, value: T) -> Byte128 {

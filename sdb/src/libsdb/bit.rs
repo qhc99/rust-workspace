@@ -2,7 +2,6 @@ use std::mem;
 use std::slice;
 
 use super::registers::User;
-
 use super::types::Byte64;
 use super::types::Byte128;
 use bytemuck::AnyBitPattern;
@@ -45,16 +44,16 @@ impl AsBytes for User {
     }
 }
 
-pub fn to_byte64<T: Pod>(src: T) -> Byte64 {
+pub fn to_byte64<T: AsBytes>(src: T) -> Byte64 {
     let mut out: Byte64 = [0; 8];
-    let src_bytes = bytes_of(&src);
+    let src_bytes = &src.as_bytes();
     out[..src_bytes.len()].copy_from_slice(src_bytes);
     out
 }
 
-pub fn to_byte128<T: Pod>(src: T) -> Byte128 {
+pub fn to_byte128<T: AsBytes>(src: T) -> Byte128 {
     let mut out: Byte128 = [0; 16];
-    let src_bytes = bytes_of(&src);
+    let src_bytes = &src.as_bytes();
     out[..src_bytes.len()].copy_from_slice(src_bytes);
     out
 }
