@@ -101,7 +101,30 @@ fn write_registers() {
         proc.borrow()
             .get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::xmm0, NightlyF128::new(42.24 as f128))
+            .write_by_id(RegisterId::xmm0, 42.24)
+            .unwrap();
+
+        proc.borrow_mut().resume().unwrap();
+        proc.borrow_mut().wait_on_signal().unwrap();
+
+        let output = channel.read().unwrap();
+        let str = String::from_utf8(output).unwrap();
+        assert_eq!(str, "42.24");
+
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::st0, 42.24)
+            .unwrap();
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::fsw, 0b0011100000000000_u16)
+            .unwrap();
+        proc.borrow()
+            .get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
             .unwrap();
 
         proc.borrow_mut().resume().unwrap();

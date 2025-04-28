@@ -102,8 +102,8 @@ macro_rules! write_cases {
         match $value {
             $(
                 RegisterValue::$variant(v)
-                    if size_of::<$ty>() == $info.size => {
-                        $slice.copy_from_slice(v.as_bytes());
+                    if size_of::<$ty>() <= $info.size => {
+                        $slice.copy_from_slice(&widen($info, v)[..$info.size]);
                     }
             )+
             _ => panic!("register::write called with mismatched register and value sizes"),
@@ -201,7 +201,7 @@ macro_rules! impl_widen_float {
             #[inline]
             fn widen(self, info: &RegisterInfo) -> Byte128 {
                 match info.format {
-                    RegisterFormat::DoubleFloat => to_byte128(self as f64),
+                    RegisterFormat::DoubleFloat => to_byte128(self),
                     RegisterFormat::LongDouble  => to_byte128(NightlyF128::new(self as f128)),
                     _                           => to_byte128(self),
                 }
