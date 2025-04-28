@@ -29,17 +29,17 @@ impl Default for User {
 }
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-pub struct NightlyF128(pub f128);
+pub struct BytesF128(pub Byte128);
 
-impl NightlyF128 {
-    pub fn new(val: f128) -> Self {
+impl BytesF128 {
+    pub fn new(val: Byte128) -> Self {
         Self(val)
     }
 }
 
-unsafe impl Pod for NightlyF128 {}
+unsafe impl Pod for BytesF128 {}
 
-unsafe impl Zeroable for NightlyF128 {}
+unsafe impl Zeroable for BytesF128 {}
 
 pub struct Registers {
     pub data: User,
@@ -55,9 +55,9 @@ pub enum RegisterValue {
     I16(i16),
     I32(i32),
     I64(i64),
-    F32(f32),
-    F64(f64),
-    F128(NightlyF128),
+    Float(f32),
+    Double(f64),
+    LongDouble(BytesF128), // 80 bit extended precision
     Byte64(Byte64),
     Byte128(Byte128),
 }
@@ -91,9 +91,9 @@ impl_register_value_conversion!(i8, I8);
 impl_register_value_conversion!(i16, I16);
 impl_register_value_conversion!(i32, I32);
 impl_register_value_conversion!(i64, I64);
-impl_register_value_conversion!(f32, F32);
-impl_register_value_conversion!(f64, F64);
-impl_register_value_conversion!(NightlyF128, F128);
+impl_register_value_conversion!(f32, Float);
+impl_register_value_conversion!(f64, Double);
+impl_register_value_conversion!(BytesF128, LongDouble);
 impl_register_value_conversion!(Byte64, Byte64);
 impl_register_value_conversion!(Byte128, Byte128);
 
@@ -129,9 +129,9 @@ impl Registers {
                 _ => SdbError::err("Unexpected register size"),
             },
             RegisterFormat::DoubleFloat => {
-                Ok(RegisterValue::F64(from_bytes::<f64>(&bytes[info.offset..])))
+                Ok(RegisterValue::Double(from_bytes::<f64>(&bytes[info.offset..])))
             }
-            RegisterFormat::LongDouble => Ok(RegisterValue::F128(from_bytes::<NightlyF128>(
+            RegisterFormat::LongDouble => Ok(RegisterValue::LongDouble(from_bytes::<BytesF128>(
                 &bytes[info.offset..],
             ))),
             RegisterFormat::Vector if info.size == 8 => {
@@ -153,7 +153,7 @@ impl Registers {
             value, dest, info,
             /* unsigned  */ U8 => u8,   U16 => u16, U32 => u32, U64 => u64,
             /* signed    */ I8 => i8,   I16 => i16, I32 => i32, I64 => i64,
-            /* floats    */ F32 => f32, F64 => f64, F128 => NightlyF128,
+            /* floats    */ Float => f32, Double => f64, LongDouble => BytesF128,
             /* vectors   */ Byte64 => Byte64, Byte128 => Byte128,
         );
         if info.type_ == RegisterType::Fpr {

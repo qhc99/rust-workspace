@@ -1,4 +1,3 @@
-#![feature(f128)]
 #![cfg(target_os = "linux")]
 #![allow(dead_code)]
 
