@@ -136,10 +136,8 @@ pub fn generate_registers(input: TokenStream) -> TokenStream {
     for cap in re.captures_iter(&content) {
         let number = cap[1].trim().parse::<usize>().unwrap();
         let number_i32 = cap[1].trim().parse::<i32>().unwrap();
-        let name = Box::leak(Box::new(format!("st{number}")));
-        let name = name.as_str();
         push(
-            format_ident!("{name}"),
+            format_ident!("st{number}"),
             quote! {33+#number_i32},
             quote! {16},
             quote!(fpr_offset!(st_space)+#number*16),

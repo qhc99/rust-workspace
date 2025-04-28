@@ -103,7 +103,7 @@ macro_rules! write_cases {
             $(
                 RegisterValue::$variant(v)
                     if size_of::<$ty>() <= $info.size => {
-                        $slice.copy_from_slice(&widen($info, v)[..$info.size]);
+                        $slice.copy_from_slice(&to_byte128(v)[..$info.size]);
                     }
             )+
             _ => panic!("register::write called with mismatched register and value sizes"),
@@ -189,65 +189,4 @@ impl Registers {
         self.write(&info, value.into())?;
         Ok(())
     }
-}
-
-pub trait Widen {
-    fn widen(self, info: &RegisterInfo) -> Byte128;
-}
-
-macro_rules! impl_widen_float {
-    ($($t:ty),+ $(,)?) => {$(
-        impl Widen for $t {
-            #[inline]
-            fn widen(self, info: &RegisterInfo) -> Byte128 {
-                match info.format {
-                    RegisterFormat::DoubleFloat => to_byte128(self),
-                    RegisterFormat::LongDouble  => to_byte128(NightlyF128::new(self as f128)),
-                    _                           => to_byte128(self),
-                }
-            }
-        }
-    )+};
-}
-
-impl_widen_float!(f32, f64);
-
-macro_rules! impl_widen_signed {
-    ($($t:ty),+ $(,)?) => {$(
-        impl Widen for $t {
-            #[inline]
-            fn widen(self, info: &RegisterInfo) -> Byte128 {
-                if info.format == RegisterFormat::UInt {
-                    match info.size {
-                        2 => to_byte128(self as i16),
-                        4 => to_byte128(self as i32),
-                        8 => to_byte128(self as i64),
-                        _ => to_byte128(self),
-                    }
-                } else {
-                    to_byte128(self)
-                }
-            }
-        }
-    )+};
-}
-
-impl_widen_signed!(i8, i16, i32, i64);
-
-macro_rules! impl_widen_identity {
-    ($($t:ty),+) => {$(
-        impl Widen for $t {
-            #[inline]
-            fn widen(self, _info: &RegisterInfo) -> Byte128 {
-                to_byte128(self)
-            }
-        }
-    )+};
-}
-
-impl_widen_identity!(u8, u16, u32, u64, NightlyF128, Byte64, Byte128);
-
-#[inline]
-pub fn widen<T: Widen>(info: &RegisterInfo, value: T) -> Byte128 {
-    value.widen(info)
 }

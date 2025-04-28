@@ -114,7 +114,7 @@ fn write_registers() {
         proc.borrow()
             .get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::st0, 42.24)
+            .write_by_id(RegisterId::st0, NightlyF128::new(42.24 as f128))
             .unwrap();
         proc.borrow()
             .get_registers()
