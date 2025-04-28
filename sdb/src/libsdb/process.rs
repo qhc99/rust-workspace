@@ -4,7 +4,6 @@ use super::register_info::register_info_by_id;
 use super::registers::Registers;
 use super::sdb_error::SdbError;
 use super::utils::ResultLogExt;
-use nix::libc::__errno_location;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
 use nix::sys::ptrace::cont;
@@ -211,13 +210,14 @@ impl Process {
             if ptrace(
                 PTRACE_GETFPREGS,
                 self.pid,
-                0,
-                &mut self.registers.as_deref().unwrap().borrow_mut().data.0.i387,
+                std::ptr::null_mut::<c_void>(),
+                &mut self.registers.as_deref().unwrap().borrow_mut().data.0.i387 as *mut _
+                    as *mut c_void,
             ) < 0
             {
                 return SdbError::errno(
                     "Could not read FPR registers",
-                    Errno::from_raw(*__errno_location()),
+                    Errno::last(),
                 );
             }
         }
@@ -244,10 +244,16 @@ impl Process {
 
     pub fn write_gprs(&self, gprs: &mut user_regs_struct) -> Result<(), SdbError> {
         unsafe {
-            if ptrace(PTRACE_SETREGS, self.pid, 0, gprs) < 0 {
+            if ptrace(
+                PTRACE_SETREGS,
+                self.pid,
+                std::ptr::null_mut::<c_void>(),
+                gprs as *mut _ as *mut c_void,
+            ) < 0
+            {
                 return SdbError::errno(
                     "Could not write GPR registers",
-                    Errno::from_raw(*__errno_location()),
+                    Errno::last(),
                 );
             }
             Ok(())
@@ -256,10 +262,16 @@ impl Process {
 
     pub fn write_fprs(&self, fprs: &mut user_fpregs_struct) -> Result<(), SdbError> {
         unsafe {
-            if ptrace(PTRACE_SETFPREGS, self.pid, 0, fprs) < 0 {
+            if ptrace(
+                PTRACE_SETFPREGS,
+                self.pid,
+                std::ptr::null_mut::<c_void>(),
+                fprs as *mut _ as *mut c_void,
+            ) < 0
+            {
                 return SdbError::errno(
                     "Could not write FPR registers",
-                    Errno::from_raw(*__errno_location()),
+                    Errno::last(),
                 );
             }
             Ok(())

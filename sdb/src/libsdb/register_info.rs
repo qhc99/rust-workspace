@@ -88,7 +88,7 @@ pub fn register_info_by_dwarf(dwarf_id: i32) -> Result<RegisterInfo, SdbError> {
         .ok_or_else(|| SdbError::new("Can't find register info"))
 }
 
-// #[ignore = "Manual"]
+#[ignore = "Manual"]
 #[test]
 fn print_codegen(){
     for i in GRegisterInfos{

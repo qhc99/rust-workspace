@@ -98,12 +98,12 @@ impl_register_value_conversion!(Byte64, Byte64);
 impl_register_value_conversion!(Byte128, Byte128);
 
 macro_rules! write_cases {
-    ( $value:ident, $slice:ident, $info:ident, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
-        match $value {
+    ( $src:ident, $dest:ident, $info:ident, $( $variant:ident => $ty:ty ),+ $(,)? ) => {
+        match $src {
             $(
                 RegisterValue::$variant(v)
                     if size_of::<$ty>() <= $info.size => {
-                        $slice.copy_from_slice(&to_byte128(v)[..$info.size]);
+                        $dest.copy_from_slice(&to_byte128(v)[..$info.size]);
                     }
             )+
             _ => panic!("register::write called with mismatched register and value sizes"),
@@ -147,10 +147,10 @@ impl Registers {
 
     fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
         let bytes = self.data.as_bytes_mut();
-        let slice = &mut bytes[info.offset..info.offset + info.size];
+        let dest = &mut bytes[info.offset..info.offset + info.size];
 
         write_cases!(
-            value, slice, info,
+            value, dest, info,
             /* unsigned  */ U8 => u8,   U16 => u16, U32 => u32, U64 => u64,
             /* signed    */ I8 => i8,   I16 => i16, I32 => i32, I64 => i64,
             /* floats    */ F32 => f32, F64 => f64, F128 => NightlyF128,
