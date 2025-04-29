@@ -6,8 +6,15 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::{pipe::Pipe, process::Process, registers::F80};
+use extended::Extended;
 use libsdb::register_info::RegisterId;
+use libsdb::{
+    bit::{to_byte64, to_byte128},
+    pipe::Pipe,
+    process::Process,
+    registers::F80,
+    types::{Byte64, Byte128},
+};
 use nix::unistd::Pid;
 
 fn get_process_state(pid: Pid) -> String {
@@ -116,7 +123,7 @@ fn write_registers() {
         proc.borrow()
             .get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::st0, F80(extended::Extended::from(42.24)))
+            .write_by_id(RegisterId::st0, F80::new(42.24))
             .unwrap();
         proc.borrow()
             .get_registers()
@@ -136,4 +143,44 @@ fn write_registers() {
         let str = String::from_utf8(output).unwrap();
         assert_eq!(str, "42.24");
     }
+}
+
+#[test]
+fn read_registers() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let target = BinBuilder::asm("resource", "reg_read.s");
+    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let regs = proc.borrow().get_registers();
+    channel.close_write();
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+    assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+    assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+    assert!(
+        regs.borrow()
+            .read_by_id_as::<Byte64>(RegisterId::mm0)
+            .unwrap()
+            == to_byte64(0xba5eba11_u64)
+    );
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+    assert!(
+        regs.borrow()
+            .read_by_id_as::<Byte128>(RegisterId::xmm0)
+            .unwrap()
+            == to_byte128(64.125)
+    );
+
+    proc.borrow_mut().resume().unwrap();
+    proc.borrow_mut().wait_on_signal().unwrap();
+    assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }

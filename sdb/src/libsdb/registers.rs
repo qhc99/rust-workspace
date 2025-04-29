@@ -36,6 +36,13 @@ unsafe impl Pod for F80 {}
 
 unsafe impl Zeroable for F80 {}
 
+impl  F80{
+    pub fn new(value: f64) -> Self {
+        Self(Extended::from(value))
+    }
+}
+
+
 pub struct Registers {
     pub data: User,
     process: Weak<RefCell<Process>>,
