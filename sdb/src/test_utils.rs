@@ -53,7 +53,7 @@ impl Drop for BinBuilder {
     fn drop(&mut self) {
         if self.output_path.exists() {
             if let Err(e) = fs::remove_file(&self.output_path) {
-                eprintln!("Failed to delete binary {:?}: {}", self.output_path, e);
+                log::error!("Failed to delete binary {:?}: {}", self.output_path, e);
             }
         }
     }

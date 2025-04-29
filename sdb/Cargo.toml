@@ -21,6 +21,7 @@ register_codegen = { path = "src/libsdb/codegen" }
 bytemuck = "1.22.0"
 num_enum = "0.7.3"
 extended = "0.1.0"
+indoc = "2.0.6"
 
 [dependencies.nix]
 features = ["process", "ptrace"]

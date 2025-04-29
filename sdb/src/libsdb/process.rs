@@ -215,10 +215,7 @@ impl Process {
                     as *mut c_void,
             ) < 0
             {
-                return SdbError::errno(
-                    "Could not read FPR registers",
-                    Errno::last(),
-                );
+                return SdbError::errno("Could not read FPR registers", Errno::last());
             }
         }
         for i in 0..8 {
@@ -251,10 +248,7 @@ impl Process {
                 gprs as *mut _ as *mut c_void,
             ) < 0
             {
-                return SdbError::errno(
-                    "Could not write GPR registers",
-                    Errno::last(),
-                );
+                return SdbError::errno("Could not write GPR registers", Errno::last());
             }
             Ok(())
         }
@@ -269,10 +263,7 @@ impl Process {
                 fprs as *mut _ as *mut c_void,
             ) < 0
             {
-                return SdbError::errno(
-                    "Could not write FPR registers",
-                    Errno::last(),
-                );
+                return SdbError::errno("Could not write FPR registers", Errno::last());
             }
             Ok(())
         }

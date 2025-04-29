@@ -14,6 +14,8 @@ use bytemuck::Zeroable;
 use extended::Extended;
 use nix::libc::user;
 use std::cell::RefCell;
+use std::fmt::Display;
+use std::fmt::Write;
 use std::mem::zeroed;
 use std::rc::Weak;
 
@@ -32,16 +34,21 @@ impl Default for User {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct F80(pub Extended);
 
+impl Display for F80 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_f64())
+    }
+}
+
 unsafe impl Pod for F80 {}
 
 unsafe impl Zeroable for F80 {}
 
-impl  F80{
+impl F80 {
     pub fn new(value: f64) -> Self {
         Self(Extended::from(value))
     }
 }
-
 
 pub struct Registers {
     pub data: User,
@@ -130,9 +137,9 @@ impl Registers {
                 8 => Ok(RegisterValue::U64(from_bytes::<u64>(&bytes[info.offset..]))),
                 _ => SdbError::err("Unexpected register size"),
             },
-            RegisterFormat::DoubleFloat => {
-                Ok(RegisterValue::Double(from_bytes::<f64>(&bytes[info.offset..])))
-            }
+            RegisterFormat::DoubleFloat => Ok(RegisterValue::Double(from_bytes::<f64>(
+                &bytes[info.offset..],
+            ))),
             RegisterFormat::LongDouble => Ok(RegisterValue::LongDouble(from_bytes::<F80>(
                 &bytes[info.offset..],
             ))),
