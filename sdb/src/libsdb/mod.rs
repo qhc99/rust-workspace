@@ -100,7 +100,6 @@ trait AutoFormat {
     fn auto_format(&self) -> String;
 }
 
-/* ---------- floating-point impls ---------- */
 macro_rules! impl_float_auto_format {
     ($($t:ty),*) => {$(
         impl AutoFormat for $t {
@@ -125,11 +124,9 @@ impl_int_auto_format!(
     u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, usize, isize
 );
 
-/* ---------- iterable impls ---------- */
-// Works for slices and Vec<u8>/Vec<i8>/…  (extend as desired)
 impl<T: fmt::LowerHex + Copy> AutoFormat for [T] {
     fn auto_format(&self) -> String {
-        let mut out = String::with_capacity(self.len() * 6 + 2); // rough guess
+        let mut out = String::with_capacity(self.len() * 6 + 2);
         out.push('[');
         for (i, v) in self.iter().enumerate() {
             if i != 0 {
