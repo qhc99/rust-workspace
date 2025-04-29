@@ -121,7 +121,9 @@ macro_rules! impl_int_auto_format {
         }
     )*};
 }
-impl_int_auto_format!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, usize, isize);
+impl_int_auto_format!(
+    u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, usize, isize
+);
 
 /* ---------- iterable impls ---------- */
 // Works for slices and Vec<u8>/Vec<i8>/…  (extend as desired)
@@ -130,7 +132,9 @@ impl<T: fmt::LowerHex + Copy> AutoFormat for [T] {
         let mut out = String::with_capacity(self.len() * 6 + 2); // rough guess
         out.push('[');
         for (i, v) in self.iter().enumerate() {
-            if i != 0 { out.push(','); }
+            if i != 0 {
+                out.push(',');
+            }
             write!(out, "{:#04x}", v).unwrap();
         }
         out.push(']');
@@ -138,9 +142,10 @@ impl<T: fmt::LowerHex + Copy> AutoFormat for [T] {
     }
 }
 impl<T: fmt::LowerHex + Copy> AutoFormat for Vec<T> {
-    fn auto_format(&self) -> String { self.as_slice().auto_format() }
+    fn auto_format(&self) -> String {
+        self.as_slice().auto_format()
+    }
 }
-
 
 fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {}
 
