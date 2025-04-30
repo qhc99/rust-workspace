@@ -4,6 +4,7 @@
 use indoc::indoc;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
+use parse::parse_register_value;
 use process::{Process, ProcessState, StopReason};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
@@ -11,6 +12,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
 
+mod parse;
 mod utils;
 
 pub use utils::ResultLogExt;
@@ -119,7 +121,24 @@ fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {
     }
 }
 
-fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {}
+fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {
+    if args.len() != 4 {
+        print_help(&["help", "register"]);
+        return;
+    }
+    if let Err(e) = (|| -> Result<(), SdbError> {
+        let info = register_info_by_name(args[2])?;
+        let value = parse_register_value(&info, args[3]);
+        process
+            .borrow()
+            .get_registers()
+            .borrow_mut()
+            .write(&info, value)?;
+        Ok(())
+    })() {
+        eprintln!("{e}");
+    }
+}
 
 fn print_help(args: &[&str]) {
     if args.len() == 1 {
