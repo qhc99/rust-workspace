@@ -5,7 +5,7 @@ use indoc::indoc;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use process::{Process, ProcessState, StopReason};
-use registers::F80;
+use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cell::RefCell;
 use std::path::Path;
@@ -53,11 +53,11 @@ fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
             format!("{msg_start} stopped with signal {sig_str}")
         }
         ProcessState::Running => {
-            log::error!("Incorrect state");
+            eprintln!("Incorrect state");
             String::new()
         }
     };
-    log::info!("{msg}");
+    println!("{msg}");
 }
 
 pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
@@ -72,7 +72,7 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
     } else if cmd.starts_with("register") {
         handle_register_command(process, &args);
     } else {
-        log::error!("Unknown command");
+        eprintln!("Unknown command");
     }
     Ok(())
 }
@@ -92,55 +92,30 @@ fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
     }
 }
 
-fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {}
-
-use std::fmt::{self, Write};
-
-trait AutoFormat {
-    fn auto_format(&self) -> String;
-}
-
-macro_rules! impl_float_auto_format {
-    ($($t:ty),*) => {$(
-        impl AutoFormat for $t {
-            fn auto_format(&self) -> String { format!("{}", self) }
+fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {
+    if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
+        for info in GRegisterInfos {
+            let should_print =
+                (args.len() == 3 || info.type_ == RegisterType::Gpr) && info.name != "orig_rax";
+            if !should_print {
+                continue;
+            }
+            let value = process.borrow().get_registers().borrow().read(info);
+            println!("{}:\t{}", info.name, value.unwrap());
         }
-    )*};
-}
-impl_float_auto_format!(f32, f64, F80);
-
-macro_rules! impl_int_auto_format {
-    ($($t:ty),*) => {$(
-        impl AutoFormat for $t {
-            fn auto_format(&self) -> String {
-                // width = bytes * 2  + "0x"
-                let width = std::mem::size_of::<$t>() * 2 + 2;
-                format!("{:#0width$x}", *self, width = width)
+    } else if args.len() == 3 {
+        let info_res = register_info_by_name(args[2]);
+        match info_res {
+            Ok(info) => {
+                let value = process.borrow().get_registers().borrow().read(&info);
+                println!("{}:\t{}", info.name, value.unwrap());
+            }
+            Err(_) => {
+                eprintln!("No such register")
             }
         }
-    )*};
-}
-impl_int_auto_format!(
-    u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, usize, isize
-);
-
-impl<T: fmt::LowerHex + Copy> AutoFormat for [T] {
-    fn auto_format(&self) -> String {
-        let mut out = String::with_capacity(self.len() * 6 + 2);
-        out.push('[');
-        for (i, v) in self.iter().enumerate() {
-            if i != 0 {
-                out.push(',');
-            }
-            write!(out, "{:#04x}", v).unwrap();
-        }
-        out.push(']');
-        out
-    }
-}
-impl<T: fmt::LowerHex + Copy> AutoFormat for Vec<T> {
-    fn auto_format(&self) -> String {
-        self.as_slice().auto_format()
+    } else {
+        print_help(&["help", "register"]);
     }
 }
 
@@ -148,14 +123,14 @@ fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {}
 
 fn print_help(args: &[&str]) {
     if args.len() == 1 {
-        log::error!(indoc! {"
+        eprintln!(indoc! {"
             Available commands:
             continue - Resume the process
             register - Commands for operating on registers
         "
         })
     } else if args[1].starts_with("register") {
-        log::error!(indoc! {"
+        eprintln!(indoc! {"
             Available commands:
             read
             read <register>

@@ -15,7 +15,7 @@ use extended::Extended;
 use nix::libc::user;
 use std::cell::RefCell;
 use std::fmt::Display;
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::mem::zeroed;
 use std::rc::Weak;
 
@@ -69,6 +69,73 @@ pub enum RegisterValue {
     LongDouble(F80), // 80 bit extended precision
     Byte64(Byte64),
     Byte128(Byte128),
+}
+
+impl Display for RegisterValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = match self {
+            RegisterValue::U8(v) => {
+                let width = std::mem::size_of::<u8>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::U16(v) => {
+                let width = std::mem::size_of::<u16>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::U32(v) => {
+                let width = std::mem::size_of::<u32>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::U64(v) => {
+                let width = std::mem::size_of::<u64>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::I8(v) => {
+                let width = std::mem::size_of::<i8>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::I16(v) => {
+                let width = std::mem::size_of::<i16>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::I32(v) => {
+                let width = std::mem::size_of::<i32>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::I64(v) => {
+                let width = std::mem::size_of::<i64>() * 2 + 2;
+                format!("{:#0width$x}", v, width = width)
+            }
+            RegisterValue::Float(v) => format!("{v}"),
+            RegisterValue::Double(v) => format!("{v}"),
+            RegisterValue::LongDouble(v) => format!("{v}"),
+            RegisterValue::Byte64(v) => {
+                let mut out = String::with_capacity(v.len() * 6 + 2);
+                out.push('[');
+                for (i, v) in v.iter().enumerate() {
+                    if i != 0 {
+                        out.push(',');
+                    }
+                    write!(out, "{:#04x}", v).unwrap();
+                }
+                out.push(']');
+                out
+            }
+            RegisterValue::Byte128(v) => {
+                let mut out = String::with_capacity(v.len() * 6 + 2);
+                out.push('[');
+                for (i, v) in v.iter().enumerate() {
+                    if i != 0 {
+                        out.push(',');
+                    }
+                    write!(out, "{:#04x}", v).unwrap();
+                }
+                out.push(']');
+                out
+            }
+        };
+        write!(f, "{v}")
+    }
 }
 
 /* --- blanket impls for the primitive types you actually care about --- */
@@ -127,7 +194,7 @@ impl Registers {
             process: proc,
         }
     }
-    fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
+    pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = self.data.as_bytes();
         match info.format {
             RegisterFormat::UInt => match info.size {
@@ -154,7 +221,7 @@ impl Registers {
         }
     }
 
-    fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
+    pub fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
         let bytes = self.data.as_bytes_mut();
         let dest = &mut bytes[info.offset..info.offset + info.size];
 

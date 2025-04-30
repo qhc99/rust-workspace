@@ -7,12 +7,12 @@ pub trait ResultLogExt<T> {
 
 impl<T> ResultLogExt<T> for NixResult<T> {
     fn log_error(self) {
-        self.inspect_err(|e| log::error!("{e}")).ok();
+        self.inspect_err(|e| eprintln!("{e}")).ok();
     }
 }
 
 impl<T> ResultLogExt<T> for Result<T, SdbError> {
     fn log_error(self) {
-        self.inspect_err(|e| log::error!("{e}")).ok();
+        self.inspect_err(|e| eprintln!("{e}")).ok();
     }
 }

@@ -20,7 +20,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() == 1 {
-        log::error!("No arguments given");
+        eprintln!("No arguments given");
         exit(-1);
     }
     let args_slice: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -54,15 +54,15 @@ fn main_loop(process: &Rc<RefCell<Process>>) {
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                log::error!("CTRL-C");
+                eprintln!("CTRL-C");
                 break;
             }
             Err(ReadlineError::Eof) => {
-                log::error!("CTRL-D");
+                eprintln!("CTRL-D");
                 break;
             }
             Err(err) => {
-                log::error!("Readline Error: {err}");
+                eprintln!("Readline Error: {err}");
                 break;
             }
         }

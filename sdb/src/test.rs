@@ -6,7 +6,6 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use extended::Extended;
 use libsdb::register_info::RegisterId;
 use libsdb::{
     bit::{to_byte64, to_byte128},
