@@ -128,7 +128,7 @@ fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {
     }
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
-        let value = parse_register_value(&info, args[3]);
+        let value = parse_register_value(&info, args[3])?;
         process
             .borrow()
             .get_registers()
