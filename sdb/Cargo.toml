@@ -21,6 +21,7 @@ bytemuck = "1.22.0"
 num_enum = "0.7.3"
 extended = "0.1.0"
 indoc = "2.0.6"
+regex = "1.11.1"
 
 [dependencies.nix]
 features = ["process", "ptrace"]

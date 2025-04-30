@@ -336,6 +336,7 @@ dependencies = [
  "nix",
  "num_enum",
  "once_cell",
+ "regex",
  "register_codegen",
  "rustyline",
  "zydis",
