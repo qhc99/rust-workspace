@@ -15,7 +15,7 @@ use extended::Extended;
 use nix::libc::user;
 use std::cell::RefCell;
 use std::fmt::Display;
-use std::fmt::{self, Write};
+use std::fmt::Write;
 use std::mem::zeroed;
 use std::rc::Weak;
 
