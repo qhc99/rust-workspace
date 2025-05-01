@@ -71,69 +71,60 @@ pub enum RegisterValue {
     Byte128(Byte128),
 }
 
+macro_rules! format_register_value {
+    ($this:ident,
+        {
+            $($int_enum:ident => $int_ty:ty );+ $(;)?
+        },
+        {
+            $($float_enum:ident);+ $(;)?
+        },
+        {
+            $($vec_enum:ident);+ $(;)?
+        }
+    ) => {
+        match $this {
+            $(
+                RegisterValue::$int_enum(v) => {
+                    let width = std::mem::size_of::<$int_ty>() * 2 + 2;
+                    format!("{:#0width$x}", v, width = width)
+                }
+            )+
+            $(
+                RegisterValue::$float_enum(v) => format!("{v}"),
+            )+
+            $(
+                RegisterValue::$vec_enum(v) => {
+                    let mut out = String::with_capacity(v.len() * 6 + 2);
+                    out.push('[');
+                    for (i, v) in v.iter().enumerate() {
+                        if i != 0 {
+                            out.push(',');
+                        }
+                        write!(out, "{:#04x}", v).unwrap();
+                    }
+                    out.push(']');
+                    out
+                }
+            )+
+        }
+    };
+}
+
 impl Display for RegisterValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let v = match self {
-            RegisterValue::U8(v) => {
-                let width = std::mem::size_of::<u8>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::U16(v) => {
-                let width = std::mem::size_of::<u16>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::U32(v) => {
-                let width = std::mem::size_of::<u32>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::U64(v) => {
-                let width = std::mem::size_of::<u64>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::I8(v) => {
-                let width = std::mem::size_of::<i8>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::I16(v) => {
-                let width = std::mem::size_of::<i16>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::I32(v) => {
-                let width = std::mem::size_of::<i32>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::I64(v) => {
-                let width = std::mem::size_of::<i64>() * 2 + 2;
-                format!("{:#0width$x}", v, width = width)
-            }
-            RegisterValue::Float(v) => format!("{v}"),
-            RegisterValue::Double(v) => format!("{v}"),
-            RegisterValue::LongDouble(v) => format!("{v}"),
-            RegisterValue::Byte64(v) => {
-                let mut out = String::with_capacity(v.len() * 6 + 2);
-                out.push('[');
-                for (i, v) in v.iter().enumerate() {
-                    if i != 0 {
-                        out.push(',');
-                    }
-                    write!(out, "{:#04x}", v).unwrap();
-                }
-                out.push(']');
-                out
-            }
-            RegisterValue::Byte128(v) => {
-                let mut out = String::with_capacity(v.len() * 6 + 2);
-                out.push('[');
-                for (i, v) in v.iter().enumerate() {
-                    if i != 0 {
-                        out.push(',');
-                    }
-                    write!(out, "{:#04x}", v).unwrap();
-                }
-                out.push(']');
-                out
-            }
-        };
+        let v = format_register_value!(self, {
+            U8 => u8;
+            U16 => u16;
+            U32 => u32;
+            U64 => u64;
+            I8 => i8;
+            I16 => i16;
+            I32 => i32;
+            I64 => i64;
+        },
+        { Float; Double; LongDouble},
+        {Byte64; Byte128});
         write!(f, "{v}")
     }
 }
