@@ -1,4 +1,7 @@
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::{
+    fmt::LowerHex,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
 pub type Byte64 = [u8; 8];
 pub type Byte128 = [u8; 16];
@@ -7,6 +10,18 @@ pub type Byte128 = [u8; 16];
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualAddress {
     addr: u64,
+}
+
+impl LowerHex for VirtualAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        LowerHex::fmt(&self.addr, f)
+    }
+}
+
+impl From<u64> for VirtualAddress {
+    fn from(value: u64) -> Self {
+        Self { addr: value }
+    }
 }
 
 impl VirtualAddress {

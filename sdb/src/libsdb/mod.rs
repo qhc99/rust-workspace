@@ -52,7 +52,8 @@ fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
         ProcessState::Stopped => {
             let signal: Signal = reason.info.try_into().unwrap();
             let sig_str = signal.as_str();
-            format!("{msg_start} stopped with signal {sig_str}")
+            let addr = process.borrow().get_pc();
+            format!("{msg_start} stopped with signal {sig_str} at {:#x}", addr)
         }
         ProcessState::Running => {
             eprintln!("Incorrect state");

@@ -3,6 +3,7 @@ use super::register_info::RegisterId;
 use super::register_info::register_info_by_id;
 use super::registers::Registers;
 use super::sdb_error::SdbError;
+use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
@@ -267,6 +268,14 @@ impl Process {
             }
             Ok(())
         }
+    }
+
+    pub fn get_pc(&self) -> VirtualAddress {
+        self.get_registers()
+            .borrow()
+            .read_by_id_as::<u64>(RegisterId::rip)
+            .unwrap()
+            .into()
     }
 }
 
