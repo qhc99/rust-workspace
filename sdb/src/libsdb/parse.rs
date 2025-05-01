@@ -68,11 +68,7 @@ macro_rules! parse_vector {
 pub fn parse_register_value(info: &RegisterInfo, text: &str) -> Result<RegisterValue, SdbError> {
     match info.format {
         RegisterFormat::UInt => {
-            let digits = if text.starts_with("0x") {
-                &text[2..]
-            } else {
-                &text
-            };
+            let digits = text.strip_prefix("0x").unwrap_or(text);
             parse_int!(info.size, digits, {
                 1 => U8, u8;
                 2 => U16, u16;
@@ -89,6 +85,6 @@ pub fn parse_register_value(info: &RegisterInfo, text: &str) -> Result<RegisterV
         RegisterFormat::Vector => parse_vector!(info.size, text, {
             8 => Byte64;
             16=> Byte128;
-        })
+        }),
     }
 }

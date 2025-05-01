@@ -124,7 +124,7 @@ impl Display for RegisterValue {
             I64 => i64;
         },
         { Float; Double; LongDouble},
-        {Byte64; Byte128});
+        { Byte64; Byte128 });
         write!(f, "{v}")
     }
 }
