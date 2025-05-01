@@ -46,3 +46,4 @@ main:
     popq    %rbp
     movq    $0, %rax
     ret 
+.section .note.GNU-stack,"",@progbits
