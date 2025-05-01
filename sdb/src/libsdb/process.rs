@@ -8,6 +8,7 @@ use super::utils::ResultLogExt;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
 use nix::sys::ptrace::cont;
+use nix::sys::ptrace::AddressType;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
 use nix::unistd::dup2;
@@ -187,7 +188,7 @@ impl Process {
     }
 
     pub fn write_user_area(&self, offset: usize, data: u64) -> Result<(), SdbError> {
-        match write_user(self.pid, offset as *mut c_void, data.try_into().unwrap()) {
+        match write_user(self.pid, offset as AddressType, data.try_into().unwrap()) {
             Ok(_) => Ok(()),
             Err(errno) => SdbError::errno("Could not write user area", errno),
         }
