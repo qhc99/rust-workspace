@@ -1,11 +1,7 @@
 ## asm, vm, compiler
 nand2tetris projects
 
-## leetcode
-Solutions in rust for leetcode
+## sdb (WIP)
+Port of C++ https://github.com/TartanLlama/sdb/tree/main
 
-## rust_libs 
-Frequently used algorithms and data structures in leetcode
-
-## cg
-playground of webgpu and computer graphics
+Target platform: x86_64_linux
