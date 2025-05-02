@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::fmt::Display;
 use std::fmt::Write;
 use std::mem::zeroed;
+use std::rc::Rc;
 use std::rc::Weak;
 
 #[repr(transparent)]
@@ -179,10 +180,10 @@ macro_rules! write_cases {
 }
 
 impl Registers {
-    pub fn new(proc: Weak<RefCell<Process>>) -> Self {
+    pub fn new(proc: &Rc<RefCell<Process>>) -> Self {
         Self {
             data: User::default(), // TODO fix
-            process: proc,
+            process: Rc::downgrade(proc),
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {

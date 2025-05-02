@@ -1,3 +1,4 @@
+use super::breakpoint_site::BreakpointSite;
 use super::pipe::Pipe;
 use super::register_info::RegisterId;
 use super::register_info::register_info_by_id;
@@ -7,8 +8,8 @@ use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
-use nix::sys::ptrace::cont;
 use nix::sys::ptrace::AddressType;
+use nix::sys::ptrace::cont;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
 use nix::unistd::dup2;
@@ -69,6 +70,7 @@ pub struct Process {
     state: ProcessState,    // Stopped
     is_attached: bool,      // true
     registers: Option<Rc<RefCell<Registers>>>,
+    breakpoint_sites: Vec<Rc<RefCell<BreakpointSite>>>,
 }
 
 impl Process {
@@ -79,11 +81,11 @@ impl Process {
             state: ProcessState::Stopped,
             is_attached,
             registers: None,
+            breakpoint_sites: Vec::new(),
         };
 
         let res = Rc::new(RefCell::new(res));
-        res.borrow_mut().registers =
-            Some(Rc::new(RefCell::new(Registers::new(Rc::downgrade(&res)))));
+        res.borrow_mut().registers = Some(Rc::new(RefCell::new(Registers::new(&res))));
         res
     }
 
@@ -277,6 +279,10 @@ impl Process {
             .read_by_id_as::<u64>(RegisterId::rip)
             .unwrap()
             .into()
+    }
+
+    pub fn create_breakpoint_site(address: VirtualAddress) -> Rc<RefCell<BreakpointSite>> {
+        todo!()
     }
 }
 
