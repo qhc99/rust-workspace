@@ -1,4 +1,5 @@
 use super::process::Process;
+use super::stoppoint_collection::StoppointTrait;
 use super::types::VirtualAddress;
 use std::{
     cell::RefCell,
@@ -24,6 +25,18 @@ pub struct BreakpointSite {
     id: IdType,
 }
 
+impl StoppointTrait for BreakpointSite {
+    fn id(&self) -> IdType {
+        self.id
+    }
+
+    fn at_address(&self, addr: VirtualAddress) -> bool {
+        self.address == addr
+    }
+
+    fn disable(&mut self) {}
+}
+
 impl BreakpointSite {
     pub fn new(process: &Rc<RefCell<Process>>, addr: VirtualAddress) -> Self {
         Self {
@@ -34,20 +47,11 @@ impl BreakpointSite {
             id: get_next_id(),
         }
     }
-    pub fn id(&self) -> IdType {
-        self.id
-    }
-
-    pub fn disable(&mut self) {}
 
     pub fn enable(&mut self) {}
 
     pub fn is_enabled(&self) -> bool {
         self.is_enabled
-    }
-
-    pub fn at_address(&self, addr: VirtualAddress) -> bool {
-        self.address == addr
     }
 
     pub fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
