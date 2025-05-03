@@ -12,9 +12,10 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
 
-mod parse;
-mod utils;
 mod breakpoint_site;
+mod parse;
+mod stoppoint_collection;
+mod utils;
 
 pub use utils::ResultLogExt;
 pub mod bit;

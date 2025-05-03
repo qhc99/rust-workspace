@@ -7,7 +7,7 @@ pub type Byte64 = [u8; 8];
 pub type Byte128 = [u8; 16];
 
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct VirtualAddress {
     addr: u64,
 }

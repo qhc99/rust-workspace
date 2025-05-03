@@ -14,7 +14,7 @@ pub fn get_next_id() -> IdType {
     NEXT_ID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
-type IdType = i32;
+pub type IdType = i32;
 
 pub struct BreakpointSite {
     process: Weak<RefCell<Process>>,
@@ -25,7 +25,7 @@ pub struct BreakpointSite {
 }
 
 impl BreakpointSite {
-    fn new(process: &Rc<RefCell<Process>>, addr: VirtualAddress) -> Self {
+    pub fn new(process: &Rc<RefCell<Process>>, addr: VirtualAddress) -> Self {
         Self {
             process: Rc::downgrade(process),
             address: addr,

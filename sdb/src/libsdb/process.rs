@@ -4,6 +4,7 @@ use super::register_info::RegisterId;
 use super::register_info::register_info_by_id;
 use super::registers::Registers;
 use super::sdb_error::SdbError;
+use super::stoppoint_collection::StoppointCollection;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use nix::libc::PTRACE_GETFPREGS;
@@ -25,6 +26,7 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use std::cell::RefMut;
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 
@@ -70,7 +72,7 @@ pub struct Process {
     state: ProcessState,    // Stopped
     is_attached: bool,      // true
     registers: Option<Rc<RefCell<Registers>>>,
-    breakpoint_sites: Vec<Rc<RefCell<BreakpointSite>>>,
+    breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
 }
 
 impl Process {
@@ -81,7 +83,7 @@ impl Process {
             state: ProcessState::Stopped,
             is_attached,
             registers: None,
-            breakpoint_sites: Vec::new(),
+            breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
         };
 
         let res = Rc::new(RefCell::new(res));
@@ -281,8 +283,39 @@ impl Process {
             .into()
     }
 
-    pub fn create_breakpoint_site(address: VirtualAddress) -> Rc<RefCell<BreakpointSite>> {
-        todo!()
+    pub fn breakpoint_sites(&self) -> Rc<RefCell<StoppointCollection<BreakpointSite>>> {
+        self.breakpoint_sites.clone()
+    }
+}
+
+pub trait ProcessExt {
+    fn create_breakpoint_site(
+        &self,
+        address: VirtualAddress,
+    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
+}
+
+impl ProcessExt for Rc<RefCell<Process>> {
+    fn create_breakpoint_site(
+        &self,
+        address: VirtualAddress,
+    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
+        if self
+            .borrow()
+            .breakpoint_sites
+            .borrow()
+            .contain_address(address)
+        {
+            return SdbError::err(&format!(
+                "Breakpoint site already created at address {}",
+                address.get_addr()
+            ));
+        }
+        Ok(self
+            .borrow()
+            .breakpoint_sites
+            .borrow_mut()
+            .push(BreakpointSite::new(self, address)))
     }
 }
 
