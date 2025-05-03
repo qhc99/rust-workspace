@@ -12,8 +12,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::{env, process::exit};
 mod libsdb;
-mod test;
 mod test_utils;
+mod tests;
 
 #[cfg(target_os = "linux")]
 fn main() {

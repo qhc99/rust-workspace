@@ -1,18 +1,11 @@
 use super::breakpoint_site::IdType;
 use super::sdb_error::SdbError;
+use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use std::{cell::RefCell, rc::Rc};
 
 pub struct StoppointCollection<T: StoppointTrait> {
     stoppoints: Vec<Rc<RefCell<T>>>,
-}
-
-pub trait StoppointTrait {
-    fn id(&self) -> IdType;
-
-    fn at_address(&self, addr: VirtualAddress) -> bool;
-
-    fn disable(&mut self);
 }
 
 impl<T: StoppointTrait> StoppointCollection<T> {

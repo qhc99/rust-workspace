@@ -17,6 +17,7 @@ mod parse;
 mod stoppoint_collection;
 mod utils;
 
+pub mod traits;
 pub use utils::ResultLogExt;
 pub mod bit;
 pub mod pipe;

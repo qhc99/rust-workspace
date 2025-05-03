@@ -1,5 +1,5 @@
 use super::process::Process;
-use super::stoppoint_collection::StoppointTrait;
+use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use std::{
     cell::RefCell,
@@ -32,6 +32,10 @@ impl StoppointTrait for BreakpointSite {
 
     fn at_address(&self, addr: VirtualAddress) -> bool {
         self.address == addr
+    }
+
+    fn address(&self) -> VirtualAddress {
+        self.address
     }
 
     fn disable(&mut self) {

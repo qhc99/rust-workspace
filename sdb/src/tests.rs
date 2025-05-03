@@ -6,6 +6,8 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
+use crate::libsdb::types::VirtualAddress;
+use crate::libsdb::{process::ProcessExt, traits::StoppointTrait};
 use libsdb::register_info::RegisterId;
 use libsdb::{
     bit::{to_byte64, to_byte128},
@@ -182,4 +184,41 @@ fn read_registers() {
     proc.borrow_mut().resume().unwrap();
     proc.borrow_mut().wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
+}
+
+#[test]
+fn create_breakpoint_site() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let site = proc.create_breakpoint_site(42.into());
+    assert_eq!(VirtualAddress::from(42), site.unwrap().borrow().address());
+}
+
+#[test]
+fn create_breakpoint_site_id_increase() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let site1 = proc.create_breakpoint_site(42.into());
+    assert_eq!(
+        VirtualAddress::from(42),
+        site1.as_ref().unwrap().borrow().address()
+    );
+
+    let site2 = proc.create_breakpoint_site(43.into());
+    assert_eq!(
+        site2.as_ref().unwrap().borrow().id(),
+        site1.as_ref().unwrap().borrow().id() + 1
+    );
+
+    let site3 = proc.create_breakpoint_site(44.into());
+    assert_eq!(
+        site3.as_ref().unwrap().borrow().id(),
+        site2.as_ref().unwrap().borrow().id() + 1
+    );
+
+    let site4 = proc.create_breakpoint_site(45.into());
+    assert_eq!(
+        site4.as_ref().unwrap().borrow().id(),
+        site3.as_ref().unwrap().borrow().id() + 1
+    );
 }
