@@ -26,7 +26,6 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
-use std::cell::RefMut;
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 

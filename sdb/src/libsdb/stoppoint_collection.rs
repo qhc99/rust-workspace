@@ -87,7 +87,9 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         }
     }
 
-    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {}
+    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {
+        self.stoppoints.iter().for_each(|s| f(s));
+    }
 
     pub fn size(&self) -> usize {
         self.stoppoints.len()

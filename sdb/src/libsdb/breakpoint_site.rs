@@ -34,7 +34,9 @@ impl StoppointTrait for BreakpointSite {
         self.address == addr
     }
 
-    fn disable(&mut self) {}
+    fn disable(&mut self) {
+        todo!()
+    }
 }
 
 impl BreakpointSite {
@@ -48,7 +50,9 @@ impl BreakpointSite {
         }
     }
 
-    pub fn enable(&mut self) {}
+    pub fn enable(&mut self) {
+        todo!()
+    }
 
     pub fn is_enabled(&self) -> bool {
         self.is_enabled
