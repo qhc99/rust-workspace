@@ -69,18 +69,33 @@ fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
 pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
-    if cmd.starts_with("continue") {
+    if cmd == "continue" {
         process.borrow_mut().resume()?;
         let reason = process.borrow_mut().wait_on_signal()?;
         print_stop_reason(process, reason);
-    } else if cmd.starts_with("help") {
+    } else if cmd == "help" {
         print_help(&args);
-    } else if cmd.starts_with("register") {
+    } else if cmd == "register" {
         handle_register_command(process, &args);
+    } else if cmd == "breakpoint"{
+        handle_breakpoint_command(process, &args);
+
     } else {
         eprintln!("Unknown command");
     }
     Ok(())
+}
+
+fn handle_breakpoint_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
+    if args.len() < 2{
+        print_help(&["help", "register"]);
+        return;
+    }
+
+    let command = args[1];
+    if command == "list"{
+        
+    }
 }
 
 fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
@@ -89,9 +104,9 @@ fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
         return;
     }
 
-    if args[1].starts_with("read") {
+    if args[1] == "read" {
         handle_register_read(process, args);
-    } else if args[1].starts_with("write") {
+    } else if args[1] == "write" {
         handle_register_write(process, args);
     } else {
         print_help(&["help", "register"]);
@@ -152,7 +167,7 @@ fn print_help(args: &[&str]) {
             register - Commands for operating on registers
         "
         })
-    } else if args[1].starts_with("register") {
+    } else if args[1] == "register" {
         eprintln!(indoc! {"
             Available commands:
             read

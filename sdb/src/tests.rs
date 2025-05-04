@@ -314,6 +314,6 @@ fn iterate_breakpoint_sites() {
         .borrow_mut()
         .for_each(move |s| {
             assert!(s.borrow().at_address(start.into()));
-            start+=1;
+            start += 1;
         });
 }
