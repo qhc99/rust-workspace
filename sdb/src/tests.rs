@@ -261,3 +261,12 @@ fn find_breakpoint_sites() {
     assert!(s2.borrow().id() == s1.borrow().id() + 1);
     assert!(s2.borrow().address() == 45.into());
 }
+
+#[test]
+fn cannot_find_breakpoint_site(){
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+
+    assert!(proc.borrow().breakpoint_sites().borrow().get_by_address(44.into()).is_err());
+    assert!(proc.borrow().breakpoint_sites().borrow().get_by_id(44).is_err());
+}
