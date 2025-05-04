@@ -260,5 +260,4 @@ fn find_breakpoint_sites() {
     );
     assert!(s2.borrow().id() == s1.borrow().id() + 1);
     assert!(s2.borrow().address() == 45.into());
-
 }
