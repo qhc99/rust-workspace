@@ -80,8 +80,8 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         }
     }
 
-    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {
-        self.stoppoints.iter().for_each(|s| f(s));
+    pub fn for_each(&mut self, mut f: impl FnMut(&Rc<RefCell<T>>)) {
+        self.stoppoints.iter_mut().for_each(|s|f(s));
     }
 
     pub fn size(&self) -> usize {

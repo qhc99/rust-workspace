@@ -282,3 +282,38 @@ fn cannot_find_breakpoint_site() {
             .is_err()
     );
 }
+
+#[test]
+fn breakpoint_sites_list_size() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    assert!(proc.borrow().breakpoint_sites().borrow().empty());
+    assert!(proc.borrow().breakpoint_sites().borrow().size() == 0);
+
+    let _ = proc.create_breakpoint_site(42.into());
+    assert!(!proc.borrow().breakpoint_sites().borrow().empty());
+    assert!(proc.borrow().breakpoint_sites().borrow().size() == 1);
+
+    let _ = proc.create_breakpoint_site(43.into());
+    assert!(!proc.borrow().breakpoint_sites().borrow().empty());
+    assert!(proc.borrow().breakpoint_sites().borrow().size() == 2);
+}
+
+#[test]
+fn iterate_breakpoint_sites() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let _ = proc.create_breakpoint_site(42.into());
+    let _ = proc.create_breakpoint_site(43.into());
+    let _ = proc.create_breakpoint_site(44.into());
+    let _ = proc.create_breakpoint_site(45.into());
+
+    let mut start = 42;
+    proc.borrow_mut()
+        .breakpoint_sites()
+        .borrow_mut()
+        .for_each(move |s| {
+            assert!(s.borrow().at_address(start.into()));
+            start+=1;
+        });
+}
