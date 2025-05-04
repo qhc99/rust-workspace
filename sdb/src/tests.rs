@@ -222,3 +222,43 @@ fn create_breakpoint_site_id_increase() {
         site3.as_ref().unwrap().borrow().id() + 1
     );
 }
+
+#[test]
+fn find_breakpoint_sites() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let _ = proc.create_breakpoint_site(42.into());
+    let _ = proc.create_breakpoint_site(43.into());
+    let _ = proc.create_breakpoint_site(44.into());
+    let _ = proc.create_breakpoint_site(45.into());
+
+    let s1 = proc
+        .borrow()
+        .breakpoint_sites()
+        .borrow()
+        .get_by_address(44.into())
+        .unwrap();
+    assert!(
+        proc.borrow()
+            .breakpoint_sites()
+            .borrow()
+            .contain_address(44.into())
+    );
+    assert!(s1.borrow().address() == 44.into());
+
+    let s2 = proc
+        .borrow()
+        .breakpoint_sites()
+        .borrow()
+        .get_by_id(s1.borrow().id() + 1)
+        .unwrap();
+    assert!(
+        proc.borrow()
+            .breakpoint_sites()
+            .borrow()
+            .contain_id(s1.borrow().id() + 1)
+    );
+    assert!(s2.borrow().id() == s1.borrow().id() + 1);
+    assert!(s2.borrow().address() == 45.into());
+
+}
