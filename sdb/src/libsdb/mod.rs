@@ -11,6 +11,7 @@ use sdb_error::SdbError;
 use std::cell::RefCell;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
+use traits::StoppointTrait;
 
 mod breakpoint_site;
 mod parse;
@@ -77,9 +78,8 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
         print_help(&args);
     } else if cmd == "register" {
         handle_register_command(process, &args);
-    } else if cmd == "breakpoint"{
+    } else if cmd == "breakpoint" {
         handle_breakpoint_command(process, &args);
-
     } else {
         eprintln!("Unknown command");
     }
@@ -87,14 +87,29 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
 }
 
 fn handle_breakpoint_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
-    if args.len() < 2{
+    if args.len() < 2 {
         print_help(&["help", "register"]);
         return;
     }
 
     let command = args[1];
-    if command == "list"{
-        
+    if command == "list" {
+        if process.borrow().breakpoint_sites().borrow().empty() {
+            println!("No breakpoints set");
+        } else {
+            println!("Current breakpoints:");
+            process.borrow().breakpoint_sites().borrow().for_each(|s| {
+                let id = s.borrow().id();
+                let address = s.borrow().address().get_addr();
+                let status = if s.borrow().is_enabled() {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                let msg = format!("{id}: address={address:#x}, {status}");
+                println!("{msg}");
+            });
+        }
     }
 }
 

@@ -64,7 +64,7 @@ impl<T: StoppointTrait> StoppointCollection<T> {
 
     pub fn remove_by_id(&mut self, id: IdType) {
         if let Some(pos) = self.stoppoints.iter().position(|s| s.borrow().id() == id) {
-            self.stoppoints[pos].borrow_mut().disable();
+            self.stoppoints[pos].borrow_mut().disable().ok();
             self.stoppoints.remove(pos);
         }
     }
@@ -75,13 +75,17 @@ impl<T: StoppointTrait> StoppointCollection<T> {
             .iter()
             .position(|s| s.borrow().at_address(address))
         {
-            self.stoppoints[pos].borrow_mut().disable();
+            self.stoppoints[pos].borrow_mut().disable().ok();
             self.stoppoints.remove(pos);
         }
     }
 
-    pub fn for_each(&mut self, mut f: impl FnMut(&Rc<RefCell<T>>)) {
+    pub fn for_each_mut(&mut self, mut f: impl FnMut(&Rc<RefCell<T>>)) {
         self.stoppoints.iter_mut().for_each(|s| f(s));
+    }
+
+    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {
+        self.stoppoints.iter().for_each(|s| f(s));
     }
 
     pub fn size(&self) -> usize {
