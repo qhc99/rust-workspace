@@ -110,6 +110,7 @@ fn handle_breakpoint_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
                 println!("{msg}");
             });
         }
+        return;
     }
 }
 

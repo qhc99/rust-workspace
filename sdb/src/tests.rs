@@ -312,7 +312,7 @@ fn iterate_breakpoint_sites() {
     proc.borrow_mut()
         .breakpoint_sites()
         .borrow_mut()
-        .for_each(move |s| {
+        .for_each_mut(move |s| {
             assert!(s.borrow().at_address(start.into()));
             start += 1;
         });
