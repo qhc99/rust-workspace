@@ -62,22 +62,24 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         }
     }
 
-    pub fn remove_by_id(&mut self, id: IdType) {
+    pub fn remove_by_id(&mut self, id: IdType) -> Result<(), SdbError> {
         if let Some(pos) = self.stoppoints.iter().position(|s| s.borrow().id() == id) {
-            self.stoppoints[pos].borrow_mut().disable().ok();
+            self.stoppoints[pos].borrow_mut().disable()?;
             self.stoppoints.remove(pos);
         }
+        Ok(())
     }
 
-    pub fn remove_by_address(&mut self, address: VirtualAddress) {
+    pub fn remove_by_address(&mut self, address: VirtualAddress) -> Result<(), SdbError> {
         if let Some(pos) = self
             .stoppoints
             .iter()
             .position(|s| s.borrow().at_address(address))
         {
-            self.stoppoints[pos].borrow_mut().disable().ok();
+            self.stoppoints[pos].borrow_mut().disable()?;
             self.stoppoints.remove(pos);
         }
+        Ok(())
     }
 
     pub fn for_each_mut(&mut self, mut f: impl FnMut(&Rc<RefCell<T>>)) {

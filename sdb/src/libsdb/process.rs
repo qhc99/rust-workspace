@@ -124,7 +124,9 @@ impl Process {
 
     fn exit_with_error(channel: &Pipe, msg: &str, errno: Errno) -> ! {
         let err_str = errno.desc();
-        channel.write(format!("{msg}: {err_str}").as_bytes()).ok();
+        channel
+            .write(format!("{msg}: {err_str}").as_bytes())
+            .unwrap();
         exit(-1)
     }
 
@@ -163,7 +165,9 @@ impl Process {
             channel.close_read();
             if let Ok(msg) = data {
                 if !msg.is_empty() {
-                    waitpid(pid, WaitPidFlag::from_bits(0)).ok();
+                    waitpid(pid, WaitPidFlag::from_bits(0)).map_err(|errno| {
+                        SdbError::new(&format!("Waitpid child failed, errno: {errno}"))
+                    })?;
                     return SdbError::err(std::str::from_utf8(&msg).unwrap());
                 }
             }

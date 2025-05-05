@@ -1,17 +1,19 @@
 #![cfg(target_os = "linux")]
 #![allow(dead_code)]
 
+use breakpoint_site::IdType;
 use indoc::indoc;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use parse::parse_register_value;
-use process::{Process, ProcessState, StopReason};
+use process::{Process, ProcessExt, ProcessState, StopReason};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cell::RefCell;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
 use traits::StoppointTrait;
+use types::VirtualAddress;
 
 mod breakpoint_site;
 mod parse;
@@ -79,17 +81,20 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
     } else if cmd == "register" {
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
-        handle_breakpoint_command(process, &args);
+        handle_breakpoint_command(process, &args)?;
     } else {
         eprintln!("Unknown command");
     }
     Ok(())
 }
 
-fn handle_breakpoint_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
+fn handle_breakpoint_command(
+    process: &Rc<RefCell<Process>>,
+    args: &[&str],
+) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "register"]);
-        return;
+        return Ok(());
     }
 
     let command = args[1];
@@ -110,8 +115,54 @@ fn handle_breakpoint_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
                 println!("{msg}");
             });
         }
-        return;
+        return Ok(());
     }
+
+    if args.len() < 3 {
+        print_help(&["help", "breakpoint"]);
+        return Ok(());
+    }
+
+    if command == "set" {
+        let address = u64::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16);
+        if address.is_err() {
+            eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
+            return Ok(());
+        }
+        let bs = process.create_breakpoint_site(VirtualAddress::from(address.unwrap()))?;
+        bs.borrow_mut().enable()?;
+        return Ok(());
+    }
+
+    let id = IdType::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16);
+    if id.is_err() {
+        return SdbError::err("Command expects breakpoint id");
+    }
+    let id = id.unwrap();
+    if command == "enable" {
+        process
+            .borrow_mut()
+            .breakpoint_sites()
+            .borrow_mut()
+            .get_by_id(id)?
+            .borrow_mut()
+            .enable()?;
+    } else if command == "disable" {
+        process
+            .borrow_mut()
+            .breakpoint_sites()
+            .borrow_mut()
+            .get_by_id(id)?
+            .borrow_mut()
+            .disable()?;
+    } else if command == "delete" {
+        process
+            .borrow_mut()
+            .breakpoint_sites()
+            .borrow_mut()
+            .remove_by_id(id)?;
+    }
+    return Ok(());
 }
 
 fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
@@ -179,10 +230,11 @@ fn print_help(args: &[&str]) {
     if args.len() == 1 {
         eprintln!(indoc! {"
             Available commands:
+            breakpoint - Commands for operating on breakpoints
             continue - Resume the process
             register - Commands for operating on registers
         "
-        })
+        });
     } else if args[1] == "register" {
         eprintln!(indoc! {"
             Available commands:
@@ -190,6 +242,15 @@ fn print_help(args: &[&str]) {
             read <register>
             read all
             write <register> <value>
-        "})
+        "});
+    } else if args[1] == "breakpoint" {
+        eprintln!(indoc! {"
+            Available commands:
+            list
+            delete <id>
+            disable <id>
+            enable <id>
+            set <address>
+        "});
     }
 }
