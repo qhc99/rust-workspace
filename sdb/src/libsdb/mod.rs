@@ -38,7 +38,10 @@ pub fn attach(args: &[&str]) -> Result<Rc<RefCell<Process>>, SdbError> {
         return Process::attach(pid);
     } else {
         let program_path = CString::new(args[1]).unwrap();
-        return Process::launch(Path::new(program_path.to_str().unwrap()), true, None);
+        let proc = Process::launch(Path::new(program_path.to_str().unwrap()), true, None)?;
+        let pid = proc.borrow().pid();
+        println!("Launched process with PID {pid}");
+        return Ok(proc);
     }
 }
 

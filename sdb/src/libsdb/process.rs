@@ -22,6 +22,8 @@ use nix::{
         wait::{WaitPidFlag, WaitStatus, waitpid},
     },
 };
+use nix::sys::personality::set as set_personality;
+use nix::sys::personality::Persona;
 use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
@@ -144,6 +146,10 @@ impl Process {
         }
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
+            let res = set_personality(Persona::ADDR_NO_RANDOMIZE);
+            if let Err(errno) = res{
+                Process::exit_with_error(&channel, "Subprocess set peronality failed", errno);
+            }
             channel.close_read();
             if let Some(fd) = stdout_replacement {
                 if let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd()) {
