@@ -72,6 +72,7 @@ impl StopReason {
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // true
+    // Use RefCell to by avoid mut borrow runtime error 
     state: RefCell<ProcessState>,    // Stopped
     is_attached: bool,      // true
     registers: Option<Rc<RefCell<Registers>>>,
