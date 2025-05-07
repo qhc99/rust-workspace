@@ -5,6 +5,7 @@ use super::register_info::register_info_by_id;
 use super::registers::Registers;
 use super::sdb_error::SdbError;
 use super::stoppoint_collection::StoppointCollection;
+use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use nix::libc::PTRACE_GETFPREGS;
@@ -13,6 +14,7 @@ use nix::sys::personality::Persona;
 use nix::sys::personality::set as set_personality;
 use nix::sys::ptrace::AddressType;
 use nix::sys::ptrace::cont;
+use nix::sys::ptrace::step;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
 use nix::unistd::dup2;
@@ -70,7 +72,7 @@ impl StopReason {
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // true
-    state: ProcessState,    // Stopped
+    state: RefCell<ProcessState>,    // Stopped
     is_attached: bool,      // true
     registers: Option<Rc<RefCell<Registers>>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
@@ -81,7 +83,7 @@ impl Process {
         let res = Self {
             pid,
             terminate_on_end,
-            state: ProcessState::Stopped,
+            state: RefCell::new(ProcessState::Stopped),
             is_attached,
             registers: None,
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
@@ -96,28 +98,51 @@ impl Process {
         self.pid
     }
 
-    pub fn resume(&mut self) -> Result<(), SdbError> {
+    pub fn resume(&self) -> Result<(), SdbError> {
+        let pc = self.get_pc();
+        if self
+            .breakpoint_sites
+            .borrow()
+            .enabled_breakpoint_at_address(pc)
+        {
+            let bp = self.breakpoint_sites.borrow().get_by_address(pc)?;
+            bp.borrow_mut().disable()?;
+            step(self.pid, None)
+                .map_err(|errno| SdbError::new_errno("Failed to single step", errno))?;
+            waitpid(self.pid, None)
+                .map_err(|errno| SdbError::new_errno("Waitpid failed", errno))?;
+            bp.borrow_mut().enable()?;
+        }
         if let Err(errno) = cont(self.pid, None) {
             return SdbError::errno("Could not resume", errno);
         }
-        self.state = ProcessState::Running;
+        *self.state.borrow_mut() = ProcessState::Running;
         Ok(())
     }
 
     pub fn state(&self) -> ProcessState {
-        self.state
+        self.state.borrow().clone()
     }
 
-    pub fn wait_on_signal(&mut self) -> Result<StopReason, SdbError> {
+    pub fn wait_on_signal(&self) -> Result<StopReason, SdbError> {
         let wait_status = waitpid(self.pid, WaitPidFlag::from_bits(0));
         return match wait_status {
             Err(errno) => SdbError::errno("waitpid failed", errno),
             Ok(status) => {
                 let reason = StopReason::new(status)?;
-                self.state = reason.reason;
+                *self.state.borrow_mut() = reason.reason;
 
-                if self.is_attached && self.state == ProcessState::Stopped {
+                if self.is_attached && self.state.borrow().clone() == ProcessState::Stopped {
                     self.read_all_registers()?;
+                    let instr_begin = self.get_pc() - 1;
+                    if reason.info == Signal::SIGTRAP as i32
+                        && self
+                            .breakpoint_sites
+                            .borrow()
+                            .enabled_breakpoint_at_address(instr_begin)
+                    {
+                        self.set_pc(instr_begin)?;
+                    }
                 }
                 Ok(reason)
             }
@@ -172,7 +197,7 @@ impl Process {
             if let Ok(msg) = data {
                 if !msg.is_empty() {
                     waitpid(pid, WaitPidFlag::from_bits(0)).map_err(|errno| {
-                        SdbError::new(&format!("Waitpid child failed, errno: {errno}"))
+                        SdbError::new_err(&format!("Waitpid child failed, errno: {errno}"))
                     })?;
                     return SdbError::err(std::str::from_utf8(&msg).unwrap());
                 }
@@ -183,7 +208,7 @@ impl Process {
 
         let proc = Process::new(pid, true, debug);
         if debug {
-            proc.borrow_mut().wait_on_signal()?;
+            proc.borrow().wait_on_signal()?;
         }
         return Ok(proc);
     }
@@ -196,7 +221,7 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false, true);
-        proc.borrow_mut().wait_on_signal()?;
+        proc.borrow().wait_on_signal()?;
         return Ok(proc);
     }
 
@@ -295,6 +320,13 @@ impl Process {
     pub fn breakpoint_sites(&self) -> Rc<RefCell<StoppointCollection<BreakpointSite>>> {
         self.breakpoint_sites.clone()
     }
+
+    pub fn set_pc(&self, address: VirtualAddress) -> Result<(), SdbError> {
+        self.get_registers()
+            .borrow_mut()
+            .write_by_id(RegisterId::rip, address.get_addr())?;
+        Ok(())
+    }
 }
 
 pub trait ProcessExt {
@@ -332,7 +364,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         if self.pid.as_raw() != 0 {
             if self.is_attached {
-                if self.state == ProcessState::Running {
+                if self.state.borrow().clone() == ProcessState::Running {
                     kill(self.pid, Signal::SIGSTOP).log_error();
                     waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
                 }

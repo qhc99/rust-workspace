@@ -11,24 +11,25 @@ impl Error for SdbError {}
 
 impl SdbError {
     pub fn err<T>(s: &str) -> Result<T, SdbError> {
-        Err(SdbError {
-            details: s.to_owned(),
-            errno: Errno::UnknownErrno,
-        })
+        Err(SdbError::new_err(s))
     }
 
-    pub fn new(s: &str) -> SdbError {
+    pub fn new_err(s: &str) -> SdbError {
         SdbError {
             details: s.to_owned(),
             errno: Errno::UnknownErrno,
         }
     }
 
-    pub fn errno<T>(s: &str, errno: Errno) -> Result<T, SdbError> {
-        Err(SdbError {
+    pub fn new_errno(s: &str, errno: Errno) -> SdbError {
+        SdbError {
             details: s.to_owned(),
             errno,
-        })
+        }
+    }
+
+    pub fn errno<T>(s: &str, errno: Errno) -> Result<T, SdbError> {
+        Err(SdbError::new_errno(s, errno))
     }
 }
 

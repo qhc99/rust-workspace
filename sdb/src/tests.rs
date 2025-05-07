@@ -45,13 +45,13 @@ fn process_attach_invalid_pid() {
 fn process_resume_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    proc.borrow_mut().resume().ok();
+    proc.borrow().resume().ok();
     let status = get_process_state(proc.borrow().pid());
     assert!(status == "R" || status == "S");
 
     let target = super::Process::launch(bin.target_path(), false, None).unwrap();
     let proc = Process::attach(target.borrow().pid()).unwrap();
-    proc.borrow_mut().resume().ok();
+    proc.borrow().resume().ok();
     let status = get_process_state(proc.borrow().pid());
     assert!(status == "R" || status == "S");
 }
@@ -60,9 +60,9 @@ fn process_resume_success() {
 fn process_resume_terminated() {
     let bin = BinBuilder::rustc("resource", "just_exit.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    proc.borrow_mut().resume().ok();
-    proc.borrow_mut().wait_on_signal().ok();
-    assert!(proc.borrow_mut().resume().is_err());
+    proc.borrow().resume().ok();
+    proc.borrow().wait_on_signal().ok();
+    assert!(proc.borrow().resume().is_err());
 }
 
 #[test]
@@ -72,8 +72,8 @@ fn write_registers() {
     let target = BinBuilder::asm("resource", "reg_write.s");
     let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
 
     {
         proc.borrow()
@@ -82,8 +82,8 @@ fn write_registers() {
             .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
             .unwrap();
 
-        proc.borrow_mut().resume().unwrap();
-        proc.borrow_mut().wait_on_signal().unwrap();
+        proc.borrow().resume().unwrap();
+        proc.borrow().wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -97,8 +97,8 @@ fn write_registers() {
             .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
             .unwrap();
 
-        proc.borrow_mut().resume().unwrap();
-        proc.borrow_mut().wait_on_signal().unwrap();
+        proc.borrow().resume().unwrap();
+        proc.borrow().wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -112,8 +112,8 @@ fn write_registers() {
             .write_by_id(RegisterId::xmm0, 42.24)
             .unwrap();
 
-        proc.borrow_mut().resume().unwrap();
-        proc.borrow_mut().wait_on_signal().unwrap();
+        proc.borrow().resume().unwrap();
+        proc.borrow().wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -137,8 +137,8 @@ fn write_registers() {
             .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
             .unwrap();
 
-        proc.borrow_mut().resume().unwrap();
-        proc.borrow_mut().wait_on_signal().unwrap();
+        proc.borrow().resume().unwrap();
+        proc.borrow().wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -155,16 +155,16 @@ fn read_registers() {
     let regs = proc.borrow().get_registers();
     channel.close_write();
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte64>(RegisterId::mm0)
@@ -172,8 +172,8 @@ fn read_registers() {
             == to_byte64(0xba5eba11_u64)
     );
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte128>(RegisterId::xmm0)
@@ -181,8 +181,8 @@ fn read_registers() {
             == to_byte128(64.125)
     );
 
-    proc.borrow_mut().resume().unwrap();
-    proc.borrow_mut().wait_on_signal().unwrap();
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }
 
@@ -309,7 +309,7 @@ fn iterate_breakpoint_sites() {
     let _ = proc.create_breakpoint_site(45.into());
 
     let mut start = 42;
-    proc.borrow_mut()
+    proc.borrow()
         .breakpoint_sites()
         .borrow_mut()
         .for_each_mut(move |s| {

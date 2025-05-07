@@ -14,7 +14,7 @@ macro_rules! parse_int {
             $(
                 $num => Ok(RegisterValue::$Variant(
                     <$Ty>::from_str_radix($digits, 16)
-                        .map_err(|_| SdbError::new("Invalid format"))?,
+                        .map_err(|_| SdbError::new_err("Invalid format"))?,
                 )),
             )+
             _ => SdbError::err("Invalid format"),
@@ -77,10 +77,10 @@ pub fn parse_register_value(info: &RegisterInfo, text: &str) -> Result<RegisterV
             })
         }
         RegisterFormat::DoubleFloat => Ok(RegisterValue::Double(
-            f64::from_str(text).map_err(|_| SdbError::new("Invalid format"))?,
+            f64::from_str(text).map_err(|_| SdbError::new_err("Invalid format"))?,
         )),
         RegisterFormat::LongDouble => Ok(RegisterValue::LongDouble(F80::new(
-            f64::from_str(text).map_err(|_| SdbError::new("Invalid format"))?,
+            f64::from_str(text).map_err(|_| SdbError::new_err("Invalid format"))?,
         ))),
         RegisterFormat::Vector => parse_vector!(info.size, text, {
             8 => Byte64;

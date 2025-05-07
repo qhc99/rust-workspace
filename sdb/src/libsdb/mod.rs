@@ -76,8 +76,8 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
     if cmd == "continue" {
-        process.borrow_mut().resume()?;
-        let reason = process.borrow_mut().wait_on_signal()?;
+        process.borrow().resume()?;
+        let reason = process.borrow().wait_on_signal()?;
         print_stop_reason(process, reason);
     } else if cmd == "help" {
         print_help(&args);
@@ -137,30 +137,27 @@ fn handle_breakpoint_command(
         return Ok(());
     }
 
-    let id = IdType::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16);
-    if id.is_err() {
-        return SdbError::err("Command expects breakpoint id");
-    }
-    let id = id.unwrap();
+    let id = IdType::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16)
+        .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
     if command == "enable" {
         process
-            .borrow_mut()
+            .borrow()
             .breakpoint_sites()
-            .borrow_mut()
+            .borrow()
             .get_by_id(id)?
             .borrow_mut()
             .enable()?;
     } else if command == "disable" {
         process
-            .borrow_mut()
+            .borrow()
             .breakpoint_sites()
-            .borrow_mut()
+            .borrow()
             .get_by_id(id)?
             .borrow_mut()
             .disable()?;
     } else if command == "delete" {
         process
-            .borrow_mut()
+            .borrow()
             .breakpoint_sites()
             .borrow_mut()
             .remove_by_id(id)?;

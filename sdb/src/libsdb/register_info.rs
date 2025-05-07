@@ -69,7 +69,7 @@ pub fn register_info_by_id(id: RegisterId) -> Result<RegisterInfo, SdbError> {
         .iter()
         .find(|info| info.id == id)
         .copied()
-        .ok_or_else(|| SdbError::new("Can't find register info"))
+        .ok_or_else(|| SdbError::new_err("Can't find register info"))
 }
 
 pub fn register_info_by_name(name: &str) -> Result<RegisterInfo, SdbError> {
@@ -77,7 +77,7 @@ pub fn register_info_by_name(name: &str) -> Result<RegisterInfo, SdbError> {
         .iter()
         .find(|info| info.name == name)
         .copied()
-        .ok_or_else(|| SdbError::new("Can't find register info"))
+        .ok_or_else(|| SdbError::new_err("Can't find register info"))
 }
 
 pub fn register_info_by_dwarf(dwarf_id: i32) -> Result<RegisterInfo, SdbError> {
@@ -85,7 +85,7 @@ pub fn register_info_by_dwarf(dwarf_id: i32) -> Result<RegisterInfo, SdbError> {
         .iter()
         .find(|info| info.dwarf_id == dwarf_id)
         .copied()
-        .ok_or_else(|| SdbError::new("Can't find register info"))
+        .ok_or_else(|| SdbError::new_err("Can't find register info"))
 }
 
 #[ignore = "Manual"]
