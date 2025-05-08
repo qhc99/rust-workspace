@@ -4,6 +4,7 @@ use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use std::{cell::RefCell, rc::Rc};
 
+#[derive(Debug)]
 pub struct StoppointCollection<T: StoppointTrait> {
     stoppoints: Vec<Rc<RefCell<T>>>,
 }

@@ -33,7 +33,7 @@ use nix::{
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProcessState {
     Stopped,
     Running,
@@ -69,6 +69,7 @@ impl StopReason {
     }
 }
 
+#[derive(Debug)]
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // Default true
@@ -327,6 +328,10 @@ impl Process {
             .borrow_mut()
             .write_by_id(RegisterId::rip, address.get_addr())?;
         Ok(())
+    }
+
+    pub fn step_instruction(&self) -> StopReason{
+        todo!()
     }
 }
 

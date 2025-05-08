@@ -21,7 +21,7 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct User(pub user);
 
 unsafe impl Zeroable for User {}
@@ -51,6 +51,7 @@ impl F80 {
     }
 }
 
+#[derive(Debug)]
 pub struct Registers {
     pub data: User,
     process: Weak<RefCell<Process>>,

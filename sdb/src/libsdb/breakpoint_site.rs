@@ -19,6 +19,7 @@ pub fn get_next_id() -> IdType {
 
 pub type IdType = i32;
 
+#[derive(Debug)]
 pub struct BreakpointSite {
     process: Weak<RefCell<Process>>,
     address: VirtualAddress,
