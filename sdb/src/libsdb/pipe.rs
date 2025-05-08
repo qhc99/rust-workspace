@@ -5,6 +5,7 @@ use nix::unistd::read;
 use nix::unistd::write;
 use std::os::fd::{AsRawFd, OwnedFd};
 
+#[derive(Debug)]
 pub struct Pipe {
     fds: [Option<OwnedFd>; 2],
 }
