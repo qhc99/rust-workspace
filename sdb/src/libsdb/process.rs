@@ -73,9 +73,9 @@ impl StopReason {
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // Default true
-    // Use RefCell to avoid self mut borrow runtime error 
-    state: RefCell<ProcessState>,    // Default Stopped
-    is_attached: bool,      // Default true
+    // Use RefCell to avoid self mut borrow runtime error
+    state: RefCell<ProcessState>, // Default Stopped
+    is_attached: bool,            // Default true
     registers: Option<Rc<RefCell<Registers>>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
 }
@@ -330,8 +330,25 @@ impl Process {
         Ok(())
     }
 
-    pub fn step_instruction(&self) -> StopReason{
-        todo!()
+    pub fn step_instruction(&self) -> Result<StopReason, SdbError> {
+        let mut to_reenable: Option<_> = None;
+        let pc = self.get_pc();
+        if self
+            .breakpoint_sites
+            .borrow()
+            .enabled_breakpoint_at_address(pc)
+        {
+            let bp = self.breakpoint_sites.borrow().get_by_address(pc).unwrap();
+            bp.borrow_mut().disable()?;
+            to_reenable = Some(bp);
+        }
+        step(self.pid, None)
+            .map_err(|errno| SdbError::new_errno("Could not single step", errno))?;
+        let reason = self.wait_on_signal()?;
+        if let Some(todo) = to_reenable {
+            todo.borrow_mut().enable()?;
+        }
+        Ok(reason)
     }
 }
 
