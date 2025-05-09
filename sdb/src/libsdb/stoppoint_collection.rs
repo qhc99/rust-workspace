@@ -17,17 +17,13 @@ impl<T: StoppointTrait> StoppointCollection<T> {
     }
 
     pub fn contain_id(&self, id: IdType) -> bool {
-        self.stoppoints
-            .iter()
-            .find(|t| t.borrow().id() == id)
-            .is_some()
+        self.stoppoints.iter().any(|t| t.borrow().id() == id)
     }
 
     pub fn contain_address(&self, address: VirtualAddress) -> bool {
         self.stoppoints
             .iter()
-            .find(|t| t.borrow().at_address(address))
-            .is_some()
+            .any(|t| t.borrow().at_address(address))
     }
 
     pub fn enabled_breakpoint_at_address(&self, address: VirtualAddress) -> bool {
@@ -88,7 +84,7 @@ impl<T: StoppointTrait> StoppointCollection<T> {
     }
 
     pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {
-        self.stoppoints.iter().for_each(|s| f(s));
+        self.stoppoints.iter().for_each(f);
     }
 
     pub fn size(&self) -> usize {

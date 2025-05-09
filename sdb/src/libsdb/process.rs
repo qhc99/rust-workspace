@@ -41,7 +41,7 @@ pub enum ProcessState {
     Terminated,
 }
 
-#[derive(Debug,PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,
@@ -124,7 +124,7 @@ impl Process {
     }
 
     pub fn state(&self) -> ProcessState {
-        self.state.borrow().clone()
+        *self.state.borrow()
     }
 
     pub fn wait_on_signal(&self) -> Result<StopReason, SdbError> {
@@ -135,7 +135,7 @@ impl Process {
                 let reason = StopReason::new(status)?;
                 *self.state.borrow_mut() = reason.reason;
 
-                if self.is_attached && self.state.borrow().clone() == ProcessState::Stopped {
+                if self.is_attached && *self.state.borrow() == ProcessState::Stopped {
                     self.read_all_registers()?;
                     let instr_begin = self.get_pc() - 1;
                     if reason.info == Signal::SIGTRAP as i32
@@ -388,7 +388,7 @@ impl Drop for Process {
     fn drop(&mut self) {
         if self.pid.as_raw() != 0 {
             if self.is_attached {
-                if self.state.borrow().clone() == ProcessState::Running {
+                if *self.state.borrow() == ProcessState::Running {
                     kill(self.pid, Signal::SIGSTOP).log_error();
                     waitpid(self.pid, WaitPidFlag::from_bits(0)).log_error();
                 }
