@@ -422,3 +422,16 @@ fn breakpoint_on_address() {
     let data = channel.read().unwrap();
     assert_eq!("Hello, sdb!\n", String::from_utf8(data).unwrap());
 }
+
+#[test]
+fn remove_breakpoint_sites() {
+    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
+    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let site = proc.create_breakpoint_site(42.into());
+    let _ = proc.create_breakpoint_site(43.into());
+    assert_eq!(2, proc.borrow().breakpoint_sites().borrow().size());
+    let id = site.unwrap().borrow().id();
+    proc.borrow().breakpoint_sites().borrow_mut().remove_by_id(id).unwrap();
+    proc.borrow().breakpoint_sites().borrow_mut().remove_by_address(43.into()).unwrap();
+    assert!(proc.borrow().breakpoint_sites().borrow().empty());
+}
