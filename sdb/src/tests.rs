@@ -3,20 +3,30 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
+    path::PathBuf,
 };
 
-use super::test_utils::BinBuilder;
-use crate::libsdb::types::VirtualAddress;
-use crate::libsdb::{process::ProcessExt, traits::StoppointTrait};
-use libsdb::register_info::RegisterId;
-use libsdb::{
+use super::libsdb::process::ProcessState;
+use super::libsdb::register_info::RegisterId;
+use super::libsdb::types::VirtualAddress;
+use super::libsdb::{
     bit::{to_byte64, to_byte128},
     pipe::Pipe,
     process::Process,
     registers::F80,
     types::{Byte64, Byte128},
 };
-use nix::unistd::Pid;
+use super::libsdb::{process::ProcessExt, traits::StoppointTrait};
+use super::test_utils::BinBuilder;
+use nix::{sys::signal::Signal, unistd::Pid};
+use std::{
+    io::{self},
+    path::Path,
+};
+
+use elf::{ElfBytes, endian::AnyEndian};
+use regex::Regex;
+use std::process::Command;
 
 fn get_process_state(pid: Pid) -> String {
     let pid_num = pid.as_raw();
@@ -316,4 +326,99 @@ fn iterate_breakpoint_sites() {
             assert!(s.borrow().at_address(start.into()));
             start += 1;
         });
+}
+
+fn get_section_load_bias(path: &Path, file_address: u64) -> io::Result<i64> {
+    let output = Command::new("readelf")
+        .args(["-WS", path.to_string_lossy().as_ref()])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("readelf failed with status {}", output.status),
+        ));
+    }
+
+    let re = Regex::new(r"PROGBITS\s+(\w+)\s+(\w+)\s+(\w+)").expect("hard-coded regex is valid");
+
+    for line in output.stdout.lines() {
+        let line = line?;
+        if let Some(cap) = re.captures(&line) {
+            let address = u64::from_str_radix(&cap[1], 16).unwrap();
+            let offset = u64::from_str_radix(&cap[2], 16).unwrap();
+            let size = u64::from_str_radix(&cap[3], 16).unwrap();
+
+            if address <= file_address && file_address < address + size {
+                return Ok((address - offset) as i64);
+            }
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "Could not find section load bias",
+    ))
+}
+
+fn get_entry_point_offset(path: &Path) -> io::Result<i64> {
+    let data = std::fs::read(path).unwrap();
+    let elf = ElfBytes::<AnyEndian>::minimal_parse(data.as_slice())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let entry_address = elf.ehdr.e_entry;
+    let load_bias = get_section_load_bias(path, entry_address)?;
+    Ok(entry_address as i64 - load_bias)
+}
+
+fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
+    let maps_path: PathBuf = ["/proc", &pid.to_string(), "maps"].iter().collect();
+    let file = File::open(&maps_path)?;
+    let reader = BufReader::new(file);
+    let re = Regex::new(r"^(\w+)-\w+\s+..(.).\s+(\w+)").expect("hard-coded regex is valid");
+
+    for line in reader.lines() {
+        let line = line?;
+        if let Some(caps) = re.captures(&line) {
+            if &caps[2] == "x" {
+                let low_range = u64::from_str_radix(&caps[1], 16).unwrap();
+                let file_offset = i64::from_str_radix(&caps[3], 16).unwrap();
+                let load_addr = offset - file_offset + low_range as i64;
+                return Ok(VirtualAddress::from(load_addr as u64));
+            }
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "Could not find load address",
+    ))
+}
+
+#[test]
+fn breakpoint_on_address() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    channel.close_write();
+    let offset = get_entry_point_offset(bin.target_path()).unwrap();
+    let load_address = get_load_address(proc.borrow().pid(), offset).unwrap();
+    proc.create_breakpoint_site(load_address)
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.borrow().resume().unwrap();
+    let reason = proc.borrow().wait_on_signal().unwrap();
+    assert_eq!(ProcessState::Stopped, reason.reason);
+    assert_eq!(Signal::SIGTRAP as i32, reason.info);
+    assert_eq!(load_address, proc.borrow().get_pc());
+
+    proc.borrow().resume().unwrap();
+    let reason = proc.borrow().wait_on_signal().unwrap();
+    assert_eq!(ProcessState::Exited, reason.reason);
+    assert_eq!(0, reason.info);
+
+    let data = channel.read().unwrap();
+    assert_eq!("Hello, sdb!\n", String::from_utf8(data).unwrap());
 }

@@ -63,6 +63,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "elf"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b"
+
+[[package]]
 name = "endian-type"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,6 +337,7 @@ name = "sdb"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "elf",
  "extended",
  "indoc",
  "nix",

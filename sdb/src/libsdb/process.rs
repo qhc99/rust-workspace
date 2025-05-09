@@ -41,6 +41,7 @@ pub enum ProcessState {
     Terminated,
 }
 
+#[derive(Debug,PartialEq, Eq)]
 pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,

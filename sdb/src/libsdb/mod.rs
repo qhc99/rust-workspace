@@ -85,6 +85,9 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
         handle_breakpoint_command(process, &args)?;
+    } else if cmd == "step" {
+        let reason = process.borrow().step_instruction()?;
+        print_stop_reason(process, reason);
     } else {
         eprintln!("Unknown command");
     }
@@ -233,6 +236,7 @@ fn print_help(args: &[&str]) {
             breakpoint - Commands for operating on breakpoints
             continue - Resume the process
             register - Commands for operating on registers
+            step - Step over a single instruction
         "
         });
     } else if args[1] == "register" {

@@ -44,6 +44,22 @@ impl BinBuilder {
         BinBuilder { output_path }
     }
 
+    pub fn cpp(dir: &str, source: &str) -> Self {
+        let current_dir = PathBuf::from(dir);
+        let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
+        let output_name = source.strip_suffix(".cpp").unwrap();
+        let output_name = format!("{output_name}_{suffix}");
+        let status = Command::new("clang++")
+            .args(&["-pie", "-g", "-O0", "-o", &output_name, source])
+            .current_dir(&current_dir)
+            .status()
+            .expect("Failed to run clang++");
+        assert!(status.success(), "Compilation failed");
+        let mut output_path = current_dir.clone();
+        output_path.push(output_name);
+        BinBuilder { output_path }
+    }
+
     pub fn target_path(&self) -> &Path {
         self.output_path.as_path()
     }
