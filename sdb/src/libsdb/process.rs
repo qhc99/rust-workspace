@@ -388,19 +388,19 @@ impl Process {
         let mut written = 0usize;
         while written < data.len() {
             let remaing = data.len() - written;
-            let mut word: Option<u64> = None;
+            let mut word = 0u64;
             if remaing >= 8 {
-                word = Some(from_bytes(&data[written..]));
+                word = from_bytes(&data[written..]);
             } else {
                 let read = self.read_memory(address + written as i64, 8)?;
-                let word_data = word.as_mut().unwrap().as_bytes_mut();
+                let word_data = word.as_bytes_mut();
                 word_data[..remaing].copy_from_slice(&data[written..written + remaing]);
                 word_data[remaing..].copy_from_slice(&read[remaing..8]);
             }
             write(
                 self.pid,
                 (address + written as i64).get_addr() as AddressType,
-                word.unwrap() as c_long,
+                word as c_long,
             )
             .map_err(|errno| SdbError::new_errno("Failed to write memory", errno))?;
             written += 8;
