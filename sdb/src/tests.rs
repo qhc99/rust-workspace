@@ -18,6 +18,7 @@ use super::libsdb::{
 };
 use super::libsdb::{process::ProcessExt, traits::StoppointTrait};
 use super::test_utils::BinBuilder;
+use libsdb::bit::from_bytes;
 use nix::{sys::signal::Signal, unistd::Pid};
 use std::{
     io::{self},
@@ -442,4 +443,21 @@ fn remove_breakpoint_sites() {
         .remove_by_address(43.into())
         .unwrap();
     assert!(proc.borrow().breakpoint_sites().borrow().empty());
+}
+
+#[test]
+fn read_and_write_memory() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let bin = BinBuilder::cpp("resource", "memory.cpp");
+    let proc =
+        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    channel.close_write();
+
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
+    let a_pointer: u64 = from_bytes(&channel.read().unwrap());
+    let data_vec = proc.borrow().read_memory(a_pointer.into(), 8).unwrap();
+    let data: u64 = from_bytes(&data_vec);
+    assert_eq!(0xcafecafe, data);
 }
