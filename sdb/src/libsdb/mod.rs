@@ -5,13 +5,15 @@ use breakpoint_site::IdType;
 use indoc::indoc;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
-use parse::parse_register_value;
+use parse::{parse_register_value, parse_vector};
 use process::{Process, ProcessExt, ProcessState, StopReason};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cell::RefCell;
+use std::cmp::min;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
+use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::VirtualAddress;
 
@@ -88,9 +90,66 @@ pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), 
     } else if cmd == "step" {
         let reason = process.borrow().step_instruction()?;
         print_stop_reason(process, reason);
+    } else if cmd == "memory" {
+        handle_memory_command(process, &args)?;
     } else {
         eprintln!("Unknown command");
     }
+    Ok(())
+}
+
+fn handle_memory_command(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() < 3 {
+        print_help(&["help", "memory"]);
+        return Ok(());
+    }
+    if args[1] == "read" {
+        handle_memory_read_command(process, args)?;
+    } else if args[1] == "write" {
+        handle_memory_write_command(process, args)?;
+    } else {
+        print_help(&["help", "memory"]);
+    }
+
+    Ok(())
+}
+
+fn handle_memory_read_command(
+    process: &Rc<RefCell<Process>>,
+    args: &[&str],
+) -> Result<(), SdbError> {
+    let address = u64::from_lower_hex_radix(args[2], 16)?;
+    let mut n_bytes = 32usize;
+    if args.len() == 4 {
+        let bytes_args = usize::from_lower_hex_radix(args[3], 16)?;
+        n_bytes = bytes_args;
+    }
+    let data = process.borrow().read_memory(address.into(), n_bytes)?;
+    for i in (0..data.len()).step_by(16) {
+        let bytes = &data[i..min(i + 16, data.len())];
+        let addr = VirtualAddress::from(address) + i as i64;
+        let data_msg = bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let msg = format!("{:#016x}: {}", addr, data_msg);
+        println!("{msg}");
+    }
+    Ok(())
+}
+
+fn handle_memory_write_command(
+    process: &Rc<RefCell<Process>>,
+    args: &[&str],
+) -> Result<(), SdbError> {
+    if args.len() != 4 {
+        print_help(&["help", "memory"]);
+        return Ok(());
+    }
+    let address = u64::from_lower_hex_radix(args[2], 16)?;
+    let data = parse_vector(args[3])?;
+    process.borrow().write_memory(address.into(), &data)?;
     Ok(())
 }
 
@@ -130,7 +189,7 @@ fn handle_breakpoint_command(
     }
 
     if command == "set" {
-        let address = u64::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16);
+        let address = u64::from_lower_hex_radix(args[2], 16);
         if address.is_err() {
             eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
             return Ok(());
@@ -140,7 +199,7 @@ fn handle_breakpoint_command(
         return Ok(());
     }
 
-    let id = IdType::from_str_radix(args[2].strip_prefix("0x").unwrap_or(args[2]), 16)
+    let id = IdType::from_lower_hex_radix(args[2], 16)
         .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
     if command == "enable" {
         process
@@ -235,6 +294,7 @@ fn print_help(args: &[&str]) {
             Available commands:
             breakpoint - Commands for operating on breakpoints
             continue - Resume the process
+            memory - Commands for operating on memory
             register - Commands for operating on registers
             step - Step over a single instruction
         "
@@ -255,6 +315,13 @@ fn print_help(args: &[&str]) {
             disable <id>
             enable <id>
             set <address>
+        "});
+    } else if args[1] == "memory" {
+        eprintln!(indoc! {"
+            Available commands:
+            read <address>
+            read <address> <number of bytes>
+            write <address> <bytes>
         "});
     }
 }

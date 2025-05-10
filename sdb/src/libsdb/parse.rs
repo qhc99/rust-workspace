@@ -1,20 +1,18 @@
-use regex::bytes::Regex;
-
 use super::register_info::RegisterFormat;
 use super::registers::F80;
 use super::sdb_error::SdbError;
 use super::{register_info::RegisterInfo, registers::RegisterValue};
+use super::traits::FromLowerHexStr;
 use std::str::FromStr;
 
-macro_rules! parse_int {
+macro_rules! match_parse_int {
     ($size:expr, $digits:expr, {
         $($num:expr => $Variant:ident, $Ty:ty);+ $(;)?
     }) => {
         match $size {
             $(
                 $num => Ok(RegisterValue::$Variant(
-                    <$Ty>::from_str_radix($digits, 16)
-                        .map_err(|_| SdbError::new_err("Invalid format"))?,
+                    <$Ty>::from_lower_hex_radix($digits, 16)?,
                 )),
             )+
             _ => SdbError::err("Invalid format"),
@@ -22,42 +20,18 @@ macro_rules! parse_int {
     };
 }
 
-macro_rules! parse_vector {
+macro_rules! match_parse_vector {
     ($size:expr, $text:expr, {
         $($num:expr => $Variant:ident);+ $(;)?
     }) => {
         match $size {
             $(
                 $num => {
-                    let re_pat = format!("\\[(0x\\w{}\\s*,\\s*){}\\]", 2, $num);
-                    let re = Regex::new(&re_pat).unwrap();
-                    let re_bytes = Regex::new(r"0x(\w{2})").unwrap();
-                    return if re.is_match($text.as_bytes()) {
-                        let parse_res: Vec<_> = re_bytes
-                            .captures(&$text.as_bytes())
-                            .unwrap()
-                            .iter()
-                            .map(|digits| {
-                                u8::from_str_radix(
-                                    std::str::from_utf8(digits.unwrap().as_bytes()).unwrap(),
-                                    16,
-                                )
-                            })
-                            .collect();
-                        if parse_res.iter().all(|data| data.is_ok()) {
-                            let bytes: [u8; $num] = parse_res
-                                .into_iter()
-                                .map(|data| data.unwrap())
-                                .collect::<Vec<_>>()
-                                .try_into()
-                                .unwrap();
-                            Ok(RegisterValue::$Variant(bytes))
-                        } else {
-                            SdbError::err("Invalid format")
-                        }
-                    } else {
-                        SdbError::err("Invalid format")
-                    };
+                    let parse_res = parse_vector($text)?;
+                    let bytes: [u8; $num] = parse_res
+                        .try_into()
+                        .map_err(|_| SdbError::new_err("Invalid format"))?;
+                    Ok(RegisterValue::$Variant(bytes))
                 }
             )+
             _ => SdbError::err("Invalid format"),
@@ -65,11 +39,33 @@ macro_rules! parse_vector {
     };
 }
 
+pub fn parse_vector(text: &str) -> Result<Vec<u8>, SdbError> {
+    if !text.ends_with("]") || !text.starts_with("[") {
+        return SdbError::err("Not vector format");
+    }
+    let elements = &text[1..(text.len() - 1)];
+    let digits = elements
+        .split(",")
+        .map(|data| {
+            let data = data.trim();
+            if data.starts_with("0x") && data.len() == 4 {
+                u8::from_str_radix(&data[2..4], 16).ok()
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    if !digits.iter().all(|d| d.is_some()) {
+        return SdbError::err("Invalid vector elements format");
+    }
+
+    Ok(digits.into_iter().map(|d| d.unwrap()).collect())
+}
+
 pub fn parse_register_value(info: &RegisterInfo, text: &str) -> Result<RegisterValue, SdbError> {
     match info.format {
         RegisterFormat::UInt => {
-            let digits = text.strip_prefix("0x").unwrap_or(text);
-            parse_int!(info.size, digits, {
+            match_parse_int!(info.size, text, {
                 1 => U8, u8;
                 2 => U16, u16;
                 4 => U32, u32;
@@ -82,7 +78,7 @@ pub fn parse_register_value(info: &RegisterInfo, text: &str) -> Result<RegisterV
         RegisterFormat::LongDouble => Ok(RegisterValue::LongDouble(F80::new(
             f64::from_str(text).map_err(|_| SdbError::new_err("Invalid format"))?,
         ))),
-        RegisterFormat::Vector => parse_vector!(info.size, text, {
+        RegisterFormat::Vector => match_parse_vector!(info.size, text, {
             8 => Byte64;
             16=> Byte128;
         }),
