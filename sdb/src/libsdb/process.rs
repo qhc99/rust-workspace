@@ -1,3 +1,5 @@
+use super::bit::AsBytes;
+use super::bit::from_bytes;
 use super::breakpoint_site::BreakpointSite;
 use super::pipe::Pipe;
 use super::register_info::RegisterId;
@@ -8,6 +10,7 @@ use super::stoppoint_collection::StoppointCollection;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
+use bytemuck::Pod;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
 use nix::sys::personality::Persona;
@@ -15,8 +18,11 @@ use nix::sys::personality::set as set_personality;
 use nix::sys::ptrace::AddressType;
 use nix::sys::ptrace::cont;
 use nix::sys::ptrace::step;
+use nix::sys::ptrace::write;
 use nix::sys::signal::Signal;
 use nix::sys::signal::kill;
+use nix::sys::uio::RemoteIoVec;
+use nix::sys::uio::process_vm_readv;
 use nix::unistd::dup2;
 use nix::{
     errno::Errno,
@@ -30,6 +36,9 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use std::cmp::min;
+use std::ffi::c_long;
+use std::io::IoSliceMut;
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 
@@ -350,6 +359,58 @@ impl Process {
             todo.borrow_mut().enable()?;
         }
         Ok(reason)
+    }
+
+    pub fn read_memory(
+        &self,
+        mut address: VirtualAddress,
+        mut amount: usize,
+    ) -> Result<Vec<u8>, SdbError> {
+        let mut ret = vec![0u8; amount];
+        let local_desc = IoSliceMut::new(&mut ret);
+        let mut remote_descs = Vec::<RemoteIoVec>::new();
+        while amount > 0 {
+            let up_to_next_stage = 0x1000 - (address.get_addr() & 0xfff) as usize;
+            let chunk_size = min(amount, up_to_next_stage);
+            remote_descs.push(RemoteIoVec {
+                base: address.get_addr() as usize,
+                len: chunk_size,
+            });
+            amount -= chunk_size;
+            address += chunk_size as i64;
+        }
+        process_vm_readv(self.pid, &mut [local_desc], &remote_descs)
+            .map_err(|errno| SdbError::new_errno("Could not read process memory", errno))?;
+        Ok(ret)
+    }
+
+    pub fn write_memory(&self, address: VirtualAddress, data: &[u8]) -> Result<(), SdbError> {
+        let mut written = 0usize;
+        while written < data.len() {
+            let remaing = data.len() - written;
+            let mut word: Option<u64> = None;
+            if remaing >= 8 {
+                word = Some(from_bytes(&data[written..]));
+            } else {
+                let read = self.read_memory(address + written as i64, 8)?;
+                let word_data = word.as_mut().unwrap().as_bytes_mut();
+                word_data[..remaing].copy_from_slice(&data[written..written + remaing]);
+                word_data[remaing..].copy_from_slice(&read[remaing..8]);
+            }
+            write(
+                self.pid,
+                (address + written as i64).get_addr() as AddressType,
+                word.unwrap() as c_long,
+            )
+            .map_err(|errno| SdbError::new_errno("Failed to write memory", errno))?;
+            written += 8;
+        }
+        Ok(())
+    }
+
+    pub fn read_memory_as<T: Pod>(&self, address: VirtualAddress) -> Result<T, SdbError> {
+        let data = self.read_memory(address, size_of::<T>())?;
+        Ok(from_bytes(&data))
     }
 }
 

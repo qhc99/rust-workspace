@@ -431,7 +431,15 @@ fn remove_breakpoint_sites() {
     let _ = proc.create_breakpoint_site(43.into());
     assert_eq!(2, proc.borrow().breakpoint_sites().borrow().size());
     let id = site.unwrap().borrow().id();
-    proc.borrow().breakpoint_sites().borrow_mut().remove_by_id(id).unwrap();
-    proc.borrow().breakpoint_sites().borrow_mut().remove_by_address(43.into()).unwrap();
+    proc.borrow()
+        .breakpoint_sites()
+        .borrow_mut()
+        .remove_by_id(id)
+        .unwrap();
+    proc.borrow()
+        .breakpoint_sites()
+        .borrow_mut()
+        .remove_by_address(43.into())
+        .unwrap();
     assert!(proc.borrow().breakpoint_sites().borrow().empty());
 }

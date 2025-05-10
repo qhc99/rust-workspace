@@ -1,6 +1,6 @@
 use nix::errno::Errno;
-use std::{error::Error, fmt::Display};
 use std::backtrace::Backtrace;
+use std::{error::Error, fmt::Display};
 #[derive(Debug)]
 pub struct SdbError {
     details: String,
@@ -17,7 +17,7 @@ impl SdbError {
         SdbError {
             details: s.to_owned(),
             errno: Errno::UnknownErrno,
-             backtrace: Backtrace::capture(),
+            backtrace: Backtrace::capture(),
         }
     }
 
@@ -25,7 +25,7 @@ impl SdbError {
         SdbError {
             details: s.to_owned(),
             errno,
-             backtrace: Backtrace::capture(),
+            backtrace: Backtrace::capture(),
         }
     }
 

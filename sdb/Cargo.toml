@@ -25,7 +25,7 @@ regex = "1.11.1"
 elf = "0.7.4"
 
 [dependencies.nix]
-features = ["process", "ptrace", "personality"]
+features = ["process", "ptrace", "personality", "uio"]
 version = "0.29.0"
 
 [lints.clippy]
