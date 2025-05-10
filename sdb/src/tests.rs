@@ -460,4 +460,15 @@ fn read_and_write_memory() {
     let data_vec = proc.borrow().read_memory(a_pointer.into(), 8).unwrap();
     let data: u64 = from_bytes(&data_vec);
     assert_eq!(0xcafecafe, data);
+
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
+    let b_pointer: u64 = from_bytes(&channel.read().unwrap());
+    proc.borrow().write_memory(b_pointer.into(), "Hello, sdb!".as_bytes()).unwrap();
+
+    proc.borrow().resume().unwrap();
+    proc.borrow().wait_on_signal().unwrap();
+
+    let read = String::from_utf8(channel.read().unwrap()).unwrap();
+    assert_eq!("Hello, sdb!", read);
 }
