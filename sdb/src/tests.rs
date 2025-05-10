@@ -464,7 +464,9 @@ fn read_and_write_memory() {
     proc.borrow().resume().unwrap();
     proc.borrow().wait_on_signal().unwrap();
     let b_pointer: u64 = from_bytes(&channel.read().unwrap());
-    proc.borrow().write_memory(b_pointer.into(), "Hello, sdb!".as_bytes()).unwrap();
+    proc.borrow()
+        .write_memory(b_pointer.into(), "Hello, sdb!".as_bytes())
+        .unwrap();
 
     proc.borrow().resume().unwrap();
     proc.borrow().wait_on_signal().unwrap();
