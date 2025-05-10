@@ -1,8 +1,8 @@
 use super::register_info::RegisterFormat;
 use super::registers::F80;
 use super::sdb_error::SdbError;
-use super::{register_info::RegisterInfo, registers::RegisterValue};
 use super::traits::FromLowerHexStr;
+use super::{register_info::RegisterInfo, registers::RegisterValue};
 use std::str::FromStr;
 
 macro_rules! match_parse_int {

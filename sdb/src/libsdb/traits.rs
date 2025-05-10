@@ -27,11 +27,11 @@ macro_rules! impl_from_lower_hex {
             impl FromLowerHexStr for $Ty {
                 fn from_lower_hex_radix(text: &str, radix: u32) -> Result<$Ty, SdbError>{
                     let digits = text.strip_prefix("0x").unwrap_or(text);
-                    Ok(<$Ty>::from_str_radix(digits, radix).map_err(|_|{SdbError::new_err("Invalid format")})?)
+                    <$Ty>::from_str_radix(digits, radix).map_err(|_|{SdbError::new_err("Invalid format")})
                 }
 
                 fn from_lower_hex(text: &str) -> Result<$Ty, SdbError>{
-                    Ok(<$Ty>::from_str_radix(text, 10).map_err(|_|{SdbError::new_err("Invalid format")})?)
+                    text.parse::<$Ty>().map_err(|_|{SdbError::new_err("Invalid format")})
                 }
             }
         )+
