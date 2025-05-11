@@ -65,7 +65,7 @@ pub fn print_disassembly(
 ) -> Result<(), SdbError> {
     let dis = Disassembler::new(process);
     let instructions = dis.disassemble(n_instructions, Some(address))?;
-    for inst in instructions{
+    for inst in instructions {
         println!("{:#018x}: {}", inst.address, inst.text);
     }
     Ok(())
