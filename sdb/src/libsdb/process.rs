@@ -50,7 +50,7 @@ pub enum ProcessState {
     Terminated,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,
@@ -112,12 +112,9 @@ impl Process {
 
     pub fn resume(&self) -> Result<(), SdbError> {
         let pc = self.get_pc();
-        if self
-            .breakpoint_sites
-            .borrow()
-            .enabled_breakpoint_at_address(pc)
-        {
-            let bp = self.breakpoint_sites.borrow().get_by_address(pc)?;
+        let breakpoint_sites = &self.breakpoint_sites.borrow();
+        if breakpoint_sites.enabled_breakpoint_at_address(pc) {
+            let bp = breakpoint_sites.get_by_address(pc)?;
             bp.borrow_mut().disable()?;
             step(self.pid, None)
                 .map_err(|errno| SdbError::new_errno("Failed to single step", errno))?;
@@ -343,12 +340,9 @@ impl Process {
     pub fn step_instruction(&self) -> Result<StopReason, SdbError> {
         let mut to_reenable: Option<_> = None;
         let pc = self.get_pc();
-        if self
-            .breakpoint_sites
-            .borrow()
-            .enabled_breakpoint_at_address(pc)
-        {
-            let bp = self.breakpoint_sites.borrow().get_by_address(pc).unwrap();
+        let breakpoint_sites = &self.breakpoint_sites.borrow();
+        if breakpoint_sites.enabled_breakpoint_at_address(pc) {
+            let bp = breakpoint_sites.get_by_address(pc).unwrap();
             bp.borrow_mut().disable()?;
             to_reenable = Some(bp);
         }
@@ -426,19 +420,14 @@ impl ProcessExt for Rc<RefCell<Process>> {
         &self,
         address: VirtualAddress,
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
-        if self
-            .borrow()
-            .breakpoint_sites
-            .borrow()
-            .contain_address(address)
-        {
+        let process = &self.borrow();
+        if process.breakpoint_sites.borrow().contain_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
                 address.get_addr()
             ));
         }
-        Ok(self
-            .borrow()
+        Ok(process
             .breakpoint_sites
             .borrow_mut()
             .push(BreakpointSite::new(self, address)))

@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use breakpoint_site::IdType;
+use disassembler::print_disassembly;
 use indoc::indoc;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -9,7 +10,7 @@ use parse::{parse_register_value, parse_vector};
 use process::{Process, ProcessExt, ProcessState, StopReason};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::cmp::min;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
@@ -18,6 +19,7 @@ use traits::StoppointTrait;
 use types::VirtualAddress;
 
 mod breakpoint_site;
+mod disassembler;
 mod parse;
 mod stoppoint_collection;
 mod utils;
@@ -47,8 +49,8 @@ pub fn attach(args: &[&str]) -> Result<Rc<RefCell<Process>>, SdbError> {
     }
 }
 
-fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
-    let pid = process.borrow().pid();
+fn print_stop_reason(process: &Ref<Process>, reason: StopReason) {
+    let pid = process.pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
         ProcessState::Exited => {
@@ -63,7 +65,7 @@ fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
         ProcessState::Stopped => {
             let signal: Signal = reason.info.try_into().unwrap();
             let sig_str = signal.as_str();
-            let addr = process.borrow().get_pc();
+            let addr = process.get_pc();
             format!("{msg_start} stopped with signal {sig_str} at {:#x}", addr)
         }
         ProcessState::Running => {
@@ -74,31 +76,45 @@ fn print_stop_reason(process: &Rc<RefCell<Process>>, reason: StopReason) {
     println!("{msg}");
 }
 
-pub fn handle_command(process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
+    let process = &owned_process.borrow();
     if cmd == "continue" {
-        process.borrow().resume()?;
-        let reason = process.borrow().wait_on_signal()?;
-        print_stop_reason(process, reason);
+        process.resume()?;
+        let reason = process.wait_on_signal()?;
+        handle_stop(owned_process, reason)?;
     } else if cmd == "help" {
         print_help(&args);
     } else if cmd == "register" {
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
-        handle_breakpoint_command(process, &args)?;
+        handle_breakpoint_command(owned_process, &args)?;
     } else if cmd == "step" {
-        let reason = process.borrow().step_instruction()?;
-        print_stop_reason(process, reason);
+        let reason = process.step_instruction()?;
+        handle_stop(owned_process, reason)?;
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
+    } else if cmd == "disassemble" {
+        handle_disassemble_command(process, &args);
     } else {
         eprintln!("Unknown command");
     }
     Ok(())
 }
 
-fn handle_memory_command(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_disassemble_command(process: &Ref<Process>, args: &[&str]) {}
+
+fn handle_stop(process: &Rc<RefCell<Process>>, reason: StopReason) -> Result<(), SdbError> {
+    let ref_process = &process.borrow();
+    print_stop_reason(ref_process, reason);
+    if reason.reason == ProcessState::Stopped {
+        print_disassembly(process, ref_process.get_pc(), 5)?;
+    }
+    Ok(())
+}
+
+fn handle_memory_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 3 {
         print_help(&["help", "memory"]);
         return Ok(());
@@ -114,17 +130,14 @@ fn handle_memory_command(process: &Rc<RefCell<Process>>, args: &[&str]) -> Resul
     Ok(())
 }
 
-fn handle_memory_read_command(
-    process: &Rc<RefCell<Process>>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_memory_read_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
     let address = u64::from_lower_hex_radix(args[2], 16)?;
     let mut n_bytes = 32usize;
     if args.len() == 4 {
         let bytes_args = usize::from_lower_hex_radix(args[3], 16)?;
         n_bytes = bytes_args;
     }
-    let data = process.borrow().read_memory(address.into(), n_bytes)?;
+    let data = process.read_memory(address.into(), n_bytes)?;
     for i in (0..data.len()).step_by(16) {
         let bytes = &data[i..min(i + 16, data.len())];
         let addr = VirtualAddress::from(address) + i as i64;
@@ -139,39 +152,39 @@ fn handle_memory_read_command(
     Ok(())
 }
 
-fn handle_memory_write_command(
-    process: &Rc<RefCell<Process>>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_memory_write_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() != 4 {
         print_help(&["help", "memory"]);
         return Ok(());
     }
     let address = u64::from_lower_hex_radix(args[2], 16)?;
     let data = parse_vector(args[3])?;
-    process.borrow().write_memory(address.into(), &data)?;
+    process.write_memory(address.into(), &data)?;
     Ok(())
 }
 
 fn handle_breakpoint_command(
-    process: &Rc<RefCell<Process>>,
+    owned_process: &Rc<RefCell<Process>>,
     args: &[&str],
 ) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return Ok(());
     }
-
+    let process = &owned_process.borrow();
     let command = args[1];
     if command == "list" {
-        if process.borrow().breakpoint_sites().borrow().empty() {
+        let owned_breakpoint_sites = process.breakpoint_sites();
+        let breakpoint_sites = &owned_breakpoint_sites.borrow();
+        if breakpoint_sites.empty() {
             println!("No breakpoints set");
         } else {
             println!("Current breakpoints:");
-            process.borrow().breakpoint_sites().borrow().for_each(|s| {
-                let id = s.borrow().id();
-                let address = s.borrow().address().get_addr();
-                let status = if s.borrow().is_enabled() {
+            breakpoint_sites.for_each(|s| {
+                let s = &s.borrow();
+                let id = s.id();
+                let address = s.address().get_addr();
+                let status = if s.is_enabled() {
                     "enabled"
                 } else {
                     "disabled"
@@ -194,40 +207,26 @@ fn handle_breakpoint_command(
             eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
             return Ok(());
         }
-        let bs = process.create_breakpoint_site(VirtualAddress::from(address.unwrap()))?;
+        let bs = owned_process.create_breakpoint_site(VirtualAddress::from(address.unwrap()))?;
         bs.borrow_mut().enable()?;
         return Ok(());
     }
 
     let id = IdType::from_lower_hex_radix(args[2], 16)
         .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
+    let owned_breakpoint_sites = process.breakpoint_sites();
+    let breakpoint_sites = &owned_breakpoint_sites.borrow();
     if command == "enable" {
-        process
-            .borrow()
-            .breakpoint_sites()
-            .borrow()
-            .get_by_id(id)?
-            .borrow_mut()
-            .enable()?;
+        breakpoint_sites.get_by_id(id)?.borrow_mut().enable()?;
     } else if command == "disable" {
-        process
-            .borrow()
-            .breakpoint_sites()
-            .borrow()
-            .get_by_id(id)?
-            .borrow_mut()
-            .disable()?;
+        breakpoint_sites.get_by_id(id)?.borrow_mut().disable()?;
     } else if command == "delete" {
-        process
-            .borrow()
-            .breakpoint_sites()
-            .borrow_mut()
-            .remove_by_id(id)?;
+        process.breakpoint_sites().borrow_mut().remove_by_id(id)?;
     }
     return Ok(());
 }
 
-fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
+fn handle_register_command(process: &Ref<Process>, args: &[&str]) {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return;
@@ -242,7 +241,7 @@ fn handle_register_command(process: &Rc<RefCell<Process>>, args: &[&str]) {
     }
 }
 
-fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {
+fn handle_register_read(process: &Ref<Process>, args: &[&str]) {
     if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
         for info in GRegisterInfos {
             let should_print =
@@ -250,14 +249,14 @@ fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {
             if !should_print {
                 continue;
             }
-            let value = process.borrow().get_registers().borrow().read(info);
+            let value = process.get_registers().borrow().read(info);
             println!("{}:\t{}", info.name, value.unwrap());
         }
     } else if args.len() == 3 {
         let info_res = register_info_by_name(args[2]);
         match info_res {
             Ok(info) => {
-                let value = process.borrow().get_registers().borrow().read(&info);
+                let value = process.get_registers().borrow().read(&info);
                 println!("{}:\t{}", info.name, value.unwrap());
             }
             Err(_) => {
@@ -269,7 +268,7 @@ fn handle_register_read(process: &Rc<RefCell<Process>>, args: &[&str]) {
     }
 }
 
-fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {
+fn handle_register_write(process: &Ref<Process>, args: &[&str]) {
     if args.len() != 4 {
         print_help(&["help", "register"]);
         return;
@@ -277,11 +276,7 @@ fn handle_register_write(process: &Rc<RefCell<Process>>, args: &[&str]) {
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
-        process
-            .borrow()
-            .get_registers()
-            .borrow_mut()
-            .write(&info, value)?;
+        process.get_registers().borrow_mut().write(&info, value)?;
         Ok(())
     })() {
         eprintln!("{e}");

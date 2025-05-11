@@ -42,9 +42,10 @@ fn get_process_state(pid: Pid) -> String {
 #[test]
 fn process_attach_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let target = Process::launch(bin.target_path(), false, None).unwrap();
-    let _proc = Process::attach(target.borrow().pid()).unwrap();
-    assert!(get_process_state(target.borrow().pid()) == "t");
+    let owned_target = Process::launch(bin.target_path(), false, None).unwrap();
+    let target = &owned_target.borrow();
+    let _proc = Process::attach(target.pid()).unwrap();
+    assert!(get_process_state(target.pid()) == "t");
 }
 
 #[test]
@@ -55,25 +56,29 @@ fn process_attach_invalid_pid() {
 #[test]
 fn process_resume_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    proc.borrow().resume().ok();
-    let status = get_process_state(proc.borrow().pid());
+    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = &owned_proc.borrow();
+    proc.resume().ok();
+    let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 
-    let target = super::Process::launch(bin.target_path(), false, None).unwrap();
-    let proc = Process::attach(target.borrow().pid()).unwrap();
-    proc.borrow().resume().ok();
-    let status = get_process_state(proc.borrow().pid());
+    let owned_target = super::Process::launch(bin.target_path(), false, None).unwrap();
+    let target = &owned_target.borrow();
+    let owned_proc = Process::attach(target.pid()).unwrap();
+    let proc = &owned_proc.borrow();
+    proc.resume().ok();
+    let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 }
 
 #[test]
 fn process_resume_terminated() {
     let bin = BinBuilder::rustc("resource", "just_exit.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    proc.borrow().resume().ok();
-    proc.borrow().wait_on_signal().ok();
-    assert!(proc.borrow().resume().is_err());
+    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = &owned_proc.borrow();
+    proc.resume().ok();
+    proc.wait_on_signal().ok();
+    assert!(proc.resume().is_err());
 }
 
 #[test]
@@ -81,20 +86,21 @@ fn write_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let target = BinBuilder::asm("resource", "reg_write.s");
-    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let owned_proc =
+        Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
     channel.close_write();
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
 
     {
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
             .unwrap();
 
-        proc.borrow().resume().unwrap();
-        proc.borrow().wait_on_signal().unwrap();
+        proc.resume().unwrap();
+        proc.wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -102,14 +108,13 @@ fn write_registers() {
     }
 
     {
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
             .unwrap();
 
-        proc.borrow().resume().unwrap();
-        proc.borrow().wait_on_signal().unwrap();
+        proc.resume().unwrap();
+        proc.wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -117,14 +122,13 @@ fn write_registers() {
     }
 
     {
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::xmm0, 42.24)
             .unwrap();
 
-        proc.borrow().resume().unwrap();
-        proc.borrow().wait_on_signal().unwrap();
+        proc.resume().unwrap();
+        proc.wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -132,24 +136,21 @@ fn write_registers() {
     }
 
     {
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::st0, F80::new(42.24))
             .unwrap();
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::fsw, 0b0011100000000000_u16)
             .unwrap();
-        proc.borrow()
-            .get_registers()
+        proc.get_registers()
             .borrow_mut()
             .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
             .unwrap();
 
-        proc.borrow().resume().unwrap();
-        proc.borrow().wait_on_signal().unwrap();
+        proc.resume().unwrap();
+        proc.wait_on_signal().unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -162,20 +163,22 @@ fn read_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let target = BinBuilder::asm("resource", "reg_read.s");
-    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
-    let regs = proc.borrow().get_registers();
+    let owned_proc =
+        Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
+    let regs = proc.get_registers();
     channel.close_write();
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte64>(RegisterId::mm0)
@@ -183,8 +186,8 @@ fn read_registers() {
             == to_byte64(0xba5eba11_u64)
     );
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte128>(RegisterId::xmm0)
@@ -192,8 +195,8 @@ fn read_registers() {
             == to_byte128(64.125)
     );
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }
 
@@ -209,29 +212,17 @@ fn create_breakpoint_site() {
 fn create_breakpoint_site_id_increase() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let site1 = proc.create_breakpoint_site(42.into());
-    assert_eq!(
-        VirtualAddress::from(42),
-        site1.as_ref().unwrap().borrow().address()
-    );
+    let site1 = proc.create_breakpoint_site(42.into()).unwrap();
+    assert_eq!(VirtualAddress::from(42), site1.borrow().address());
 
-    let site2 = proc.create_breakpoint_site(43.into());
-    assert_eq!(
-        site2.as_ref().unwrap().borrow().id(),
-        site1.as_ref().unwrap().borrow().id() + 1
-    );
+    let site2 = proc.create_breakpoint_site(43.into()).unwrap();
+    assert_eq!(site2.borrow().id(), site1.borrow().id() + 1);
 
-    let site3 = proc.create_breakpoint_site(44.into());
-    assert_eq!(
-        site3.as_ref().unwrap().borrow().id(),
-        site2.as_ref().unwrap().borrow().id() + 1
-    );
+    let site3 = proc.create_breakpoint_site(44.into()).unwrap();
+    assert_eq!(site3.borrow().id(), site2.borrow().id() + 1);
 
-    let site4 = proc.create_breakpoint_site(45.into());
-    assert_eq!(
-        site4.as_ref().unwrap().borrow().id(),
-        site3.as_ref().unwrap().borrow().id() + 1
-    );
+    let site4 = proc.create_breakpoint_site(45.into()).unwrap();
+    assert_eq!(site4.borrow().id(), site3.borrow().id() + 1);
 }
 
 #[test]
@@ -297,17 +288,18 @@ fn cannot_find_breakpoint_site() {
 #[test]
 fn breakpoint_sites_list_size() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    assert!(proc.borrow().breakpoint_sites().borrow().empty());
-    assert!(proc.borrow().breakpoint_sites().borrow().size() == 0);
+    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = &owned_proc.borrow();
+    assert!(proc.breakpoint_sites().borrow().empty());
+    assert!(proc.breakpoint_sites().borrow().size() == 0);
 
-    let _ = proc.create_breakpoint_site(42.into());
-    assert!(!proc.borrow().breakpoint_sites().borrow().empty());
-    assert!(proc.borrow().breakpoint_sites().borrow().size() == 1);
+    let _ = owned_proc.create_breakpoint_site(42.into());
+    assert!(!proc.breakpoint_sites().borrow().empty());
+    assert!(proc.breakpoint_sites().borrow().size() == 1);
 
-    let _ = proc.create_breakpoint_site(43.into());
-    assert!(!proc.borrow().breakpoint_sites().borrow().empty());
-    assert!(proc.borrow().breakpoint_sites().borrow().size() == 2);
+    let _ = owned_proc.create_breakpoint_site(43.into());
+    assert!(!proc.breakpoint_sites().borrow().empty());
+    assert!(proc.breakpoint_sites().borrow().size() == 2);
 }
 
 #[test]
@@ -400,23 +392,26 @@ fn breakpoint_on_address() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
-    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let owned_proc =
+        Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
     channel.close_write();
     let offset = get_entry_point_offset(bin.target_path()).unwrap();
-    let load_address = get_load_address(proc.borrow().pid(), offset).unwrap();
-    proc.create_breakpoint_site(load_address)
+    let load_address = get_load_address(proc.pid(), offset).unwrap();
+    owned_proc
+        .create_breakpoint_site(load_address)
         .unwrap()
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.borrow().resume().unwrap();
-    let reason = proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
     assert_eq!(ProcessState::Stopped, reason.reason);
     assert_eq!(Signal::SIGTRAP as i32, reason.info);
-    assert_eq!(load_address, proc.borrow().get_pc());
+    assert_eq!(load_address, proc.get_pc());
 
-    proc.borrow().resume().unwrap();
-    let reason = proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
     assert_eq!(ProcessState::Exited, reason.reason);
     assert_eq!(0, reason.info);
 
@@ -427,22 +422,21 @@ fn breakpoint_on_address() {
 #[test]
 fn remove_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let site = proc.create_breakpoint_site(42.into());
-    let _ = proc.create_breakpoint_site(43.into());
-    assert_eq!(2, proc.borrow().breakpoint_sites().borrow().size());
+    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = &owned_proc.borrow();
+    let site = owned_proc.create_breakpoint_site(42.into());
+    let _ = owned_proc.create_breakpoint_site(43.into());
+    assert_eq!(2, proc.breakpoint_sites().borrow().size());
     let id = site.unwrap().borrow().id();
-    proc.borrow()
-        .breakpoint_sites()
+    proc.breakpoint_sites()
         .borrow_mut()
         .remove_by_id(id)
         .unwrap();
-    proc.borrow()
-        .breakpoint_sites()
+    proc.breakpoint_sites()
         .borrow_mut()
         .remove_by_address(43.into())
         .unwrap();
-    assert!(proc.borrow().breakpoint_sites().borrow().empty());
+    assert!(proc.breakpoint_sites().borrow().empty());
 }
 
 #[test]
