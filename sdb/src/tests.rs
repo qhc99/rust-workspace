@@ -444,26 +444,27 @@ fn read_and_write_memory() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let bin = BinBuilder::cpp("resource", "memory.cpp");
-    let proc =
+    let owned_proc =
         super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
     channel.close_write();
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     let a_pointer: u64 = from_bytes(&channel.read().unwrap());
-    let data_vec = proc.borrow().read_memory(a_pointer.into(), 8).unwrap();
+    let data_vec = proc.read_memory(a_pointer.into(), 8).unwrap();
     let data: u64 = from_bytes(&data_vec);
     assert_eq!(0xcafecafe, data);
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
     let b_pointer: u64 = from_bytes(&channel.read().unwrap());
-    proc.borrow()
+    proc
         .write_memory(b_pointer.into(), "Hello, sdb!".as_bytes())
         .unwrap();
 
-    proc.borrow().resume().unwrap();
-    proc.borrow().wait_on_signal().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
 
     let read = String::from_utf8(channel.read().unwrap()).unwrap();
     assert_eq!("Hello, sdb!", read);
