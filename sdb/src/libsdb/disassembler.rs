@@ -37,7 +37,7 @@ impl Disassembler {
             address = Some(process.get_pc());
         }
         let mut address = address.unwrap();
-        let code = process.read_memory(address, n_instructions * 15)?;
+        let code = process.read_memory_without_trap(address, n_instructions * 15)?;
         let mut offset: ZyanUSize = 0;
 
         let decoder = Decoder::new64();

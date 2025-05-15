@@ -406,6 +406,27 @@ impl Process {
         let data = self.read_memory(address, size_of::<T>())?;
         Ok(from_bytes(&data))
     }
+
+    pub fn read_memory_without_trap(
+        &self,
+        address: VirtualAddress,
+        amount: usize,
+    ) -> Result<Vec<u8>, SdbError> {
+        let mut memory = self.read_memory(address, amount)?;
+        let sites = self
+            .breakpoint_sites
+            .borrow()
+            .get_in_region(address, address + amount as i64);
+        for site in sites.iter() {
+            let site = site.borrow();
+            if !site.is_enabled() {
+                continue;
+            }
+            let offset = site.address() - address.get_addr() as i64;
+            memory[offset.get_addr() as usize] = site.saved_data();
+        }
+        Ok(memory)
+    }
 }
 
 pub trait ProcessExt {

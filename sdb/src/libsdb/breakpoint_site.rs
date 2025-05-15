@@ -77,6 +77,14 @@ impl StoppointTrait for BreakpointSite {
         self.is_enabled = false;
         Ok(())
     }
+
+    fn is_enabled(&self) -> bool {
+        self.is_enabled
+    }
+
+    fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
+        low <= self.address && high > self.address
+    }
 }
 
 impl BreakpointSite {
@@ -90,11 +98,7 @@ impl BreakpointSite {
         }
     }
 
-    pub fn is_enabled(&self) -> bool {
-        self.is_enabled
-    }
-
-    pub fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
-        low <= self.address && high > self.address
+    pub fn saved_data(&self) -> u8{
+        self.saved_data
     }
 }

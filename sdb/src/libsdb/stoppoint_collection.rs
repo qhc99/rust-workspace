@@ -94,6 +94,16 @@ impl<T: StoppointTrait> StoppointCollection<T> {
     pub fn empty(&self) -> bool {
         self.stoppoints.is_empty()
     }
+
+    pub fn get_in_region(&self, low: VirtualAddress, high: VirtualAddress) -> Vec<Rc<RefCell<T>>> {
+        let mut ret: Vec<Rc<RefCell<T>>> = vec![];
+        for site in self.stoppoints.iter() {
+            if site.borrow().in_range(low, high) {
+                ret.push(site.clone());
+            }
+        }
+        ret
+    }
 }
 
 impl<T: StoppointTrait> Default for StoppointCollection<T> {

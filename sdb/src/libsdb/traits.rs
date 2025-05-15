@@ -11,6 +11,10 @@ pub trait StoppointTrait {
     fn address(&self) -> VirtualAddress;
 
     fn enable(&mut self) -> Result<(), SdbError>;
+
+    fn is_enabled(&self) -> bool;
+
+    fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool;
 }
 
 pub trait FromLowerHexStr: Sized {
