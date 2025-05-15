@@ -96,14 +96,47 @@ pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Resul
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
-        handle_disassemble_command(process, &args);
+        handle_disassemble_command(owned_process, &args)?;
     } else {
         eprintln!("Unknown command");
     }
     Ok(())
 }
 
-fn handle_disassemble_command(process: &Ref<Process>, args: &[&str]) {}
+fn handle_disassemble_command(
+    process: &Rc<RefCell<Process>>,
+    args: &[&str],
+) -> Result<(), SdbError> {
+    let mut address = process.borrow().get_pc();
+    let mut n_instructions = 5usize;
+    let mut args_iter = args.iter();
+    args_iter.next();
+    loop {
+        match args_iter.next() {
+            Some(data) => match *data {
+                "-a" => {
+                    let opt_addr = args_iter
+                        .next()
+                        .ok_or(SdbError::new_err("Invalid address format"))?;
+                    address = u64::from_lower_hex_radix(opt_addr, 16)?.into();
+                }
+                "-c" => {
+                    let instruction_count = args_iter
+                        .next()
+                        .ok_or(SdbError::new_err("Invalid instruction count"))?;
+                    n_instructions = usize::from_lower_hex(instruction_count)?;
+                }
+                _ => {
+                    print_help(&["help", "disassemble"]);
+                    return Ok(());
+                }
+            },
+            None => break,
+        }
+    }
+    print_disassembly(process, address, n_instructions)?;
+    Ok(())
+}
 
 fn handle_stop(process: &Rc<RefCell<Process>>, reason: StopReason) -> Result<(), SdbError> {
     let ref_process = &process.borrow();
@@ -289,6 +322,7 @@ fn print_help(args: &[&str]) {
             Available commands:
             breakpoint - Commands for operating on breakpoints
             continue - Resume the process
+            disassemble - Disassemble machine code to assembly
             memory - Commands for operating on memory
             register - Commands for operating on registers
             step - Step over a single instruction
@@ -317,6 +351,12 @@ fn print_help(args: &[&str]) {
             read <address>
             read <address> <number of bytes>
             write <address> <bytes>
+        "});
+    } else if args[1] == "disassemble" {
+        eprintln!(indoc! {"
+            Available options:
+            -c <number of instructions>
+            -a <start address>
         "});
     }
 }
