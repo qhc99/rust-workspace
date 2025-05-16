@@ -215,6 +215,9 @@ fn handle_breakpoint_command(
             println!("Current breakpoints:");
             breakpoint_sites.for_each(|s| {
                 let s = &s.borrow();
+                if s.is_internal(){
+                    return;
+                }
                 let id = s.id();
                 let address = s.address().get_addr();
                 let status = if s.is_enabled() {
@@ -240,7 +243,19 @@ fn handle_breakpoint_command(
             eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
             return Ok(());
         }
-        let bs = owned_process.create_breakpoint_site(VirtualAddress::from(address.unwrap()))?;
+        let mut hardware = false;
+        if args.len() == 4 {
+            if args[3] == "-h" {
+                hardware = true;
+            } else {
+                return SdbError::err("Invalid breakpoint command argument");
+            }
+        }
+        let bs = owned_process.create_breakpoint_site(
+            VirtualAddress::from(address.unwrap()),
+            hardware,
+            false,
+        )?;
         bs.borrow_mut().enable()?;
         return Ok(());
     }
@@ -344,6 +359,7 @@ fn print_help(args: &[&str]) {
             disable <id>
             enable <id>
             set <address>
+            set <address> -h
         "});
     } else if args[1] == "memory" {
         eprintln!(indoc! {"

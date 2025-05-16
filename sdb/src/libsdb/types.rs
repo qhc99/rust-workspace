@@ -61,3 +61,11 @@ impl SubAssign<i64> for VirtualAddress {
         self.addr = (self.addr as i128 - rhs as i128) as u64;
     }
 }
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum StoppointMode{
+    Write,
+    ReadWrite,
+    Execute
+}

@@ -8,6 +8,7 @@ use super::registers::Registers;
 use super::sdb_error::SdbError;
 use super::stoppoint_collection::StoppointCollection;
 use super::traits::StoppointTrait;
+use super::types::StoppointMode;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use bytemuck::Pod;
@@ -419,7 +420,7 @@ impl Process {
             .get_in_region(address, address + amount as i64);
         for site in sites.iter() {
             let site = site.borrow();
-            if !site.is_enabled() {
+            if !site.is_enabled() || site.is_hardware() {
                 continue;
             }
             let offset = site.address() - address.get_addr() as i64;
@@ -427,12 +428,38 @@ impl Process {
         }
         Ok(memory)
     }
+
+    pub fn set_hardware_breakpoint(
+        &self,
+        id: i32,
+        address: VirtualAddress,
+    ) -> Result<i32, SdbError> {
+        self._set_hardware_breakpoint(address, StoppointMode::Execute, 1)
+    }
+
+    fn _set_hardware_breakpoint(
+        &self,
+        address: VirtualAddress,
+        mode: StoppointMode,
+        size: usize,
+    ) -> Result<i32, SdbError> {
+        let owned_regs = self.get_registers();
+        let regs = owned_regs.borrow();
+        let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
+        todo!()
+    }
+
+    pub fn clear_hardware_stoppoint(&self, hardware_register_index: i32) {
+        todo!()
+    }
 }
 
 pub trait ProcessExt {
     fn create_breakpoint_site(
         &self,
         address: VirtualAddress,
+        hardware: bool,
+        internal: bool,
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
 }
 
@@ -440,6 +467,8 @@ impl ProcessExt for Rc<RefCell<Process>> {
     fn create_breakpoint_site(
         &self,
         address: VirtualAddress,
+        hardware: bool, // false
+        internal: bool, // false
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
         let process = &self.borrow();
         if process.breakpoint_sites.borrow().contain_address(address) {
@@ -451,7 +480,7 @@ impl ProcessExt for Rc<RefCell<Process>> {
         Ok(process
             .breakpoint_sites
             .borrow_mut()
-            .push(BreakpointSite::new(self, address)))
+            .push(BreakpointSite::new(self, address, hardware, internal)))
     }
 }
 

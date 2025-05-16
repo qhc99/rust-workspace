@@ -204,7 +204,7 @@ fn read_registers() {
 fn create_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let site = proc.create_breakpoint_site(42.into());
+    let site = proc.create_breakpoint_site(42.into(), false, false);
     assert_eq!(VirtualAddress::from(42), site.unwrap().borrow().address());
 }
 
@@ -212,16 +212,16 @@ fn create_breakpoint_site() {
 fn create_breakpoint_site_id_increase() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let site1 = proc.create_breakpoint_site(42.into()).unwrap();
+    let site1 = proc.create_breakpoint_site(42.into(), false, false).unwrap();
     assert_eq!(VirtualAddress::from(42), site1.borrow().address());
 
-    let site2 = proc.create_breakpoint_site(43.into()).unwrap();
+    let site2 = proc.create_breakpoint_site(43.into(), false, false).unwrap();
     assert_eq!(site2.borrow().id(), site1.borrow().id() + 1);
 
-    let site3 = proc.create_breakpoint_site(44.into()).unwrap();
+    let site3 = proc.create_breakpoint_site(44.into(), false, false).unwrap();
     assert_eq!(site3.borrow().id(), site2.borrow().id() + 1);
 
-    let site4 = proc.create_breakpoint_site(45.into()).unwrap();
+    let site4 = proc.create_breakpoint_site(45.into(), false, false).unwrap();
     assert_eq!(site4.borrow().id(), site3.borrow().id() + 1);
 }
 
@@ -229,10 +229,10 @@ fn create_breakpoint_site_id_increase() {
 fn find_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let _ = proc.create_breakpoint_site(42.into());
-    let _ = proc.create_breakpoint_site(43.into());
-    let _ = proc.create_breakpoint_site(44.into());
-    let _ = proc.create_breakpoint_site(45.into());
+    let _ = proc.create_breakpoint_site(42.into(), false, false);
+    let _ = proc.create_breakpoint_site(43.into(), false, false);
+    let _ = proc.create_breakpoint_site(44.into(), false, false);
+    let _ = proc.create_breakpoint_site(45.into(), false, false);
 
     let s1 = proc
         .borrow()
@@ -293,11 +293,11 @@ fn breakpoint_sites_list_size() {
     assert!(proc.breakpoint_sites().borrow().empty());
     assert!(proc.breakpoint_sites().borrow().size() == 0);
 
-    let _ = owned_proc.create_breakpoint_site(42.into());
+    let _ = owned_proc.create_breakpoint_site(42.into(), false, false);
     assert!(!proc.breakpoint_sites().borrow().empty());
     assert!(proc.breakpoint_sites().borrow().size() == 1);
 
-    let _ = owned_proc.create_breakpoint_site(43.into());
+    let _ = owned_proc.create_breakpoint_site(43.into(), false, false);
     assert!(!proc.breakpoint_sites().borrow().empty());
     assert!(proc.breakpoint_sites().borrow().size() == 2);
 }
@@ -306,10 +306,10 @@ fn breakpoint_sites_list_size() {
 fn iterate_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let _ = proc.create_breakpoint_site(42.into());
-    let _ = proc.create_breakpoint_site(43.into());
-    let _ = proc.create_breakpoint_site(44.into());
-    let _ = proc.create_breakpoint_site(45.into());
+    let _ = proc.create_breakpoint_site(42.into(), false, false);
+    let _ = proc.create_breakpoint_site(43.into(), false, false);
+    let _ = proc.create_breakpoint_site(44.into(), false, false);
+    let _ = proc.create_breakpoint_site(45.into(), false, false);
 
     let mut start = 42;
     proc.borrow()
@@ -399,7 +399,7 @@ fn breakpoint_on_address() {
     let offset = get_entry_point_offset(bin.target_path()).unwrap();
     let load_address = get_load_address(proc.pid(), offset).unwrap();
     owned_proc
-        .create_breakpoint_site(load_address)
+        .create_breakpoint_site(load_address, false, false)
         .unwrap()
         .borrow_mut()
         .enable()
@@ -424,8 +424,8 @@ fn remove_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
     let proc = &owned_proc.borrow();
-    let site = owned_proc.create_breakpoint_site(42.into());
-    let _ = owned_proc.create_breakpoint_site(43.into());
+    let site = owned_proc.create_breakpoint_site(42.into(), false, false);
+    let _ = owned_proc.create_breakpoint_site(43.into(), false, false);
     assert_eq!(2, proc.breakpoint_sites().borrow().size());
     let id = site.unwrap().borrow().id();
     proc.breakpoint_sites()
