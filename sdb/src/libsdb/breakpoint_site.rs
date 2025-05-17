@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 
 static NEXT_ID: AtomicI32 = AtomicI32::new(0);
 
-pub fn get_next_id() -> IdType {
+fn get_next_id() -> IdType {
     NEXT_ID.fetch_add(1, Ordering::SeqCst) + 1
 }
 

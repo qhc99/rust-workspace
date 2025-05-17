@@ -16,13 +16,14 @@ use std::path::Path;
 use std::{ffi::CString, rc::Rc};
 use traits::FromLowerHexStr;
 use traits::StoppointTrait;
-use types::VirtualAddress;
+use types::{StoppointMode, VirtualAddress};
 
 mod breakpoint_site;
 mod disassembler;
 mod parse;
 mod stoppoint_collection;
 mod utils;
+mod watchpoint;
 
 pub mod traits;
 pub use utils::ResultLogExt;
@@ -97,9 +98,116 @@ pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Resul
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
         handle_disassemble_command(owned_process, &args)?;
+    } else if cmd == "watchpoint" {
+        handle_watchpoint_command(owned_process, &args)?;
     } else {
         eprintln!("Unknown command");
     }
+    Ok(())
+}
+
+fn handle_watchpoint_command(
+    process: &Rc<RefCell<Process>>,
+    args: &[&str],
+) -> Result<(), SdbError> {
+    if args.len() < 2 {
+        print_help(&["help", "watchpoint"]);
+        return Ok(());
+    }
+    let command = args[1];
+    if command == "list" {
+        handle_watchpoint_list(process, args)?;
+        return Ok(());
+    }
+
+    if command == "set" {
+        handle_watchpoint_set(process, args)?;
+        return Ok(());
+    }
+
+    if args.len() < 3 {
+        print_help(&["help", "watchpoint"]);
+        return Ok(());
+    }
+
+    let id = args[2]
+        .parse::<IdType>()
+        .map_err(|_| SdbError::new_err("Command expects watchpoint id"))?;
+    if command == "enable" {
+        process
+            .borrow()
+            .watchpoints()
+            .borrow()
+            .get_by_id(id)?
+            .borrow_mut()
+            .enable()?;
+    } else if command == "disable" {
+        process
+            .borrow()
+            .watchpoints()
+            .borrow()
+            .get_by_id(id)?
+            .borrow_mut()
+            .disable()?;
+    } else if command == "delete" {
+        process
+            .borrow()
+            .watchpoints()
+            .borrow_mut()
+            .remove_by_id(id)?;
+    }
+    Ok(())
+}
+
+fn handle_watchpoint_list(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+    let process = process.borrow();
+    let watchpoints = process.watchpoints();
+    let watchpoints = watchpoints.borrow();
+    if watchpoints.empty() {
+        println!("No watchpoints set");
+    } else {
+        println!("Current watchpoints:");
+        watchpoints.for_each(|w| {
+            let w = w.borrow();
+            println!(
+                "{}: address = {:#x}, mode = {}, size = {}, {}",
+                w.id(),
+                w.address().get_addr(),
+                w.mode(),
+                w.size(),
+                if w.is_enabled() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            )
+        });
+    }
+    Ok(())
+}
+
+fn handle_watchpoint_set(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() != 5 {
+        print_help(&["help", "watchpoint"]);
+        return Ok(());
+    }
+    let address = u64::from_integral_lower_hex_radix(args[2], 16)?;
+    let mode_text = args[3];
+    let size = usize::from_integral(args[4])?;
+    if !(mode_text == "write" || mode_text == "rw" || mode_text == "execute") {
+        print_help(&["help", "watchpoint"]);
+        return Ok(());
+    }
+    let mode: StoppointMode = match mode_text {
+        "write" => StoppointMode::Write,
+        "rw" => StoppointMode::ReadWrite,
+        "execute" => StoppointMode::Execute,
+        _ => panic!(),
+    };
+    process
+        .create_watchpoint(address.into(), mode, size)?
+        .borrow_mut()
+        .enable()?;
     Ok(())
 }
 
@@ -117,13 +225,13 @@ fn handle_disassemble_command(
                 let opt_addr = args_iter
                     .next()
                     .ok_or(SdbError::new_err("Invalid address format"))?;
-                address = u64::from_lower_hex_radix(opt_addr, 16)?.into();
+                address = u64::from_integral_lower_hex_radix(opt_addr, 16)?.into();
             }
             "-c" => {
                 let instruction_count = args_iter
                     .next()
                     .ok_or(SdbError::new_err("Invalid instruction count"))?;
-                n_instructions = usize::from_lower_hex(instruction_count)?;
+                n_instructions = usize::from_integral(instruction_count)?;
             }
             _ => {
                 print_help(&["help", "disassemble"]);
@@ -162,10 +270,10 @@ fn handle_memory_command(process: &Ref<Process>, args: &[&str]) -> Result<(), Sd
 }
 
 fn handle_memory_read_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
-    let address = u64::from_lower_hex_radix(args[2], 16)?;
+    let address = u64::from_integral_lower_hex_radix(args[2], 16)?;
     let mut n_bytes = 32usize;
     if args.len() == 4 {
-        let bytes_args = usize::from_lower_hex_radix(args[3], 16)?;
+        let bytes_args = usize::from_integral_lower_hex_radix(args[3], 16)?;
         n_bytes = bytes_args;
     }
     let data = process.read_memory(address.into(), n_bytes)?;
@@ -188,7 +296,7 @@ fn handle_memory_write_command(process: &Ref<Process>, args: &[&str]) -> Result<
         print_help(&["help", "memory"]);
         return Ok(());
     }
-    let address = u64::from_lower_hex_radix(args[2], 16)?;
+    let address = u64::from_integral_lower_hex_radix(args[2], 16)?;
     let data = parse_vector(args[3])?;
     process.write_memory(address.into(), &data)?;
     Ok(())
@@ -236,7 +344,7 @@ fn handle_breakpoint_command(
     }
 
     if command == "set" {
-        let address = u64::from_lower_hex_radix(args[2], 16);
+        let address = u64::from_integral_lower_hex_radix(args[2], 16);
         if address.is_err() {
             eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
             return Ok(());
@@ -258,7 +366,7 @@ fn handle_breakpoint_command(
         return Ok(());
     }
 
-    let id = IdType::from_lower_hex_radix(args[2], 16)
+    let id = IdType::from_integral_lower_hex_radix(args[2], 16)
         .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
     if command == "enable" {
         process
@@ -347,6 +455,7 @@ fn print_help(args: &[&str]) {
             memory - Commands for operating on memory
             register - Commands for operating on registers
             step - Step over a single instruction
+            watchpoint - Commands for operating on watchpoints
         "
         });
     } else if args[1] == "register" {
@@ -380,5 +489,14 @@ fn print_help(args: &[&str]) {
             -c <number of instructions>
             -a <start address>
         "});
+    } else if args[1] == "watchpoint" {
+        eprintln!(indoc! {"
+            Available commands:
+            list
+            delete <id>
+            disable <id>
+            enable <id>
+            set <address> <write|rw|execute> <size>
+        "})
     }
 }

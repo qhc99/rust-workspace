@@ -1,6 +1,7 @@
 use super::bit::AsBytes;
 use super::bit::from_bytes;
 use super::breakpoint_site::BreakpointSite;
+use super::breakpoint_site::IdType;
 use super::pipe::Pipe;
 use super::register_info::RegisterId;
 use super::register_info::register_info_by_id;
@@ -11,6 +12,7 @@ use super::traits::StoppointTrait;
 use super::types::StoppointMode;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
+use super::watchpoint::WatchPoint;
 use bytemuck::Pod;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
@@ -89,6 +91,7 @@ pub struct Process {
     is_attached: bool,            // Default true
     registers: Option<Rc<RefCell<Registers>>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
+    watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
 }
 
 impl Process {
@@ -100,6 +103,7 @@ impl Process {
             is_attached,
             registers: None,
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
+            watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
         };
 
         let res = Rc::new(RefCell::new(res));
@@ -509,6 +513,20 @@ impl Process {
             _ => SdbError::err("Invalid stoppoint size"),
         }
     }
+
+    pub fn set_watchpoint(
+        &self,
+        id: IdType,
+        address: VirtualAddress,
+        mode: StoppointMode,
+        size: usize,
+    ) -> Result<i32, SdbError> {
+        return self._set_hardware_breakpoint(address, mode, size);
+    }
+
+    pub fn watchpoints(&self) -> Rc<RefCell<StoppointCollection<WatchPoint>>> {
+        self.watchpoints.clone()
+    }
 }
 
 pub trait ProcessExt {
@@ -518,6 +536,13 @@ pub trait ProcessExt {
         hardware: bool,
         internal: bool,
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
+
+    fn create_watchpoint(
+        &self,
+        address: VirtualAddress,
+        mode: StoppointMode,
+        size: usize,
+    ) -> Result<Rc<RefCell<WatchPoint>>, SdbError>;
 }
 
 impl ProcessExt for Rc<RefCell<Process>> {
@@ -538,6 +563,25 @@ impl ProcessExt for Rc<RefCell<Process>> {
             .breakpoint_sites
             .borrow_mut()
             .push(BreakpointSite::new(self, address, hardware, internal)))
+    }
+
+    fn create_watchpoint(
+        &self,
+        address: VirtualAddress,
+        mode: StoppointMode,
+        size: usize,
+    ) -> Result<Rc<RefCell<WatchPoint>>, SdbError> {
+        let process = &self.borrow();
+        if process.watchpoints.borrow().contain_address(address) {
+            return SdbError::err(&format!(
+                "Watchpoint already created at address {}",
+                address.get_addr()
+            ));
+        }
+        Ok(process
+            .watchpoints
+            .borrow_mut()
+            .push(WatchPoint::new(self, address, mode, size)?))
     }
 }
 

@@ -12,7 +12,7 @@ macro_rules! match_parse_int {
         match $size {
             $(
                 $num => Ok(RegisterValue::$Variant(
-                    <$Ty>::from_lower_hex_radix($digits, 16)?,
+                    <$Ty>::from_integral_lower_hex_radix($digits, 16)?,
                 )),
             )+
             _ => SdbError::err("Invalid format"),
