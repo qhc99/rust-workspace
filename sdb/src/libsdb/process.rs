@@ -444,13 +444,50 @@ impl Process {
         size: usize,
     ) -> Result<i32, SdbError> {
         let owned_regs = self.get_registers();
-        let regs = owned_regs.borrow();
+        let mut regs = owned_regs.borrow_mut();
         let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
-        todo!()
+
+        let free_space = Process::find_free_stoppoint_register(control);
+        let id = RegisterId::dr0 as i32 + free_space as i32;
+        regs.write_by_id(RegisterId::try_from(id).unwrap(), address.get_addr())?;
+
+        let mode_flag = Process::encode_hardware_stoppoint_mode(mode);
+        let size_flag = Process::encode_hardware_stoppoint_size(size)?;
+
+        let enable_bit = 1 << (free_space * 2);
+        let mode_bits = mode_flag << (free_space * 4 + 16);
+        let size_bits = size_flag << (free_space * 4 + 18);
+        let clear_mask = (0b11 << (free_space * 2)) | (0b1111 << (free_space * 4 + 16));
+        let mut masked = control & !clear_mask;
+        masked |= enable_bit | mode_bits | size_bits;
+        regs.write_by_id(RegisterId::dr7, masked)?;
+        return Ok(free_space as i32);
     }
 
     pub fn clear_hardware_stoppoint(&self, hardware_register_index: i32) {
         todo!()
+    }
+
+    fn find_free_stoppoint_register(control: u64) -> u64 {
+        todo!()
+    }
+
+    fn encode_hardware_stoppoint_mode(mode: StoppointMode) -> u64 {
+        match mode {
+            StoppointMode::Write => 0b01,
+            StoppointMode::ReadWrite => 0b11,
+            StoppointMode::Execute => 0b00,
+        }
+    }
+
+    fn encode_hardware_stoppoint_size(size: usize) -> Result<u64, SdbError> {
+        match size {
+            1 => Ok(0b00),
+            2 => Ok(0b01),
+            4 => Ok(0b11),
+            8 => Ok(0b10),
+            _ => SdbError::err("Invalid stoppoint size"),
+        }
     }
 }
 
