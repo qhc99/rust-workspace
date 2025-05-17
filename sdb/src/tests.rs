@@ -8,6 +8,7 @@ use std::{
 
 use super::libsdb::process::ProcessState;
 use super::libsdb::register_info::RegisterId;
+use super::libsdb::types::StoppointMode;
 use super::libsdb::types::VirtualAddress;
 use super::libsdb::{
     bit::{to_byte64, to_byte128},
@@ -517,6 +518,48 @@ fn hardware_breapoint_evade_memory_checksum() {
     proc.wait_on_signal().unwrap();
 
     assert_eq!(func, proc.get_pc());
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    assert_eq!(
+        String::from_utf8(channel.read().unwrap()).unwrap(),
+        "Putting pineapple on pizza...\n"
+    );
+}
+
+#[test]
+fn watchpoint_detect_read() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+    let owned_proc =
+        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
+    channel.close_write();
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    let func = VirtualAddress::from(from_bytes::<u64>(&channel.read().unwrap()));
+    let watch = owned_proc
+        .create_watchpoint(func, StoppointMode::ReadWrite, 1)
+        .unwrap();
+    watch.borrow_mut().enable().unwrap();
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    proc.step_instruction().unwrap();
+    let soft = owned_proc
+        .create_breakpoint_site(func, false, false)
+        .unwrap();
+    soft.borrow_mut().enable().unwrap();
+
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
+
+    assert_eq!(Signal::SIGTRAP as i32, reason.info);
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();

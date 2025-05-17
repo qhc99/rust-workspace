@@ -116,7 +116,7 @@ fn handle_watchpoint_command(
     }
     let command = args[1];
     if command == "list" {
-        handle_watchpoint_list(process, args)?;
+        handle_watchpoint_list(process)?;
         return Ok(());
     }
 
@@ -159,7 +159,7 @@ fn handle_watchpoint_command(
     Ok(())
 }
 
-fn handle_watchpoint_list(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_watchpoint_list(process: &Rc<RefCell<Process>>) -> Result<(), SdbError> {
     let process = process.borrow();
     let watchpoints = process.watchpoints();
     let watchpoints = watchpoints.borrow();
