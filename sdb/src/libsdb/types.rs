@@ -62,10 +62,9 @@ impl SubAssign<i64> for VirtualAddress {
     }
 }
 
-
 #[derive(Debug, Clone, Copy)]
-pub enum StoppointMode{
+pub enum StoppointMode {
     Write,
     ReadWrite,
-    Execute
+    Execute,
 }

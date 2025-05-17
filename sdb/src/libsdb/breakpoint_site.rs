@@ -81,7 +81,7 @@ impl StoppointTrait for BreakpointSite {
                 .upgrade()
                 .unwrap()
                 .borrow()
-                .clear_hardware_stoppoint(self.hardware_register_index);
+                .clear_hardware_stoppoint(self.hardware_register_index)?;
             self.hardware_register_index = -1;
         } else {
             let pid = self.process.upgrade().unwrap().borrow().pid();

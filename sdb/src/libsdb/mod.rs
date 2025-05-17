@@ -111,29 +111,27 @@ fn handle_disassemble_command(
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
     args_iter.next();
-    loop {
-        match args_iter.next() {
-            Some(data) => match *data {
-                "-a" => {
-                    let opt_addr = args_iter
-                        .next()
-                        .ok_or(SdbError::new_err("Invalid address format"))?;
-                    address = u64::from_lower_hex_radix(opt_addr, 16)?.into();
-                }
-                "-c" => {
-                    let instruction_count = args_iter
-                        .next()
-                        .ok_or(SdbError::new_err("Invalid instruction count"))?;
-                    n_instructions = usize::from_lower_hex(instruction_count)?;
-                }
-                _ => {
-                    print_help(&["help", "disassemble"]);
-                    return Ok(());
-                }
-            },
-            None => break,
+    while let Some(data) = args_iter.next() {
+        match *data {
+            "-a" => {
+                let opt_addr = args_iter
+                    .next()
+                    .ok_or(SdbError::new_err("Invalid address format"))?;
+                address = u64::from_lower_hex_radix(opt_addr, 16)?.into();
+            }
+            "-c" => {
+                let instruction_count = args_iter
+                    .next()
+                    .ok_or(SdbError::new_err("Invalid instruction count"))?;
+                n_instructions = usize::from_lower_hex(instruction_count)?;
+            }
+            _ => {
+                print_help(&["help", "disassemble"]);
+                return Ok(());
+            }
         }
     }
+
     print_disassembly(process, address, n_instructions)?;
     Ok(())
 }
