@@ -29,7 +29,7 @@ use nix::sys::uio::process_vm_readv;
 use nix::unistd::dup2;
 use nix::{
     errno::Errno,
-    libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, user_fpregs_struct, user_regs_struct},
+    libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, setpgid, user_fpregs_struct, user_regs_struct},
     sys::{
         ptrace::{attach as nix_attach, detach, getregs, read_user, write_user},
         wait::{WaitPidFlag, WaitStatus, waitpid},
@@ -185,6 +185,11 @@ impl Process {
         }
         let path_str = CString::new(path.to_str().unwrap()).unwrap();
         if let Ok(ForkResult::Child) = fork_res {
+            unsafe {
+                if setpgid(0, 0) < 0 {
+                    Process::exit_with_error(&channel, "Could not set pgid", Errno::last());
+                }
+            }
             let res = set_personality(Persona::ADDR_NO_RANDOMIZE);
             if let Err(errno) = res {
                 Process::exit_with_error(&channel, "Subprocess set peronality failed", errno);
