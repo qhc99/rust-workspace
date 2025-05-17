@@ -447,7 +447,7 @@ impl Process {
         let mut regs = owned_regs.borrow_mut();
         let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
 
-        let free_space = Process::find_free_stoppoint_register(control);
+        let free_space = Process::find_free_stoppoint_register(control)?;
         let id = RegisterId::dr0 as i32 + free_space as i32;
         regs.write_by_id(RegisterId::try_from(id).unwrap(), address.get_addr())?;
 
@@ -464,12 +464,32 @@ impl Process {
         return Ok(free_space as i32);
     }
 
-    pub fn clear_hardware_stoppoint(&self, hardware_register_index: i32) {
-        todo!()
+    pub fn clear_hardware_stoppoint(&self, index: i32) -> Result<(), SdbError> {
+        let id = RegisterId::try_from(RegisterId::dr0 as i32 + index).unwrap();
+        let owned_registers = self.get_registers();
+        {
+            let mut regs = owned_registers.borrow_mut();
+            regs.write_by_id(id, 0)?;
+        }
+        let masked: u64;
+        {
+            let regs = owned_registers.borrow();
+            let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
+            let clear_mask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
+            masked = control & !clear_mask;
+        }
+        let mut regs = owned_registers.borrow_mut();
+        regs.write_by_id(RegisterId::dr7, masked)?;
+        Ok(())
     }
 
-    fn find_free_stoppoint_register(control: u64) -> u64 {
-        todo!()
+    fn find_free_stoppoint_register(control_register: u64) -> Result<u64, SdbError> {
+        for i in 0..4 {
+            if (control_register & (0b11 << (i * 2))) == 0 {
+                return Ok(i);
+            }
+        }
+        return SdbError::err("No remaining hardware debug registers");
     }
 
     fn encode_hardware_stoppoint_mode(mode: StoppointMode) -> u64 {

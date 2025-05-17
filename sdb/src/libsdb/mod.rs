@@ -215,7 +215,7 @@ fn handle_breakpoint_command(
             println!("Current breakpoints:");
             breakpoint_sites.for_each(|s| {
                 let s = &s.borrow();
-                if s.is_internal(){
+                if s.is_internal() {
                     return;
                 }
                 let id = s.id();
@@ -262,12 +262,20 @@ fn handle_breakpoint_command(
 
     let id = IdType::from_lower_hex_radix(args[2], 16)
         .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
-    let owned_breakpoint_sites = process.breakpoint_sites();
-    let breakpoint_sites = &owned_breakpoint_sites.borrow();
     if command == "enable" {
-        breakpoint_sites.get_by_id(id)?.borrow_mut().enable()?;
+        process
+            .breakpoint_sites()
+            .borrow()
+            .get_by_id(id)?
+            .borrow_mut()
+            .enable()?;
     } else if command == "disable" {
-        breakpoint_sites.get_by_id(id)?.borrow_mut().disable()?;
+        process
+            .breakpoint_sites()
+            .borrow()
+            .get_by_id(id)?
+            .borrow_mut()
+            .disable()?;
     } else if command == "delete" {
         process.breakpoint_sites().borrow_mut().remove_by_id(id)?;
     }

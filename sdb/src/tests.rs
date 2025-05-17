@@ -212,16 +212,24 @@ fn create_breakpoint_site() {
 fn create_breakpoint_site_id_increase() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
-    let site1 = proc.create_breakpoint_site(42.into(), false, false).unwrap();
+    let site1 = proc
+        .create_breakpoint_site(42.into(), false, false)
+        .unwrap();
     assert_eq!(VirtualAddress::from(42), site1.borrow().address());
 
-    let site2 = proc.create_breakpoint_site(43.into(), false, false).unwrap();
+    let site2 = proc
+        .create_breakpoint_site(43.into(), false, false)
+        .unwrap();
     assert_eq!(site2.borrow().id(), site1.borrow().id() + 1);
 
-    let site3 = proc.create_breakpoint_site(44.into(), false, false).unwrap();
+    let site3 = proc
+        .create_breakpoint_site(44.into(), false, false)
+        .unwrap();
     assert_eq!(site3.borrow().id(), site2.borrow().id() + 1);
 
-    let site4 = proc.create_breakpoint_site(45.into(), false, false).unwrap();
+    let site4 = proc
+        .create_breakpoint_site(45.into(), false, false)
+        .unwrap();
     assert_eq!(site4.borrow().id(), site3.borrow().id() + 1);
 }
 
@@ -467,4 +475,54 @@ fn read_and_write_memory() {
 
     let read = String::from_utf8(channel.read().unwrap()).unwrap();
     assert_eq!("Hello, sdb!", read);
+}
+
+#[test]
+fn hardware_breapoint_evade_memory_checksum() {
+    let close_on_exec = false;
+    let mut channel = Pipe::new(close_on_exec).unwrap();
+    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+    let owned_proc =
+        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = &owned_proc.borrow();
+    channel.close_write();
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    let func = VirtualAddress::from(from_bytes::<u64>(&channel.read().unwrap()));
+    let soft = owned_proc
+        .create_breakpoint_site(func, false, false)
+        .unwrap();
+    soft.borrow_mut().enable().unwrap();
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    assert_eq!(
+        String::from_utf8(channel.read().unwrap()).unwrap(),
+        "Putting pepperoni on pizza...\n"
+    );
+    let soft_id = soft.borrow().id();
+    proc.breakpoint_sites()
+        .borrow_mut()
+        .remove_by_id(soft_id)
+        .unwrap();
+    let hard = owned_proc
+        .create_breakpoint_site(func, true, false)
+        .unwrap();
+    hard.borrow_mut().enable().unwrap();
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    assert_eq!(func, proc.get_pc());
+
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    assert_eq!(
+        String::from_utf8(channel.read().unwrap()).unwrap(),
+        "Putting pineapple on pizza...\n"
+    );
 }
