@@ -1,8 +1,10 @@
+use super::bit::AsBytes;
 use super::breakpoint_site::IdType;
 use super::process::Process;
 use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
+use std::mem::swap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::{cell::RefCell, rc::Weak};
@@ -22,6 +24,8 @@ pub struct WatchPoint {
     size: usize,
     is_enabled: bool,
     hardware_register_index: i32, // -1
+    data: u64,
+    previous_data: u64,
 }
 
 impl StoppointTrait for WatchPoint {
@@ -83,7 +87,7 @@ impl WatchPoint {
         if (address.get_addr() as usize & (size - 1)) != 0 {
             return SdbError::err("Watchpoint must be aligned to size");
         }
-        Ok(Self {
+        let mut ret = Self {
             id: get_next_id(),
             process: Rc::downgrade(process),
             address,
@@ -91,7 +95,11 @@ impl WatchPoint {
             size,
             is_enabled: false,
             hardware_register_index: -1,
-        })
+            data: 0,
+            previous_data: 0,
+        };
+        ret.update_data()?;
+        Ok(ret)
     }
 
     pub fn mode(&self) -> StoppointMode {
@@ -99,5 +107,25 @@ impl WatchPoint {
     }
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn data(&self) -> u64 {
+        self.data
+    }
+    pub fn previous_data(&self) -> u64 {
+        self.previous_data
+    }
+
+    pub fn update_data(&mut self) -> Result<(), SdbError> {
+        let mut new_data = 0u64;
+        let read = self
+            .process
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .read_memory(self.address, self.size)?;
+        new_data.as_bytes_mut()[..self.size].copy_from_slice(&read[..self.size]);
+        swap(&mut self.data, &mut self.previous_data);
+        Ok(())
     }
 }

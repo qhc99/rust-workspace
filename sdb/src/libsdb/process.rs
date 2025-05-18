@@ -20,16 +20,21 @@ use nix::sys::personality::Persona;
 use nix::sys::personality::set as set_personality;
 use nix::sys::ptrace::AddressType;
 use nix::sys::ptrace::cont;
+use nix::sys::ptrace::getsiginfo;
 use nix::sys::ptrace::step;
 use nix::sys::ptrace::write;
 use nix::sys::signal::Signal;
+use nix::sys::signal::Signal::SIGTRAP;
 use nix::sys::signal::kill;
 use nix::sys::uio::RemoteIoVec;
 use nix::sys::uio::process_vm_readv;
 use nix::unistd::dup2;
 use nix::{
     errno::Errno,
-    libc::{PTRACE_SETFPREGS, PTRACE_SETREGS, setpgid, user_fpregs_struct, user_regs_struct},
+    libc::{
+        PTRACE_SETFPREGS, PTRACE_SETREGS, SI_KERNEL, TRAP_HWBKPT, TRAP_TRACE, setpgid,
+        user_fpregs_struct, user_regs_struct,
+    },
     sys::{
         ptrace::{attach as nix_attach, detach, getregs, read_user, write_user},
         wait::{WaitPidFlag, WaitStatus, waitpid},
@@ -53,10 +58,19 @@ pub enum ProcessState {
     Terminated,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,
+    pub trap_reason: Option<TrapType>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TrapType {
+    SingleStep,
+    SoftwareBreak,
+    HardwareBreak,
+    Unknown,
 }
 
 impl StopReason {
@@ -65,16 +79,19 @@ impl StopReason {
             return Ok(StopReason {
                 reason: ProcessState::Exited,
                 info,
+                trap_reason: None,
             });
         } else if let WaitStatus::Signaled(_, info, _) = status {
             return Ok(StopReason {
                 reason: ProcessState::Terminated,
                 info: info as i32,
+                trap_reason: None,
             });
         } else if let WaitStatus::Stopped(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Stopped,
                 info: info as i32,
+                trap_reason: None,
             });
         }
 
@@ -143,11 +160,12 @@ impl Process {
         return match wait_status {
             Err(errno) => SdbError::errno("waitpid failed", errno),
             Ok(status) => {
-                let reason = StopReason::new(status)?;
+                let mut reason = StopReason::new(status)?;
                 *self.state.borrow_mut() = reason.reason;
 
                 if self.is_attached && *self.state.borrow() == ProcessState::Stopped {
                     self.read_all_registers()?;
+                    self.augment_stop_reason(&mut reason)?;
                     let instr_begin = self.get_pc() - 1;
                     if reason.info == Signal::SIGTRAP as i32
                         && self
@@ -532,6 +550,44 @@ impl Process {
     pub fn watchpoints(&self) -> Rc<RefCell<StoppointCollection<WatchPoint>>> {
         self.watchpoints.clone()
     }
+
+    fn augment_stop_reason(&self, reason: &mut StopReason) -> Result<(), SdbError> {
+        let info = getsiginfo(self.pid)
+            .map_err(|errno| SdbError::new_errno("Failed to get signal info", errno))?;
+        reason.trap_reason = Some(TrapType::Unknown);
+        if reason.info == SIGTRAP as i32 {
+            match info.si_code {
+                TRAP_TRACE => reason.trap_reason = Some(TrapType::SingleStep),
+                SI_KERNEL => reason.trap_reason = Some(TrapType::SoftwareBreak),
+                TRAP_HWBKPT => reason.trap_reason = Some(TrapType::HardwareBreak),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_current_hardware_stoppoint(&self) -> Result<StoppointId, SdbError> {
+        let regs = self.get_registers();
+        let regs = regs.borrow();
+        let status: u64 = regs.read_by_id_as(RegisterId::dr6)?;
+        let index = status.trailing_zeros();
+
+        let id = RegisterId::try_from(RegisterId::dr0 as i32 + index as i32).unwrap();
+        let addr = VirtualAddress::from(regs.read_by_id_as::<u64>(id)?);
+        let breapoint_sites = self.breakpoint_sites.borrow();
+        if breapoint_sites.contain_address(addr) {
+            let site_id = breapoint_sites.get_by_address(addr)?.borrow().id();
+            Ok(StoppointId::BreakpointSite(site_id))
+        } else {
+            let watch_id = self.watchpoints.borrow().get_by_address(addr)?.borrow().id();
+            Ok(StoppointId::Watchpoint(watch_id))
+        }
+    }
+}
+
+pub enum StoppointId {
+    BreakpointSite(IdType),
+    Watchpoint(IdType),
 }
 
 pub trait ProcessExt {
