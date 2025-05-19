@@ -19,8 +19,10 @@ use nix::libc::ptrace;
 use nix::sys::personality::Persona;
 use nix::sys::personality::set as set_personality;
 use nix::sys::ptrace::AddressType;
+use nix::sys::ptrace::Options;
 use nix::sys::ptrace::cont;
 use nix::sys::ptrace::getsiginfo;
+use nix::sys::ptrace::setoptions;
 use nix::sys::ptrace::step;
 use nix::sys::ptrace::write;
 use nix::sys::signal::Signal;
@@ -97,6 +99,17 @@ impl StopReason {
 
         SdbError::err("Stopped process returns running state")
     }
+}
+
+fn set_ptrace_options(pid: Pid) -> Result<(), SdbError> {
+    setoptions(pid, Options::PTRACE_O_TRACESYSGOOD)
+        .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD option", errno))
+}
+
+enum SyscallCatchPolicy {
+    None,
+    Some(Vec<i32>),
+    All,
 }
 
 #[derive(Debug)]
@@ -259,6 +272,7 @@ impl Process {
         let proc = Process::new(pid, true, debug);
         if debug {
             proc.borrow().wait_on_signal()?;
+            set_ptrace_options(pid)?;
         }
         return Ok(proc);
     }
@@ -272,6 +286,7 @@ impl Process {
         }
         let proc = Process::new(pid, false, true);
         proc.borrow().wait_on_signal()?;
+        set_ptrace_options(pid)?;
         return Ok(proc);
     }
 
