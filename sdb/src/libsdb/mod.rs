@@ -4,10 +4,11 @@
 use breakpoint_site::IdType;
 use disassembler::print_disassembly;
 use indoc::indoc;
+use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use parse::{parse_register_value, parse_vector};
-use process::{Process, ProcessExt, ProcessState, StopReason};
+use process::{Process, ProcessExt, ProcessState, StopReason, StoppointId, TrapType};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cell::{Ref, RefCell};
@@ -50,7 +51,7 @@ pub fn attach(args: &[&str]) -> Result<Rc<RefCell<Process>>, SdbError> {
     }
 }
 
-fn print_stop_reason(process: &Ref<Process>, reason: StopReason) {
+fn print_stop_reason(process: &Ref<Process>, reason: StopReason) -> Result<(), SdbError> {
     let pid = process.pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
@@ -67,7 +68,11 @@ fn print_stop_reason(process: &Ref<Process>, reason: StopReason) {
             let signal: Signal = reason.info.try_into().unwrap();
             let sig_str = signal.as_str();
             let addr = process.get_pc();
-            format!("{msg_start} stopped with signal {sig_str} at {:#x}", addr)
+            let mut msg = format!("{msg_start} stopped with signal {sig_str} at {addr:#x}");
+            if reason.info == SIGTRAP {
+                msg += &get_sigtrap_info(process, reason)?;
+            }
+            msg
         }
         ProcessState::Running => {
             eprintln!("Incorrect state");
@@ -75,6 +80,45 @@ fn print_stop_reason(process: &Ref<Process>, reason: StopReason) {
         }
     };
     println!("{msg}");
+    Ok(())
+}
+
+fn get_sigtrap_info(process: &Ref<Process>, reason: StopReason) -> Result<String, SdbError> {
+    if reason.trap_reason == Some(TrapType::SoftwareBreak) {
+        let site = process
+            .breakpoint_sites()
+            .borrow()
+            .get_by_address(process.get_pc())?;
+        return Ok(format!(" (breakpoint {})", site.borrow().id()));
+    }
+    if reason.trap_reason == Some(TrapType::HardwareBreak) {
+        let id = process.get_current_hardware_stoppoint()?;
+
+        match id {
+            StoppointId::BreakpointSite(id) => return Ok(format!(" (breakpoint {id})")),
+            StoppointId::Watchpoint(id) => {
+                let point = process.watchpoints().borrow().get_by_id(id)?;
+                let point = point.borrow();
+                let mut msg = format!(" (watchpoint {})", point.id());
+                if point.data() == point.previous_data() {
+                    msg += &format!("\nValue: {:#x}", point.data());
+                } else {
+                    msg += &format!(
+                        "\nOld value: {:#x}\nNew value: {:#x}",
+                        point.previous_data(),
+                        point.data()
+                    );
+                }
+                return Ok(msg);
+            }
+        }
+    }
+
+    if reason.trap_reason == Some(TrapType::SingleStep) {
+        return Ok(" (single step)".to_string());
+    }
+
+    return Ok("".to_string());
 }
 
 pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
@@ -246,7 +290,7 @@ fn handle_disassemble_command(
 
 fn handle_stop(process: &Rc<RefCell<Process>>, reason: StopReason) -> Result<(), SdbError> {
     let ref_process = &process.borrow();
-    print_stop_reason(ref_process, reason);
+    print_stop_reason(ref_process, reason)?;
     if reason.reason == ProcessState::Stopped {
         print_disassembly(process, ref_process.get_pc(), 5)?;
     }
