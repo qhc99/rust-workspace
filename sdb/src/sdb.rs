@@ -19,7 +19,7 @@ mod test_utils;
 mod tests;
 
 thread_local! {
-    static GLOBAL: RefCell<Weak<RefCell<Process>>> = RefCell::new(Weak::new());
+    static GLOBAL: RefCell<Weak<RefCell<Process>>> = const {RefCell::new(Weak::new())};
 }
 
 pub fn set_global(handle: &Rc<RefCell<Process>>) {
