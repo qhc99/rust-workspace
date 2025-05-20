@@ -483,6 +483,7 @@ dependencies = [
  "regex",
  "register_codegen",
  "rustyline",
+ "syscall-numbers",
  "zydis",
  "zydis-sys",
 ]
@@ -509,6 +510,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "syscall-numbers"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e88dcf8be2fd556b3cebd02689c424dced834317c7e38328eadfcfcab00b785"
 
 [[package]]
 name = "toml_datetime"

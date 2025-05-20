@@ -24,6 +24,7 @@ use nix::sys::ptrace::cont;
 use nix::sys::ptrace::getsiginfo;
 use nix::sys::ptrace::setoptions;
 use nix::sys::ptrace::step;
+use nix::sys::ptrace::syscall;
 use nix::sys::ptrace::write;
 use nix::sys::signal::Signal;
 use nix::sys::signal::Signal::SIGTRAP;
@@ -65,6 +66,7 @@ pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,
     pub trap_reason: Option<TrapType>,
+    pub syscall_info: Option<SyscallInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +74,7 @@ pub enum TrapType {
     SingleStep,
     SoftwareBreak,
     HardwareBreak,
+    Syscall,
     Unknown,
 }
 
@@ -82,18 +85,21 @@ impl StopReason {
                 reason: ProcessState::Exited,
                 info,
                 trap_reason: None,
+                syscall_info: None,
             });
         } else if let WaitStatus::Signaled(_, info, _) = status {
             return Ok(StopReason {
                 reason: ProcessState::Terminated,
                 info: info as i32,
                 trap_reason: None,
+                syscall_info: None,
             });
         } else if let WaitStatus::Stopped(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Stopped,
                 info: info as i32,
                 trap_reason: None,
+                syscall_info: None,
             });
         }
 
@@ -106,10 +112,29 @@ fn set_ptrace_options(pid: Pid) -> Result<(), SdbError> {
         .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD option", errno))
 }
 
-enum SyscallCatchPolicy {
+#[derive(Debug, PartialEq, Eq)]
+pub enum SyscallCatchPolicy {
     None,
     Some(Vec<i32>),
     All,
+}
+
+impl Default for SyscallCatchPolicy {
+    fn default() -> Self {
+        SyscallCatchPolicy::None
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SyscallInfo {
+    id: u16,
+    data: SyscallData,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SyscallData {
+    Args([u64; 6]),
+    Ret(i64),
 }
 
 #[derive(Debug)]
@@ -122,9 +147,15 @@ pub struct Process {
     registers: Option<Rc<RefCell<Registers>>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
     watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
+    syscall_catch_policy: SyscallCatchPolicy,
+    expecting_syscall_exit: RefCell<bool>,
 }
 
 impl Process {
+    pub fn set_syscall_catch_policy(&mut self, info: SyscallCatchPolicy) {
+        self.syscall_catch_policy = info;
+    }
+
     fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<RefCell<Self>> {
         let res = Self {
             pid,
@@ -134,6 +165,8 @@ impl Process {
             registers: None,
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
+            syscall_catch_policy: SyscallCatchPolicy::default(),
+            expecting_syscall_exit: RefCell::new(false),
         };
 
         let res = Rc::new(RefCell::new(res));
@@ -157,7 +190,13 @@ impl Process {
                 .map_err(|errno| SdbError::new_errno("Waitpid failed", errno))?;
             bp.borrow_mut().enable()?;
         }
-        if let Err(errno) = cont(self.pid, None) {
+        let request: fn(Pid, Option<Signal>) -> Result<(), Errno> =
+            if self.syscall_catch_policy == SyscallCatchPolicy::None {
+                cont::<Option<Signal>>
+            } else {
+                syscall::<Option<Signal>>
+            };
+        if let Err(errno) = request(self.pid, None) {
             return SdbError::errno("Could not resume", errno);
         }
         *self.state.borrow_mut() = ProcessState::Running;
@@ -199,6 +238,8 @@ impl Process {
                                     .borrow_mut()
                                     .update_data()?;
                             }
+                        } else if reason.trap_reason == Some(TrapType::Syscall) {
+                            reason = self.maybe_resume_from_syscall(&reason)?;
                         }
                     }
                 }
@@ -582,6 +623,45 @@ impl Process {
     fn augment_stop_reason(&self, reason: &mut StopReason) -> Result<(), SdbError> {
         let info = getsiginfo(self.pid)
             .map_err(|errno| SdbError::new_errno("Failed to get signal info", errno))?;
+
+        if reason.info == (SIGTRAP as i32 | 0x80) {
+            // TODO fill syscall info
+            let regs = self.get_registers();
+            let regs = regs.borrow();
+            let expecting_syscall_exit = *self.expecting_syscall_exit.borrow();
+            if expecting_syscall_exit {
+                reason.syscall_info = Some(SyscallInfo {
+                    id: regs.read_by_id_as::<u64>(RegisterId::orig_rax)? as u16,
+                    data: SyscallData::Ret(regs.read_by_id_as::<u64>(RegisterId::rax)? as i64),
+                });
+                *self.expecting_syscall_exit.borrow_mut() = false;
+            } else {
+                let register_ids = [
+                    RegisterId::rdi,
+                    RegisterId::rsi,
+                    RegisterId::rdx,
+                    RegisterId::r10,
+                    RegisterId::r8,
+                    RegisterId::r9,
+                ];
+                let mut data = [0u64; 6];
+                for (idx, id) in register_ids.iter().enumerate() {
+                    data[idx] = regs.read_by_id_as::<u64>(*id)?;
+                }
+                reason.syscall_info = Some(SyscallInfo {
+                    id: regs.read_by_id_as::<u64>(RegisterId::orig_rax)? as u16,
+                    data: SyscallData::Args(data),
+                });
+
+                *self.expecting_syscall_exit.borrow_mut() = true;
+            }
+
+            reason.info = SIGTRAP as i32;
+            reason.trap_reason = Some(TrapType::Syscall);
+            return Ok(());
+        }
+
+        *self.expecting_syscall_exit.borrow_mut() = false;
         reason.trap_reason = Some(TrapType::Unknown);
         if reason.info == SIGTRAP as i32 {
             match info.si_code {
@@ -592,6 +672,21 @@ impl Process {
             }
         }
         Ok(())
+    }
+
+    fn maybe_resume_from_syscall(&self, reason: &StopReason) -> Result<StopReason, SdbError> {
+        if let SyscallCatchPolicy::Some(to_catch) = &self.syscall_catch_policy {
+            if !to_catch.iter().any(|id| {
+                if let Some(info) = reason.syscall_info {
+                    return *id == info.id as i32;
+                }
+                return false;
+            }) {
+                self.resume()?;
+                return self.wait_on_signal();
+            }
+        }
+        Ok(*reason)
     }
 
     pub fn get_current_hardware_stoppoint(&self) -> Result<StoppointId, SdbError> {

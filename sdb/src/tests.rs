@@ -6,6 +6,8 @@ use std::{
     path::PathBuf,
 };
 
+use super::libsdb::syscalls::syscall_name_to_id;
+use super::libsdb::syscalls::syscall_id_to_name;
 use super::libsdb::process::ProcessState;
 use super::libsdb::register_info::RegisterId;
 use super::libsdb::types::StoppointMode;
@@ -568,4 +570,13 @@ fn watchpoint_detect_read() {
         String::from_utf8(channel.read().unwrap()).unwrap(),
         "Putting pineapple on pizza...\n"
     );
+}
+
+
+#[test]
+fn syscall_mapping(){
+    assert_eq!("read", syscall_id_to_name(0).unwrap());
+    assert_eq!(0, syscall_name_to_id("read").unwrap());
+    assert_eq!("kill", syscall_id_to_name(62).unwrap());
+    assert_eq!(62, syscall_name_to_id("kill").unwrap());
 }
