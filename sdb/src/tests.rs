@@ -1,28 +1,32 @@
 #![cfg(test)]
 
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{BufRead, BufReader},
+    os::fd::AsRawFd,
     path::PathBuf,
 };
 
-use super::libsdb::process::ProcessState;
-use super::libsdb::register_info::RegisterId;
-use super::libsdb::syscalls::syscall_id_to_name;
-use super::libsdb::syscalls::syscall_name_to_id;
-use super::libsdb::types::StoppointMode;
-use super::libsdb::types::VirtualAddress;
-use super::libsdb::{
+use super::test_utils::BinBuilder;
+use libsdb::process::{ProcessState, SyscallData, SyscallInfo, TrapType};
+use libsdb::register_info::RegisterId;
+use libsdb::syscalls::syscall_id_to_name;
+use libsdb::syscalls::syscall_name_to_id;
+use libsdb::types::StoppointMode;
+use libsdb::types::VirtualAddress;
+use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
+use libsdb::{
     bit::{to_byte64, to_byte128},
     pipe::Pipe,
     process::Process,
     registers::F80,
     types::{Byte64, Byte128},
 };
-use super::libsdb::{process::ProcessExt, traits::StoppointTrait};
-use super::test_utils::BinBuilder;
-use libsdb::bit::from_bytes;
-use nix::{sys::signal::Signal, unistd::Pid};
+use libsdb::{process::ProcessExt, traits::StoppointTrait};
+use nix::{
+    sys::signal::Signal::{self, SIGTRAP},
+    unistd::Pid,
+};
 use std::{
     io::{self},
     path::Path,
@@ -59,13 +63,13 @@ fn process_attach_invalid_pid() {
 #[test]
 fn process_resume_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let owned_proc = Process::launch(bin.target_path(), true, None).unwrap();
     let proc = &owned_proc.borrow();
     proc.resume().ok();
     let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 
-    let owned_target = super::Process::launch(bin.target_path(), false, None).unwrap();
+    let owned_target = Process::launch(bin.target_path(), false, None).unwrap();
     let target = &owned_target.borrow();
     let owned_proc = Process::attach(target.pid()).unwrap();
     let proc = &owned_proc.borrow();
@@ -77,7 +81,7 @@ fn process_resume_success() {
 #[test]
 fn process_resume_terminated() {
     let bin = BinBuilder::rustc("resource", "just_exit.rs");
-    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let owned_proc = Process::launch(bin.target_path(), true, None).unwrap();
     let proc = &owned_proc.borrow();
     proc.resume().ok();
     proc.wait_on_signal().ok();
@@ -206,7 +210,7 @@ fn read_registers() {
 #[test]
 fn create_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(bin.target_path(), true, None).unwrap();
     let site = proc.create_breakpoint_site(42.into(), false, false);
     assert_eq!(VirtualAddress::from(42), site.unwrap().borrow().address());
 }
@@ -214,7 +218,7 @@ fn create_breakpoint_site() {
 #[test]
 fn create_breakpoint_site_id_increase() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(bin.target_path(), true, None).unwrap();
     let site1 = proc
         .create_breakpoint_site(42.into(), false, false)
         .unwrap();
@@ -239,7 +243,7 @@ fn create_breakpoint_site_id_increase() {
 #[test]
 fn find_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(bin.target_path(), true, None).unwrap();
     let _ = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     let _ = proc.create_breakpoint_site(44.into(), false, false);
@@ -278,7 +282,7 @@ fn find_breakpoint_sites() {
 #[test]
 fn cannot_find_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(bin.target_path(), true, None).unwrap();
 
     assert!(
         proc.borrow()
@@ -299,7 +303,7 @@ fn cannot_find_breakpoint_site() {
 #[test]
 fn breakpoint_sites_list_size() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let owned_proc = Process::launch(bin.target_path(), true, None).unwrap();
     let proc = &owned_proc.borrow();
     assert!(proc.breakpoint_sites().borrow().empty());
     assert!(proc.breakpoint_sites().borrow().size() == 0);
@@ -316,7 +320,7 @@ fn breakpoint_sites_list_size() {
 #[test]
 fn iterate_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(bin.target_path(), true, None).unwrap();
     let _ = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     let _ = proc.create_breakpoint_site(44.into(), false, false);
@@ -433,7 +437,7 @@ fn breakpoint_on_address() {
 #[test]
 fn remove_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let owned_proc = super::Process::launch(bin.target_path(), true, None).unwrap();
+    let owned_proc = Process::launch(bin.target_path(), true, None).unwrap();
     let proc = &owned_proc.borrow();
     let site = owned_proc.create_breakpoint_site(42.into(), false, false);
     let _ = owned_proc.create_breakpoint_site(43.into(), false, false);
@@ -456,7 +460,7 @@ fn read_and_write_memory() {
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let bin = BinBuilder::cpp("resource", "memory.cpp");
     let owned_proc =
-        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+        Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     let proc = &owned_proc.borrow();
     channel.close_write();
 
@@ -486,7 +490,7 @@ fn hardware_breapoint_evade_memory_checksum() {
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
     let owned_proc =
-        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+        Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     let proc = &owned_proc.borrow();
     channel.close_write();
 
@@ -536,7 +540,7 @@ fn watchpoint_detect_read() {
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
     let owned_proc =
-        super::Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+        Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     let proc = &owned_proc.borrow();
     channel.close_write();
 
@@ -578,4 +582,47 @@ fn syscall_mapping() {
     assert_eq!(0, syscall_name_to_id("read").unwrap());
     assert_eq!("kill", syscall_id_to_name(62).unwrap());
     assert_eq!(62, syscall_name_to_id("kill").unwrap());
+}
+
+#[test]
+fn syscall_catchpoint() {
+    let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let fd = f.as_raw_fd();
+    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+
+    let owned_proc = Process::launch(bin.target_path(), true, Some(fd)).unwrap();
+    let proc = &owned_proc.borrow();
+    let write_syscall = syscall_name_to_id("write").unwrap();
+    let policy = SyscallCatchPolicy::Some(vec![write_syscall as i32]);
+    proc.set_syscall_catch_policy(policy);
+
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
+
+    assert_eq!(ProcessState::Stopped, reason.reason);
+    assert_eq!(SIGTRAP as i32, reason.info);
+    assert_eq!(Some(TrapType::Syscall), reason.trap_reason);
+    assert_eq!(write_syscall as u16, reason.syscall_info.unwrap().id);
+    assert!(matches!(
+        reason.syscall_info.unwrap(),
+        SyscallInfo {
+            id: _,
+            data: SyscallData::Args(_)
+        }
+    ));
+
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
+
+    assert_eq!(ProcessState::Stopped, reason.reason);
+    assert_eq!(SIGTRAP as i32, reason.info);
+    assert_eq!(Some(TrapType::Syscall), reason.trap_reason);
+    assert_eq!(write_syscall as u16, reason.syscall_info.unwrap().id);
+    assert!(matches!(
+        reason.syscall_info.unwrap(),
+        SyscallInfo {
+            id: _,
+            data: SyscallData::Ret(_)
+        }
+    ));
 }
