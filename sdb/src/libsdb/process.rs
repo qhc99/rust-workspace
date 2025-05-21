@@ -127,8 +127,8 @@ impl Default for SyscallCatchPolicy {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SyscallInfo {
-    id: u16,
-    data: SyscallData,
+    pub id: u16,
+    pub data: SyscallData,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -147,13 +147,13 @@ pub struct Process {
     registers: Option<Rc<RefCell<Registers>>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
     watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
-    syscall_catch_policy: SyscallCatchPolicy,
+    syscall_catch_policy: RefCell<SyscallCatchPolicy>,
     expecting_syscall_exit: RefCell<bool>,
 }
 
 impl Process {
-    pub fn set_syscall_catch_policy(&mut self, info: SyscallCatchPolicy) {
-        self.syscall_catch_policy = info;
+    pub fn set_syscall_catch_policy(&self, info: SyscallCatchPolicy) {
+        *self.syscall_catch_policy.borrow_mut() = info;
     }
 
     fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<RefCell<Self>> {
@@ -165,7 +165,7 @@ impl Process {
             registers: None,
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
-            syscall_catch_policy: SyscallCatchPolicy::default(),
+            syscall_catch_policy: RefCell::new(SyscallCatchPolicy::default()),
             expecting_syscall_exit: RefCell::new(false),
         };
 
@@ -191,7 +191,7 @@ impl Process {
             bp.borrow_mut().enable()?;
         }
         let request: fn(Pid, Option<Signal>) -> Result<(), Errno> =
-            if self.syscall_catch_policy == SyscallCatchPolicy::None {
+            if *self.syscall_catch_policy.borrow() == SyscallCatchPolicy::None {
                 cont::<Option<Signal>>
             } else {
                 syscall::<Option<Signal>>
@@ -446,8 +446,8 @@ impl Process {
         step(self.pid, None)
             .map_err(|errno| SdbError::new_errno("Could not single step", errno))?;
         let reason = self.wait_on_signal()?;
-        if let Some(todo) = to_reenable {
-            todo.borrow_mut().enable()?;
+        if let Some(to_reenable) = to_reenable {
+            to_reenable.borrow_mut().enable()?;
         }
         Ok(reason)
     }
@@ -675,7 +675,7 @@ impl Process {
     }
 
     fn maybe_resume_from_syscall(&self, reason: &StopReason) -> Result<StopReason, SdbError> {
-        if let SyscallCatchPolicy::Some(to_catch) = &self.syscall_catch_policy {
+        if let SyscallCatchPolicy::Some(to_catch) = &*self.syscall_catch_policy.borrow() {
             if !to_catch.iter().any(|id| {
                 if let Some(info) = reason.syscall_info {
                     return *id == info.id as i32;

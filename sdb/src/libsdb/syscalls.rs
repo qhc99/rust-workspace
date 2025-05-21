@@ -22,9 +22,9 @@ pub fn syscall_name_to_id(name: &str) -> Result<c_long, SdbError> {
     SYSCALL_NAME_TO_NUM
         .get(name)
         .copied()
-        .ok_or(SdbError::new_err("No such syscall"))
+        .ok_or(SdbError::new_err(&format!("No such syscall name: {name}")))
 }
 
 pub fn syscall_id_to_name(id: c_long) -> Result<&'static str, SdbError> {
-    sys_call_name(id).ok_or(SdbError::new_err("No such syscall"))
+    sys_call_name(id).ok_or(SdbError::new_err(&format!("No such syscall id: {id}")))
 }

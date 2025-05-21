@@ -8,13 +8,16 @@ use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use parse::{parse_register_value, parse_vector};
-use process::{Process, ProcessExt, ProcessState, StopReason, StoppointId, TrapType};
+use process::{
+    Process, ProcessExt, ProcessState, StopReason, StoppointId, SyscallCatchPolicy, TrapType,
+};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cell::{Ref, RefCell};
 use std::cmp::min;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
+use syscalls::{syscall_id_to_name, syscall_name_to_id};
 use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::{StoppointMode, VirtualAddress};
@@ -118,6 +121,22 @@ fn get_sigtrap_info(process: &Ref<Process>, reason: StopReason) -> Result<String
     if reason.trap_reason == Some(TrapType::SingleStep) {
         return Ok(" (single step)".to_string());
     }
+    if reason.trap_reason == Some(TrapType::Syscall) {
+        let info = reason.syscall_info.as_ref().unwrap();
+        return match info.data {
+            process::SyscallData::Args(data) => Ok(format!(
+                " (syscall entry)\nsyscall: {}({})",
+                syscall_id_to_name(info.id as i64)?,
+                data.iter()
+                    .map(|d| { format!("{d:#x}") })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )),
+            process::SyscallData::Ret(data) => {
+                Ok(format!(" (syscall exit)\nsyscall returned {:#x}", data))
+            }
+        };
+    }
 
     return Ok("".to_string());
 }
@@ -145,10 +164,53 @@ pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Resul
         handle_disassemble_command(owned_process, &args)?;
     } else if cmd == "watchpoint" {
         handle_watchpoint_command(owned_process, &args)?;
+    } else if cmd == "catchpoint" {
+        handle_catchpoint_command(process, &args)?;
     } else {
         eprintln!("Unknown command");
     }
     Ok(())
+}
+
+fn handle_catchpoint_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() < 2 {
+        print_help(&["help", "catchpoint"]);
+        return Ok(());
+    }
+    if args[1] == "syscall" {
+        handle_syscall_catchpoint_command(process, &args)?;
+    }
+    Ok(())
+}
+
+fn handle_syscall_catchpoint_command(
+    process: &Ref<Process>,
+    args: &[&str],
+) -> Result<(), SdbError> {
+    let mut policy = SyscallCatchPolicy::All;
+    if args.len() == 3 && args[2] == "none" {
+        policy = SyscallCatchPolicy::None;
+    } else if args.len() >= 3 {
+        let syscalls: Vec<_> = args[2]
+            .split(",")
+            .map(|s| s.trim())
+            .map(|s| {
+                if is_digits(s) {
+                    i32::from_integral(s)
+                } else {
+                    syscall_name_to_id(s).map(|d| d as i32)
+                }
+            })
+            .collect();
+        let to_catch: Result<Vec<_>, _> = syscalls.into_iter().collect();
+        policy = SyscallCatchPolicy::Some(to_catch?);
+    }
+    process.set_syscall_catch_policy(policy);
+    Ok(())
+}
+
+fn is_digits(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
 fn handle_watchpoint_command(
@@ -501,6 +563,7 @@ fn print_help(args: &[&str]) {
             register - Commands for operating on registers
             step - Step over a single instruction
             watchpoint - Commands for operating on watchpoints
+            catchpoint - Commands for operating on catchpoints
         "
         });
     } else if args[1] == "register" {
@@ -542,6 +605,13 @@ fn print_help(args: &[&str]) {
             disable <id>
             enable <id>
             set <address> <write|rw|execute> <size>
+        "})
+    } else if args[1] == "catchpoint" {
+        eprintln!(indoc! {"
+            Available commands:
+            syscall
+            syscall none
+            syscall <list of syscall IDs or names>
         "})
     }
 }
