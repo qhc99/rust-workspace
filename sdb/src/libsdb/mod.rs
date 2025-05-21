@@ -60,19 +60,22 @@ fn print_stop_reason(process: &Ref<Process>, reason: StopReason) -> Result<(), S
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
         ProcessState::Exited => {
-            let info = reason.info;
+            let info = reason
+                .info;
             format!("{msg_start} exited with status {info}")
         }
         ProcessState::Terminated => {
-            let signal: Signal = reason.info.try_into().unwrap();
-            let sig_str = signal.as_str();
-            format!("{msg_start} terminated with signal {sig_str}")
+            let sig: Signal = reason
+                .info
+                .try_into().unwrap();
+            format!("{msg_start} terminated with signal {}", sig.as_str())
         }
         ProcessState::Stopped => {
-            let signal: Signal = reason.info.try_into().unwrap();
-            let sig_str = signal.as_str();
+            let sig: Signal = reason
+                .info
+                .try_into().unwrap();
             let addr = process.get_pc();
-            let mut msg = format!("{msg_start} stopped with signal {sig_str} at {addr:#x}");
+            let mut msg = format!("{msg_start} stopped with signal {} at {addr:#x}", sig.as_str());
             if reason.info == SIGTRAP {
                 msg += &get_sigtrap_info(process, reason)?;
             }

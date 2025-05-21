@@ -83,7 +83,7 @@ impl StopReason {
         if let WaitStatus::Exited(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Exited,
-                info,
+                info: info,
                 trap_reason: None,
                 syscall_info: None,
             });
@@ -101,9 +101,23 @@ impl StopReason {
                 trap_reason: None,
                 syscall_info: None,
             });
+        } else if let WaitStatus::PtraceEvent(_, info, _) = status {
+            return Ok(StopReason {
+                reason: ProcessState::Stopped,
+                info: info as i32,
+                trap_reason: None,
+                syscall_info: None,
+            });
+        } else if let WaitStatus::PtraceSyscall(_) = status {
+            return Ok(StopReason {
+                reason: ProcessState::Stopped,
+                info: SIGTRAP as i32,
+                trap_reason: Some(TrapType::Syscall),
+                syscall_info: None,
+            });
         }
 
-        SdbError::err("Stopped process returns running state")
+        SdbError::err(&format!("Unhandled wait status {status:?}"))
     }
 }
 
@@ -624,8 +638,8 @@ impl Process {
         let info = getsiginfo(self.pid)
             .map_err(|errno| SdbError::new_errno("Failed to get signal info", errno))?;
 
-        if reason.info == (SIGTRAP as i32 | 0x80) {
-            // TODO fill syscall info
+        // Implementation is different
+        if reason.trap_reason == Some(TrapType::Syscall) {
             let regs = self.get_registers();
             let regs = regs.borrow();
             let expecting_syscall_exit = *self.expecting_syscall_exit.borrow();
@@ -657,7 +671,6 @@ impl Process {
             }
 
             reason.info = SIGTRAP as i32;
-            reason.trap_reason = Some(TrapType::Syscall);
             return Ok(());
         }
 
