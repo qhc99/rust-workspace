@@ -604,11 +604,8 @@ fn syscall_catchpoint() {
     assert_eq!(Some(TrapType::Syscall), reason.trap_reason);
     assert_eq!(write_syscall as u16, reason.syscall_info.unwrap().id);
     assert!(matches!(
-        reason.syscall_info.unwrap(),
-        SyscallInfo {
-            id: _,
-            data: SyscallData::Args(_)
-        }
+        reason.syscall_info.unwrap().data,
+        SyscallData::Args(_)
     ));
 
     proc.resume().unwrap();
@@ -619,10 +616,7 @@ fn syscall_catchpoint() {
     assert_eq!(Some(TrapType::Syscall), reason.trap_reason);
     assert_eq!(write_syscall as u16, reason.syscall_info.unwrap().id);
     assert!(matches!(
-        reason.syscall_info.unwrap(),
-        SyscallInfo {
-            id: _,
-            data: SyscallData::Ret(_)
-        }
+        reason.syscall_info.unwrap().data,
+        SyscallData::Ret(_)
     ));
 }
