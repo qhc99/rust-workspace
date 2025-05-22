@@ -536,7 +536,7 @@ impl Process {
 
     pub fn set_hardware_breakpoint(
         &self,
-        id: i32,
+        _id: i32,
         address: VirtualAddress,
     ) -> Result<i32, SdbError> {
         self._set_hardware_breakpoint(address, StoppointMode::Execute, 1)
@@ -617,7 +617,7 @@ impl Process {
 
     pub fn set_watchpoint(
         &self,
-        id: IdType,
+        _id: IdType,
         address: VirtualAddress,
         mode: StoppointMode,
         size: usize,
