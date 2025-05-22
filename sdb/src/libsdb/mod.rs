@@ -38,7 +38,7 @@ pub mod pipe;
 pub mod process;
 pub mod register_info;
 pub mod registers;
-pub mod sdb_error;
+pub(crate) mod sdb_error;
 pub mod types;
 
 /// Not async-signal-safe
