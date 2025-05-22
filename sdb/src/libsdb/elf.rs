@@ -91,8 +91,6 @@ impl Elf {
 
 impl Drop for Elf {
     fn drop(&mut self) {
-        unsafe {
-            munmap(self.map, self.file_size).expect("mmap uniquely managed by Elf object")
-        };
+        unsafe { munmap(self.map, self.file_size).expect("mmap uniquely managed by Elf object") };
     }
 }
