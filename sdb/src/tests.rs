@@ -8,7 +8,7 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::process::{ProcessState, SyscallData, SyscallInfo, TrapType};
+use libsdb::process::{ProcessState, SyscallData, TrapType};
 use libsdb::register_info::RegisterId;
 use libsdb::syscalls::syscall_id_to_name;
 use libsdb::syscalls::syscall_name_to_id;

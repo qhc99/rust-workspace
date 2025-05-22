@@ -83,7 +83,7 @@ impl StopReason {
         if let WaitStatus::Exited(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Exited,
-                info: info,
+                info,
                 trap_reason: None,
                 syscall_info: None,
             });
@@ -126,17 +126,12 @@ fn set_ptrace_options(pid: Pid) -> Result<(), SdbError> {
         .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD option", errno))
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub enum SyscallCatchPolicy {
+    #[default]
     None,
     Some(Vec<i32>),
     All,
-}
-
-impl Default for SyscallCatchPolicy {
-    fn default() -> Self {
-        SyscallCatchPolicy::None
-    }
 }
 
 #[derive(Debug, Clone, Copy)]

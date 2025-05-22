@@ -24,11 +24,11 @@ use types::{StoppointMode, VirtualAddress};
 
 mod breakpoint_site;
 mod disassembler;
+mod elf;
 mod parse;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
-mod elf;
 
 pub mod syscalls;
 pub mod traits;
@@ -180,7 +180,7 @@ fn handle_catchpoint_command(process: &Ref<Process>, args: &[&str]) -> Result<()
         return Ok(());
     }
     if args[1] == "syscall" {
-        handle_syscall_catchpoint_command(process, &args)?;
+        handle_syscall_catchpoint_command(process, args)?;
     }
     Ok(())
 }
