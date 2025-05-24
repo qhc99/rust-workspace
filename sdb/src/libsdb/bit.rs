@@ -60,13 +60,13 @@ pub fn to_byte128<T: AsBytes>(src: T) -> Byte128 {
 }
 
 // Bytes should be valid for type T
-pub unsafe fn init_from_bytes<T>(data: &[u8], start: usize, entity_size: usize) -> T {
+pub unsafe fn init_from_bytes<T>(data: &[u8]) -> T {
     let mut obj: T = unsafe { mem::zeroed() };
     unsafe {
         ptr::copy_nonoverlapping(
-            data[start..start + entity_size].as_ptr(),
+            data[..mem::size_of::<T>()].as_ptr(),
             &mut obj as *mut _ as *mut u8,
-            entity_size,
+            mem::size_of::<T>(),
         );
     }
     return obj;

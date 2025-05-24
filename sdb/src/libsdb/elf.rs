@@ -6,6 +6,7 @@ use nix::{
         stat::{Mode, fstat},
     },
 };
+use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
 use std::mem;
 use std::{
@@ -21,17 +22,18 @@ use std::{
 use super::bit::init_from_bytes;
 use super::sdb_error::SdbError;
 
-pub struct Elf {
+pub struct Elf<'this> {
     fd: OwnedFd,
     path: PathBuf,
     file_size: usize,
     data: Vec<u8>,
     header: Elf64_Ehdr,
     section_headers: Vec<Elf64_Shdr>,
+    section_map: HashMap<&'this str, &'this Elf64_Shdr>,
     _map: NonNull<c_void>,
 }
 
-impl Elf {
+impl<'this> Elf<'this> {
     pub fn new(path: &Path) -> Result<Self, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
@@ -58,7 +60,7 @@ impl Elf {
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
 
-        let header: Elf64_Ehdr = unsafe { init_from_bytes(bytes, 0, mem::size_of::<Elf64_Ehdr>()) };
+        let header: Elf64_Ehdr = unsafe { init_from_bytes(bytes) };
         let mut ret = Self {
             fd,
             path: path.to_path_buf(),
@@ -66,6 +68,7 @@ impl Elf {
             data,
             header,
             section_headers: Vec::new(),
+            section_map: HashMap::new(),
             _map: map,
         };
         ret.parse_section_headers();
@@ -81,19 +84,18 @@ impl Elf {
     }
 
     fn parse_section_headers(&mut self) {
-        let entry_size = self.header.e_shentsize as usize;
         let mut n_headers = self.header.e_shnum as usize;
 
-        if n_headers == 0 && entry_size != 0 {
+        if n_headers == 0 && self.header.e_shentsize as usize != 0 {
             let sh0: Elf64_Shdr =
-                unsafe { init_from_bytes(&self.data, self.header.e_shoff as usize, entry_size) };
+                unsafe { init_from_bytes(&self.data[..self.header.e_shoff as usize]) };
             n_headers = sh0.sh_size as usize;
         }
 
         self.section_headers = Vec::with_capacity(n_headers);
         for i in 0..n_headers {
-            let off = self.header.e_shoff as usize + i * entry_size;
-            let sh: Elf64_Shdr = unsafe { init_from_bytes(&self.data, off, entry_size) };
+            let offset = self.header.e_shoff as usize + i * mem::size_of::<Elf64_Ehdr>();
+            let sh: Elf64_Shdr = unsafe { init_from_bytes(&self.data[..offset]) };
             self.section_headers.push(sh);
         }
     }
@@ -101,14 +103,26 @@ impl Elf {
     pub fn get_section_name(&self, index: usize) -> &str {
         let section = &self.section_headers[self.header.e_shstrndx as usize];
         let offset = section.sh_offset as usize + index;
-        // In range and has null terminator
-        assert!(self.data[offset..].iter().any(|d| { *d == 0 }));
+        assert!(
+            self.data[offset..].iter().any(|d| { *d == 0 }),
+            "Cannot find c-string"
+        );
         let ptr = unsafe { self.data.as_ptr().add(offset) } as *const c_char;
         unsafe { CStr::from_ptr(ptr).to_str().unwrap() }
     }
+
+    pub fn get_section(&self, name: &str) -> Option<&Elf64_Shdr> {
+        todo!()
+    }
+
+    pub fn get_section_contents(&self, name: &str) -> &[u8] {
+        todo!()
+    }
+
+    fn build_section_map(&mut self) {}
 }
 
-impl Drop for Elf {
+impl<'a> Drop for Elf<'a> {
     fn drop(&mut self) {
         unsafe { munmap(self._map, self.file_size).expect("mmap uniquely managed by Elf object") };
     }
