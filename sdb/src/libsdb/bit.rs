@@ -1,3 +1,5 @@
+use std::ffi::CStr;
+use std::ffi::c_char;
 use std::mem;
 use std::ptr;
 use std::slice;
@@ -70,4 +72,10 @@ pub unsafe fn init_from_bytes<T>(data: &[u8]) -> T {
         );
     }
     return obj;
+}
+
+pub fn cstr_view(data: &[u8]) -> &str {
+    assert!(data.iter().any(|d| { *d == 0 }), "Cannot find c-string");
+    let ptr = data.as_ptr() as *const c_char;
+    unsafe { CStr::from_ptr(ptr).to_str().unwrap() }
 }

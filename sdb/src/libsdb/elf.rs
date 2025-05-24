@@ -7,7 +7,6 @@ use nix::{
     },
 };
 use std::collections::HashMap;
-use std::ffi::{CStr, c_char};
 use std::mem;
 use std::rc::Rc;
 use std::{
@@ -21,6 +20,7 @@ use std::{
 };
 
 use super::bit::init_from_bytes;
+use super::bit::cstr_view;
 use super::sdb_error::SdbError;
 
 pub struct Elf {
@@ -73,6 +73,7 @@ impl Elf {
             _map: map,
         };
         ret.parse_section_headers();
+        ret.build_section_map();
         Ok(ret)
     }
 
@@ -104,23 +105,44 @@ impl Elf {
     pub fn get_section_name(&self, index: usize) -> &str {
         let section = &self.section_headers[self.header.e_shstrndx as usize];
         let offset = section.sh_offset as usize + index;
-        assert!(
-            self.data[offset..].iter().any(|d| { *d == 0 }),
-            "Cannot find c-string"
-        );
-        let ptr = unsafe { self.data.as_ptr().add(offset) } as *const c_char;
-        unsafe { CStr::from_ptr(ptr).to_str().unwrap() }
+        cstr_view(&self.data[offset..])
     }
 
-    pub fn get_section(&self, name: &str) -> Option<&Elf64_Shdr> {
-        todo!()
+    pub fn get_section(&self, name: &str) -> Option<Rc<Elf64_Shdr>> {
+        self.section_map.get(name).cloned()
     }
 
-    pub fn get_section_contents(&self, name: &str) -> &[u8] {
-        todo!()
+    pub fn get_section_contents(&self, name: &str) -> Vec<u8> {
+        if let Some(section) = self.get_section(name) {
+            let mut ret = Vec::with_capacity(section.sh_size as usize);
+            ret.extend_from_slice(
+                &self.data
+                    [section.sh_offset as usize..(section.sh_offset + section.sh_size) as usize],
+            );
+            return ret;
+        }
+        return vec![];
     }
 
-    fn build_section_map(&mut self) {}
+    fn build_section_map(&mut self) {
+        for section in &self.section_headers {
+            self.section_map.insert(
+                self.get_section_name(section.sh_name as usize).to_string(),
+                section.clone(),
+            );
+        }
+    }
+
+    pub fn get_string(&self, index: usize) -> &str {
+        let mut opt_strtab = self.get_section(".strtab");
+        if opt_strtab.is_none() {
+            opt_strtab = self.get_section(".dynstr");
+            if opt_strtab.is_none() {
+                return "";
+            }
+        }
+        cstr_view(&self.data[opt_strtab.unwrap().sh_offset as usize + index..])
+    }
 }
 
 impl Drop for Elf {
