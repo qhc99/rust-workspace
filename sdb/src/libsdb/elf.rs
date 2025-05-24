@@ -9,6 +9,7 @@ use nix::{
 use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
 use std::mem;
+use std::rc::Rc;
 use std::{
     num::NonZeroUsize,
     os::{
@@ -22,18 +23,18 @@ use std::{
 use super::bit::init_from_bytes;
 use super::sdb_error::SdbError;
 
-pub struct Elf<'this> {
+pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,
     file_size: usize,
     data: Vec<u8>,
     header: Elf64_Ehdr,
-    section_headers: Vec<Elf64_Shdr>,
-    section_map: HashMap<&'this str, &'this Elf64_Shdr>,
+    section_headers: Vec<Rc<Elf64_Shdr>>,
+    section_map: HashMap<String, Rc<Elf64_Shdr>>,
     _map: NonNull<c_void>,
 }
 
-impl<'this> Elf<'this> {
+impl Elf {
     pub fn new(path: &Path) -> Result<Self, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
@@ -96,7 +97,7 @@ impl<'this> Elf<'this> {
         for i in 0..n_headers {
             let offset = self.header.e_shoff as usize + i * mem::size_of::<Elf64_Ehdr>();
             let sh: Elf64_Shdr = unsafe { init_from_bytes(&self.data[..offset]) };
-            self.section_headers.push(sh);
+            self.section_headers.push(Rc::new(sh));
         }
     }
 
@@ -122,7 +123,7 @@ impl<'this> Elf<'this> {
     fn build_section_map(&mut self) {}
 }
 
-impl<'a> Drop for Elf<'a> {
+impl Drop for Elf {
     fn drop(&mut self) {
         unsafe { munmap(self._map, self.file_size).expect("mmap uniquely managed by Elf object") };
     }
