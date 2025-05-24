@@ -163,7 +163,7 @@ pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Resul
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
-        handle_disassemble_command(owned_process, &args)?;
+        handle_disassemble_command(process, &args)?;
     } else if cmd == "watchpoint" {
         handle_watchpoint_command(owned_process, &args)?;
     } else if cmd == "catchpoint" {
@@ -321,10 +321,10 @@ fn handle_watchpoint_set(process: &Rc<RefCell<Process>>, args: &[&str]) -> Resul
 }
 
 fn handle_disassemble_command(
-    process: &Rc<RefCell<Process>>,
+    process: &Ref<Process>,
     args: &[&str],
 ) -> Result<(), SdbError> {
-    let mut address = process.borrow().get_pc();
+    let mut address = process.get_pc();
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
     args_iter.next();
@@ -357,7 +357,7 @@ fn handle_stop(process: &Rc<RefCell<Process>>, reason: StopReason) -> Result<(),
     let ref_process = &process.borrow();
     print_stop_reason(ref_process, reason)?;
     if reason.reason == ProcessState::Stopped {
-        print_disassembly(process, ref_process.get_pc(), 5)?;
+        print_disassembly(ref_process, ref_process.get_pc(), 5)?;
     }
     Ok(())
 }
