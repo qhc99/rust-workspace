@@ -2,9 +2,7 @@ use super::sdb_error::SdbError;
 
 use super::process::Process;
 use super::types::VirtualAddress;
-use std::{
-    cell::Ref,
-};
+use std::cell::Ref;
 use zydis::{Decoder, Formatter, VisibleOperands};
 use zydis_sys::ZyanUSize;
 
@@ -32,7 +30,9 @@ impl<'this> Disassembler<'this> {
             address = Some(self.process.get_pc());
         }
         let mut address = address.unwrap();
-        let code = self.process.read_memory_without_trap(address, n_instructions * 15)?;
+        let code = self
+            .process
+            .read_memory_without_trap(address, n_instructions * 15)?;
         let mut offset: ZyanUSize = 0;
 
         let decoder = Decoder::new64();

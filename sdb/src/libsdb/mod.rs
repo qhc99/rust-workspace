@@ -320,10 +320,7 @@ fn handle_watchpoint_set(process: &Rc<RefCell<Process>>, args: &[&str]) -> Resul
     Ok(())
 }
 
-fn handle_disassemble_command(
-    process: &Ref<Process>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_disassemble_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
     let mut address = process.get_pc();
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
