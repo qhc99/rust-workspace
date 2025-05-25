@@ -65,14 +65,31 @@ pub fn to_byte128<T: AsBytes>(src: T) -> Byte128 {
 /// Bytes should be valid for type T
 pub unsafe fn init_from_bytes<T>(data: &[u8]) -> T {
     let mut obj: T = unsafe { mem::zeroed() };
+    let type_size = mem::size_of::<T>();
+    assert!(data.len() == type_size);
     unsafe {
         ptr::copy_nonoverlapping(
-            data[..mem::size_of::<T>()].as_ptr(),
+            data[..type_size].as_ptr(),
             &mut obj as *mut _ as *mut u8,
-            mem::size_of::<T>(),
+            type_size,
         );
     }
     return obj;
+}
+
+/// # Safety
+/// Bytes should be valid for type T
+pub unsafe fn init_array_from_bytes<T>(data: &[u8]) -> Vec<T> {
+    let type_size = mem::size_of::<T>();
+    let count = data.len() / type_size;
+    assert_eq!(count * type_size, data.len());
+    let mut ret = Vec::with_capacity(count);
+    for i in 0..count {
+        let offset = i * mem::size_of::<T>();
+        let obj: T = unsafe { init_from_bytes(&data[offset..mem::size_of::<T>()]) };
+        ret.push(obj);
+    }
+    ret
 }
 
 pub fn cstr_view(data: &[u8]) -> &str {

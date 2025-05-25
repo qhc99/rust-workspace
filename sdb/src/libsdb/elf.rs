@@ -1,4 +1,4 @@
-use nix::libc::{Elf64_Ehdr, Elf64_Shdr};
+use nix::libc::{Elf64_Ehdr, Elf64_Shdr, Elf64_Sym};
 use nix::{
     fcntl::{OFlag, open},
     sys::{
@@ -21,6 +21,7 @@ use std::{
 };
 
 use super::bit::cstr_view;
+use super::bit::init_array_from_bytes;
 use super::bit::init_from_bytes;
 use super::sdb_error::SdbError;
 use super::types::FileAddress;
@@ -36,6 +37,7 @@ pub struct Elf {
     section_headers: Vec<Rc<Elf64_Shdr>>,
     section_map: HashMap<String, Rc<Elf64_Shdr>>,
     load_bias: VirtualAddress,
+    symbol_table: Vec<Rc<Elf64_Sym>>,
     _map: NonNull<c_void>,
 }
 
@@ -66,20 +68,22 @@ impl Elf {
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
 
-        let header: Elf64_Ehdr = unsafe { init_from_bytes(bytes) };
+        let header: Elf64_Ehdr = unsafe { init_from_bytes(&bytes[..mem::size_of::<Elf64_Ehdr>()]) };
         let mut ret = Self {
             fd,
             path: path.to_path_buf(),
             file_size,
             data,
             header,
-            section_headers: Vec::new(),
-            section_map: HashMap::new(),
+            section_headers: Vec::default(),
+            section_map: HashMap::default(),
             load_bias: 0.into(),
+            symbol_table: Vec::default(),
             _map: map,
         };
         ret.parse_section_headers();
         ret.build_section_map();
+        ret.parse_symbol_table();
         Ok(ret)
     }
 
@@ -95,17 +99,21 @@ impl Elf {
         let mut n_headers = self.header.e_shnum as usize;
 
         if n_headers == 0 && self.header.e_shentsize as usize != 0 {
-            let sh0: Elf64_Shdr =
-                unsafe { init_from_bytes(&self.data[..self.header.e_shoff as usize]) };
+            let sh0: Elf64_Shdr = unsafe {
+                init_from_bytes(
+                    &self.data[self.header.e_shoff as usize..mem::size_of::<Elf64_Shdr>()],
+                )
+            };
             n_headers = sh0.sh_size as usize;
         }
 
-        self.section_headers = Vec::with_capacity(n_headers);
-        for i in 0..n_headers {
-            let offset = self.header.e_shoff as usize + i * mem::size_of::<Elf64_Ehdr>();
-            let sh: Elf64_Shdr = unsafe { init_from_bytes(&self.data[..offset]) };
-            self.section_headers.push(Rc::new(sh));
-        }
+        let section_headers: Vec<Elf64_Shdr> = unsafe {
+            init_array_from_bytes(
+                &self.data[self.header.e_shoff as usize
+                    ..self.header.e_shoff as usize + n_headers * mem::size_of::<Elf64_Shdr>()],
+            )
+        };
+        self.section_headers = section_headers.into_iter().map(|h| Rc::new(h)).collect();
     }
 
     pub fn get_section_name(&self, index: usize) -> &str {
@@ -188,7 +196,22 @@ impl Elf {
         return None;
     }
 
-    pub fn get_section_start_address(this: &Rc<RefCell<Elf>>) {}
+    fn parse_symbol_table(&mut self) {
+        let mut opt_symtab = self.get_section(".symtab");
+        if opt_symtab.is_none() {
+            opt_symtab = self.get_section(".dynsym");
+            if opt_symtab.is_none() {
+                return;
+            }
+        }
+        let symtab = opt_symtab.unwrap();
+        self.symbol_table = unsafe {
+            init_array_from_bytes(
+                &self.data[symtab.sh_offset as usize
+                    ..symtab.sh_offset as usize + symtab.sh_size as usize],
+            )
+        };
+    }
 }
 
 pub trait ElfExt {
@@ -197,10 +220,10 @@ pub trait ElfExt {
 
 impl ElfExt for Rc<RefCell<Elf>> {
     fn get_section_start_address(&self, name: &str) -> Option<FileAddress> {
-        return match self.borrow().get_section(name) {
-            Some(section) => Some(FileAddress::new(self, section.sh_addr)),
-            None => None,
-        };
+        return self
+            .borrow()
+            .get_section(name)
+            .map(|section| FileAddress::new(self, section.sh_addr));
     }
 }
 
