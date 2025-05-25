@@ -1,4 +1,5 @@
-use super::bit::AsBytes;
+use bytemuck::bytes_of_mut;
+
 use super::breakpoint_site::IdType;
 use super::process::Process;
 use super::sdb_error::SdbError;
@@ -124,7 +125,7 @@ impl WatchPoint {
             .unwrap()
             .borrow()
             .read_memory(self.address, self.size)?;
-        new_data.as_bytes_mut()[..self.size].copy_from_slice(&read[..self.size]);
+        bytes_of_mut(&mut new_data)[..self.size].copy_from_slice(&read[..self.size]);
         swap(&mut self.data, &mut self.previous_data);
         Ok(())
     }

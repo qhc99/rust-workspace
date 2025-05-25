@@ -1,4 +1,3 @@
-use super::bit::AsBytes;
 use super::bit::from_bytes;
 use super::bit::to_byte128;
 use super::process::Process;
@@ -188,7 +187,12 @@ impl Registers {
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
-        let bytes = self.data.as_bytes();
+        let bytes = unsafe {
+            core::slice::from_raw_parts(
+                & self.data as *const _ as * const u8,
+                std::mem::size_of_val(&self.data),
+            )
+        };
         match info.format {
             RegisterFormat::UInt => match info.size {
                 1 => Ok(RegisterValue::U8(from_bytes::<u8>(&bytes[info.offset..]))),
@@ -215,7 +219,12 @@ impl Registers {
     }
 
     pub fn write(&mut self, info: &RegisterInfo, value: RegisterValue) -> Result<(), SdbError> {
-        let bytes = self.data.as_bytes_mut();
+        let bytes: &mut [u8] = unsafe {
+            core::slice::from_raw_parts_mut(
+                &mut self.data as *mut _ as *mut u8,
+                std::mem::size_of_val(&self.data),
+            )
+        };
         let dest = &mut bytes[info.offset..info.offset + info.size];
 
         write_cases!(

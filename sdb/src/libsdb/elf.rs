@@ -27,7 +27,7 @@ use super::sdb_error::SdbError;
 use super::types::FileAddress;
 use super::types::VirtualAddress;
 use std::ptr;
-
+// TODO add wrapper
 pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,

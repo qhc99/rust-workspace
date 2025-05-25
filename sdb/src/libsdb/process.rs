@@ -1,4 +1,3 @@
-use super::bit::AsBytes;
 use super::bit::from_bytes;
 use super::breakpoint_site::BreakpointSite;
 use super::breakpoint_site::IdType;
@@ -13,6 +12,7 @@ use super::types::StoppointMode;
 use super::types::VirtualAddress;
 use super::utils::ResultLogExt;
 use super::watchpoint::WatchPoint;
+use bytemuck::bytes_of_mut;
 use bytemuck::Pod;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
@@ -493,7 +493,7 @@ impl Process {
                 word = from_bytes(&data[written..]);
             } else {
                 let read = self.read_memory(address + written as i64, 8)?;
-                let word_data = word.as_bytes_mut();
+                let word_data = bytes_of_mut(&mut word);
                 word_data[..remaing].copy_from_slice(&data[written..written + remaing]);
                 word_data[remaing..].copy_from_slice(&read[remaing..8]);
             }
