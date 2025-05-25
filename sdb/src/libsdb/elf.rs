@@ -6,6 +6,7 @@ use nix::{
         stat::{Mode, fstat},
     },
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::rc::Rc;
@@ -185,6 +186,21 @@ impl Elf {
             }
         }
         return None;
+    }
+
+    pub fn get_section_start_address(this: &Rc<RefCell<Elf>>) {}
+}
+
+pub trait ElfExt {
+    fn get_section_start_address(&self, name: &str) -> Option<FileAddress>;
+}
+
+impl ElfExt for Rc<RefCell<Elf>> {
+    fn get_section_start_address(&self, name: &str) -> Option<FileAddress> {
+        return match self.borrow().get_section(name) {
+            Some(section) => Some(FileAddress::new(self, section.sh_addr)),
+            None => None,
+        };
     }
 }
 
