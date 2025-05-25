@@ -128,9 +128,9 @@ impl SubAssign<i64> for FileAddress {
 }
 
 impl VirtualAddress {
-    pub fn to_file_addr(&self, elf: &Rc<RefCell<Elf>>) -> FileAddress {
+    pub fn to_file_addr(self, elf: &Rc<RefCell<Elf>>) -> FileAddress {
         let obj = elf.borrow();
-        let section = obj.get_section_containing_virt_addr(*self);
+        let section = obj.get_section_containing_virt_addr(self);
         return match section {
             Some(_) => FileAddress {
                 addr: self.addr - obj.load_bias().addr,

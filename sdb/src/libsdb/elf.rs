@@ -157,7 +157,10 @@ impl Elf {
         self.load_bias = address
     }
 
-    pub fn get_section_containing_file_addr(&self, address: &FileAddress) -> Option<Rc<Elf64_Shdr>> {
+    pub fn get_section_containing_file_addr(
+        &self,
+        address: &FileAddress,
+    ) -> Option<Rc<Elf64_Shdr>> {
         if ptr::eq(self, &*address.elf_file().borrow()) {
             for section in &self.section_headers {
                 if section.sh_addr <= address.addr()

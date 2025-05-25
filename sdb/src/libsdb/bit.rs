@@ -61,7 +61,8 @@ pub fn to_byte128<T: AsBytes>(src: T) -> Byte128 {
     out
 }
 
-// Bytes should be valid for type T
+/// # Safety
+/// Bytes should be valid for type T
 pub unsafe fn init_from_bytes<T>(data: &[u8]) -> T {
     let mut obj: T = unsafe { mem::zeroed() };
     unsafe {
