@@ -19,9 +19,12 @@ use std::{
     ptr::NonNull,
 };
 
-use super::bit::init_from_bytes;
 use super::bit::cstr_view;
+use super::bit::init_from_bytes;
 use super::sdb_error::SdbError;
+use super::types::FileAddress;
+use super::types::VirtualAddress;
+use std::ptr;
 
 pub struct Elf {
     fd: OwnedFd,
@@ -31,6 +34,7 @@ pub struct Elf {
     header: Elf64_Ehdr,
     section_headers: Vec<Rc<Elf64_Shdr>>,
     section_map: HashMap<String, Rc<Elf64_Shdr>>,
+    load_bias: VirtualAddress,
     _map: NonNull<c_void>,
 }
 
@@ -70,6 +74,7 @@ impl Elf {
             header,
             section_headers: Vec::new(),
             section_map: HashMap::new(),
+            load_bias: 0.into(),
             _map: map,
         };
         ret.parse_section_headers();
@@ -142,6 +147,41 @@ impl Elf {
             }
         }
         cstr_view(&self.data[opt_strtab.unwrap().sh_offset as usize + index..])
+    }
+
+    pub fn load_bias(&self) -> VirtualAddress {
+        self.load_bias
+    }
+
+    pub fn notify_loaded(&mut self, address: VirtualAddress) {
+        self.load_bias = address
+    }
+
+    pub fn get_section_containing_file_addr(&self, address: &FileAddress) -> Option<Rc<Elf64_Shdr>> {
+        if ptr::eq(self, &*address.elf_file().borrow()) {
+            for section in &self.section_headers {
+                if section.sh_addr <= address.addr()
+                    && (section.sh_addr + section.sh_size) > address.addr()
+                {
+                    return Some(section.clone());
+                }
+            }
+        }
+
+        return None;
+    }
+    pub fn get_section_containing_virt_addr(
+        &self,
+        address: VirtualAddress,
+    ) -> Option<Rc<Elf64_Shdr>> {
+        for section in &self.section_headers {
+            if (self.load_bias + section.sh_addr as i64) <= address
+                && (self.load_bias + section.sh_addr as i64 + section.sh_size as i64) > address
+            {
+                return Some(section.clone());
+            }
+        }
+        return None;
     }
 }
 

@@ -1,15 +1,144 @@
 use std::{
+    cell::RefCell,
     fmt::{Display, LowerHex},
     ops::{Add, AddAssign, Sub, SubAssign},
+    rc::{Rc, Weak},
 };
+
+use super::elf::Elf;
 
 pub type Byte64 = [u8; 8];
 pub type Byte128 = [u8; 16];
 
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
 pub struct VirtualAddress {
     addr: u64,
+}
+
+#[derive(Default, Debug)]
+pub struct FileOffset {
+    addr: u64,
+    elf: Weak<RefCell<Elf>>,
+}
+
+impl FileOffset {
+    pub fn new(elf: &Rc<RefCell<Elf>>, addr: u64) -> Self {
+        Self {
+            addr,
+            elf: Rc::downgrade(elf),
+        }
+    }
+
+    pub fn offset(&self) -> u64 {
+        self.addr
+    }
+
+    pub fn elf_file(&self) -> Rc<RefCell<Elf>> {
+        self.elf.upgrade().unwrap()
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct FileAddress {
+    addr: u64,
+    elf: Weak<RefCell<Elf>>,
+}
+
+impl FileAddress {
+    pub fn new(elf: &Rc<RefCell<Elf>>, addr: u64) -> Self {
+        Self {
+            addr,
+            elf: Rc::downgrade(elf),
+        }
+    }
+
+    pub fn addr(&self) -> u64 {
+        self.addr
+    }
+
+    pub fn elf_file(&self) -> Rc<RefCell<Elf>> {
+        self.elf.upgrade().unwrap()
+    }
+
+    pub fn to_virtual_address(&self) -> VirtualAddress {
+        let elf = self.elf.upgrade();
+        assert!(elf.is_some());
+        let elf = elf.unwrap();
+        let elf = elf.borrow();
+        let section = elf.get_section_containing_file_addr(self);
+
+        return match section {
+            Some(_) => VirtualAddress {
+                addr: self.addr + elf.load_bias().addr,
+            },
+            None => VirtualAddress::default(),
+        };
+    }
+}
+
+impl PartialEq for FileAddress {
+    fn eq(&self, other: &Self) -> bool {
+        self.addr == other.addr && self.elf.ptr_eq(&other.elf)
+    }
+}
+
+impl PartialOrd for FileAddress {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        assert!(self.elf.ptr_eq(&other.elf));
+        return match self.addr.partial_cmp(&other.addr) {
+            Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Equal),
+            ord => ord,
+        };
+    }
+}
+
+impl Add<i64> for FileAddress {
+    type Output = FileAddress;
+
+    fn add(self, rhs: i64) -> Self::Output {
+        Self {
+            addr: (self.addr as i128 + rhs as i128) as u64,
+            elf: self.elf,
+        }
+    }
+}
+
+impl AddAssign<i64> for FileAddress {
+    fn add_assign(&mut self, rhs: i64) {
+        self.addr = (self.addr as i128 + rhs as i128) as u64;
+    }
+}
+
+impl Sub<i64> for FileAddress {
+    type Output = FileAddress;
+
+    fn sub(self, rhs: i64) -> Self::Output {
+        Self {
+            addr: (self.addr as i128 - rhs as i128) as u64,
+            elf: self.elf,
+        }
+    }
+}
+
+impl SubAssign<i64> for FileAddress {
+    fn sub_assign(&mut self, rhs: i64) {
+        self.addr = (self.addr as i128 - rhs as i128) as u64;
+    }
+}
+
+impl VirtualAddress {
+    pub fn to_file_addr(&self, elf: &Rc<RefCell<Elf>>) -> FileAddress {
+        let obj = elf.borrow();
+        let section = obj.get_section_containing_virt_addr(*self);
+        return match section {
+            Some(_) => FileAddress {
+                addr: self.addr - obj.load_bias().addr,
+                elf: Rc::downgrade(elf),
+            },
+            None => FileAddress::default(),
+        };
+    }
 }
 
 impl LowerHex for VirtualAddress {
