@@ -1,13 +1,13 @@
-use std::ffi::CStr;
-use std::ffi::c_char;
-use std::mem;
-use std::ptr;
 use super::types::Byte64;
 use super::types::Byte128;
 use bytemuck::NoUninit;
 use bytemuck::Pod;
 use bytemuck::bytes_of;
+use bytemuck::bytes_of_mut;
 use bytemuck::pod_read_unaligned;
+use std::ffi::CStr;
+use std::ffi::c_char;
+use std::mem;
 
 pub fn from_bytes<To: Pod>(bytes: &[u8]) -> To {
     let slice = &bytes[..size_of::<To>()];
@@ -28,32 +28,18 @@ pub fn to_byte128<T: NoUninit>(src: T) -> Byte128 {
     out
 }
 
-/// # Safety
-/// Bytes should be valid for type T
-pub unsafe fn init_from_bytes<T>(data: &[u8]) -> T {
-    let mut obj: T = unsafe { mem::zeroed() };
-    let type_size = mem::size_of::<T>();
-    assert!(data.len() == type_size);
-    unsafe {
-        ptr::copy_nonoverlapping(
-            data[..type_size].as_ptr(),
-            &mut obj as *mut _ as *mut u8,
-            type_size,
-        );
-    }
-    return obj;
-}
-
-/// # Safety
-/// Bytes should be valid for type T
-pub unsafe fn init_array_from_bytes<T>(data: &[u8]) -> Vec<T> {
+pub fn from_array_bytes<T: Pod>(data: &[u8]) -> Vec<T> {
     let type_size = mem::size_of::<T>();
     let count = data.len() / type_size;
     assert_eq!(count * type_size, data.len());
     let mut ret = Vec::with_capacity(count);
     for i in 0..count {
         let offset = i * mem::size_of::<T>();
-        let obj: T = unsafe { init_from_bytes(&data[offset..mem::size_of::<T>()]) };
+        let obj: T = {
+            let mut ret: T = T::zeroed();
+            bytes_of_mut(&mut ret).copy_from_slice(&data[offset..mem::size_of::<T>()]);
+            ret
+        };
         ret.push(obj);
     }
     ret

@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable, bytes_of_mut};
 use nix::libc::{Elf64_Ehdr, Elf64_Shdr, Elf64_Sym};
 use nix::{
     fcntl::{OFlag, open},
@@ -8,7 +9,6 @@ use nix::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::mem;
 use std::rc::Rc;
 use std::{
     num::NonZeroUsize,
@@ -21,23 +21,47 @@ use std::{
 };
 
 use super::bit::cstr_view;
-use super::bit::init_array_from_bytes;
-use super::bit::init_from_bytes;
+use super::bit::from_array_bytes;
 use super::sdb_error::SdbError;
 use super::types::FileAddress;
 use super::types::VirtualAddress;
-use std::ptr;
+use std::{mem, ptr};
+
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct SdbElf64Ehdr(Elf64_Ehdr);
+
+unsafe impl Pod for SdbElf64Ehdr {}
+
+unsafe impl Zeroable for SdbElf64Ehdr {}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct SdbElf64Shdr(Elf64_Shdr);
+
+unsafe impl Pod for SdbElf64Shdr {}
+
+unsafe impl Zeroable for SdbElf64Shdr {}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+pub struct SdbElf64Sym(Elf64_Sym);
+
+unsafe impl Pod for SdbElf64Sym {}
+
+unsafe impl Zeroable for SdbElf64Sym {}
+
 // TODO add wrapper
 pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,
     file_size: usize,
     data: Vec<u8>,
-    header: Elf64_Ehdr,
-    section_headers: Vec<Rc<Elf64_Shdr>>,
-    section_map: HashMap<String, Rc<Elf64_Shdr>>,
+    header: SdbElf64Ehdr,
+    section_headers: Vec<Rc<SdbElf64Shdr>>,
+    section_map: HashMap<String, Rc<SdbElf64Shdr>>,
     load_bias: VirtualAddress,
-    symbol_table: Vec<Rc<Elf64_Sym>>,
+    symbol_table: Vec<Rc<SdbElf64Sym>>,
     _map: NonNull<c_void>,
 }
 
@@ -68,7 +92,12 @@ impl Elf {
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
 
-        let header: Elf64_Ehdr = unsafe { init_from_bytes(&bytes[..mem::size_of::<Elf64_Ehdr>()]) };
+        let header = {
+            let mut ret = SdbElf64Ehdr::zeroed();
+            bytes_of_mut(&mut ret).copy_from_slice(&bytes[..mem::size_of::<SdbElf64Ehdr>()]);
+            ret
+        };
+
         let mut ret = Self {
             fd,
             path: path.to_path_buf(),
@@ -91,47 +120,47 @@ impl Elf {
         &self.path
     }
 
-    pub fn get_header(&self) -> &Elf64_Ehdr {
+    pub fn get_header(&self) -> &SdbElf64Ehdr {
         &self.header
     }
 
     fn parse_section_headers(&mut self) {
-        let mut n_headers = self.header.e_shnum as usize;
+        let mut n_headers = self.header.0.e_shnum as usize;
 
-        if n_headers == 0 && self.header.e_shentsize as usize != 0 {
-            let sh0: Elf64_Shdr = unsafe {
-                init_from_bytes(
-                    &self.data[self.header.e_shoff as usize..mem::size_of::<Elf64_Shdr>()],
-                )
+        if n_headers == 0 && self.header.0.e_shentsize as usize != 0 {
+            let sh0: SdbElf64Shdr = {
+                let mut ret = SdbElf64Shdr::zeroed();
+                bytes_of_mut(&mut ret).copy_from_slice(
+                    &self.data[self.header.0.e_shoff as usize..mem::size_of::<SdbElf64Shdr>()],
+                );
+                ret
             };
-            n_headers = sh0.sh_size as usize;
+            n_headers = sh0.0.sh_size as usize;
         }
 
-        let section_headers: Vec<Elf64_Shdr> = unsafe {
-            init_array_from_bytes(
-                &self.data[self.header.e_shoff as usize
-                    ..self.header.e_shoff as usize + n_headers * mem::size_of::<Elf64_Shdr>()],
-            )
-        };
-        self.section_headers = section_headers.into_iter().map(|h| Rc::new(h)).collect();
+        let section_headers: Vec<SdbElf64Shdr> = from_array_bytes(
+            &self.data[self.header.0.e_shoff as usize
+                ..self.header.0.e_shoff as usize + n_headers * mem::size_of::<SdbElf64Shdr>()],
+        );
+        self.section_headers = section_headers.into_iter().map(Rc::new).collect();
     }
 
     pub fn get_section_name(&self, index: usize) -> &str {
-        let section = &self.section_headers[self.header.e_shstrndx as usize];
-        let offset = section.sh_offset as usize + index;
+        let section = &self.section_headers[self.header.0.e_shstrndx as usize];
+        let offset = section.0.sh_offset as usize + index;
         cstr_view(&self.data[offset..])
     }
 
-    pub fn get_section(&self, name: &str) -> Option<Rc<Elf64_Shdr>> {
+    pub fn get_section(&self, name: &str) -> Option<Rc<SdbElf64Shdr>> {
         self.section_map.get(name).cloned()
     }
 
     pub fn get_section_contents(&self, name: &str) -> Vec<u8> {
         if let Some(section) = self.get_section(name) {
-            let mut ret = Vec::with_capacity(section.sh_size as usize);
+            let mut ret = Vec::with_capacity(section.0.sh_size as usize);
             ret.extend_from_slice(
-                &self.data
-                    [section.sh_offset as usize..(section.sh_offset + section.sh_size) as usize],
+                &self.data[section.0.sh_offset as usize
+                    ..(section.0.sh_offset + section.0.sh_size) as usize],
             );
             return ret;
         }
@@ -141,7 +170,8 @@ impl Elf {
     fn build_section_map(&mut self) {
         for section in &self.section_headers {
             self.section_map.insert(
-                self.get_section_name(section.sh_name as usize).to_string(),
+                self.get_section_name(section.0.sh_name as usize)
+                    .to_string(),
                 section.clone(),
             );
         }
@@ -155,7 +185,7 @@ impl Elf {
                 return "";
             }
         }
-        cstr_view(&self.data[opt_strtab.unwrap().sh_offset as usize + index..])
+        cstr_view(&self.data[opt_strtab.unwrap().0.sh_offset as usize + index..])
     }
 
     pub fn load_bias(&self) -> VirtualAddress {
@@ -169,11 +199,11 @@ impl Elf {
     pub fn get_section_containing_file_addr(
         &self,
         address: &FileAddress,
-    ) -> Option<Rc<Elf64_Shdr>> {
+    ) -> Option<Rc<SdbElf64Shdr>> {
         if ptr::eq(self, &*address.elf_file().borrow()) {
             for section in &self.section_headers {
-                if section.sh_addr <= address.addr()
-                    && (section.sh_addr + section.sh_size) > address.addr()
+                if section.0.sh_addr <= address.addr()
+                    && (section.0.sh_addr + section.0.sh_size) > address.addr()
                 {
                     return Some(section.clone());
                 }
@@ -185,10 +215,10 @@ impl Elf {
     pub fn get_section_containing_virt_addr(
         &self,
         address: VirtualAddress,
-    ) -> Option<Rc<Elf64_Shdr>> {
+    ) -> Option<Rc<SdbElf64Shdr>> {
         for section in &self.section_headers {
-            if (self.load_bias + section.sh_addr as i64) <= address
-                && (self.load_bias + section.sh_addr as i64 + section.sh_size as i64) > address
+            if (self.load_bias + section.0.sh_addr as i64) <= address
+                && (self.load_bias + section.0.sh_addr as i64 + section.0.sh_size as i64) > address
             {
                 return Some(section.clone());
             }
@@ -205,12 +235,11 @@ impl Elf {
             }
         }
         let symtab = opt_symtab.unwrap();
-        self.symbol_table = unsafe {
-            init_array_from_bytes(
-                &self.data[symtab.sh_offset as usize
-                    ..symtab.sh_offset as usize + symtab.sh_size as usize],
-            )
-        };
+        let symtab: Vec<SdbElf64Sym> = from_array_bytes(
+            &self.data[symtab.0.sh_offset as usize
+                ..symtab.0.sh_offset as usize + symtab.0.sh_size as usize],
+        );
+        self.symbol_table = symtab.into_iter().map(Rc::new).collect()
     }
 }
 
@@ -223,7 +252,7 @@ impl ElfExt for Rc<RefCell<Elf>> {
         return self
             .borrow()
             .get_section(name)
-            .map(|section| FileAddress::new(self, section.sh_addr));
+            .map(|section| FileAddress::new(self, section.0.sh_addr));
     }
 }
 

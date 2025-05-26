@@ -15,7 +15,6 @@ use nix::libc::user;
 use std::cell::RefCell;
 use std::fmt::Display;
 use std::fmt::Write;
-use std::mem::zeroed;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -25,11 +24,6 @@ pub struct User(pub user);
 
 unsafe impl Zeroable for User {}
 
-impl Default for User {
-    fn default() -> Self {
-        unsafe { Self(zeroed()) }
-    }
-}
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct F80(pub Extended);
@@ -182,14 +176,14 @@ macro_rules! write_cases {
 impl Registers {
     pub fn new(proc: &Rc<RefCell<Process>>) -> Self {
         Self {
-            data: User::default(), // TODO fix
+            data: User::zeroed(),
             process: Rc::downgrade(proc),
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
         let bytes = unsafe {
             core::slice::from_raw_parts(
-                & self.data as *const _ as * const u8,
+                &self.data as *const _ as *const u8,
                 std::mem::size_of_val(&self.data),
             )
         };
