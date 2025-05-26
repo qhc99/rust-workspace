@@ -32,7 +32,7 @@ pub fn from_array_bytes<T: Pod>(data: &[u8]) -> Vec<T> {
     let type_size = mem::size_of::<T>();
     let count = data.len() / type_size;
     assert_eq!(count * type_size, data.len());
-    let mut ret = Vec::with_capacity(count);
+    let mut vec = Vec::with_capacity(count);
     for i in 0..count {
         let offset = i * mem::size_of::<T>();
         let obj: T = {
@@ -40,9 +40,9 @@ pub fn from_array_bytes<T: Pod>(data: &[u8]) -> Vec<T> {
             bytes_of_mut(&mut ret).copy_from_slice(&data[offset..mem::size_of::<T>()]);
             ret
         };
-        ret.push(obj);
+        vec.push(obj);
     }
-    ret
+    vec
 }
 
 pub fn cstr_view(data: &[u8]) -> &str {
