@@ -3,7 +3,6 @@ use super::types::Byte128;
 use bytemuck::NoUninit;
 use bytemuck::Pod;
 use bytemuck::bytes_of;
-use bytemuck::bytes_of_mut;
 use bytemuck::pod_read_unaligned;
 use std::ffi::CStr;
 use std::ffi::c_char;
@@ -35,11 +34,7 @@ pub fn from_array_bytes<T: Pod>(data: &[u8]) -> Vec<T> {
     let mut vec = Vec::with_capacity(count);
     for i in 0..count {
         let offset = i * mem::size_of::<T>();
-        let obj: T = {
-            let mut ret: T = T::zeroed();
-            bytes_of_mut(&mut ret).copy_from_slice(&data[offset..mem::size_of::<T>()]);
-            ret
-        };
+        let obj: T = pod_read_unaligned(&data[offset..mem::size_of::<T>()]);
         vec.push(obj);
     }
     vec

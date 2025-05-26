@@ -1,4 +1,5 @@
-use bytemuck::{Pod, Zeroable, bytes_of_mut};
+use bytemuck::checked::pod_read_unaligned;
+use bytemuck::{Pod, Zeroable};
 use nix::libc::{Elf64_Ehdr, Elf64_Shdr, Elf64_Sym};
 use nix::{
     fcntl::{OFlag, open},
@@ -92,11 +93,7 @@ impl Elf {
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
 
-        let header = {
-            let mut ret = SdbElf64Ehdr::zeroed();
-            bytes_of_mut(&mut ret).copy_from_slice(&bytes[..mem::size_of::<SdbElf64Ehdr>()]);
-            ret
-        };
+        let header = pod_read_unaligned(&bytes[..mem::size_of::<SdbElf64Ehdr>()]);
 
         let mut ret = Self {
             fd,
@@ -128,13 +125,9 @@ impl Elf {
         let mut n_headers = self.header.0.e_shnum as usize;
 
         if n_headers == 0 && self.header.0.e_shentsize as usize != 0 {
-            let sh0: SdbElf64Shdr = {
-                let mut ret = SdbElf64Shdr::zeroed();
-                bytes_of_mut(&mut ret).copy_from_slice(
-                    &self.data[self.header.0.e_shoff as usize..mem::size_of::<SdbElf64Shdr>()],
-                );
-                ret
-            };
+            let sh0: SdbElf64Shdr = pod_read_unaligned(
+                &self.data[self.header.0.e_shoff as usize..mem::size_of::<SdbElf64Shdr>()],
+            );
             n_headers = sh0.0.sh_size as usize;
         }
 
