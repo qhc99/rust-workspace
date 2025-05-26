@@ -70,7 +70,7 @@ impl Elf {
     pub fn new(path: &Path) -> Result<Self, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
-        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) }; // Owned
+        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
 
         let stat =
             fstat(raw_fd).map_err(|_| SdbError::new_err("Could not retrieve ELF file stats"))?;
@@ -89,7 +89,7 @@ impl Elf {
             .map_err(|_| SdbError::new_err("Could not mmap ELF file"))?
         };
 
-        let bytes = unsafe { std::slice::from_raw_parts(map.as_ptr() as *const u8, file_size) }; // length
+        let bytes = unsafe { std::slice::from_raw_parts(map.as_ptr() as *const u8, file_size) };
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
 
