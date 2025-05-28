@@ -83,13 +83,18 @@ impl PartialEq for FileAddress {
     }
 }
 
+impl Eq for FileAddress {}
+
 impl PartialOrd for FileAddress {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileAddress {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         assert!(self.elf.ptr_eq(&other.elf));
-        return match self.addr.partial_cmp(&other.addr) {
-            Some(core::cmp::Ordering::Equal) => Some(core::cmp::Ordering::Equal),
-            ord => ord,
-        };
+        self.addr.cmp(&other.addr)
     }
 }
 

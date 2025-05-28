@@ -1,5 +1,6 @@
 use bytemuck::checked::pod_read_unaligned;
 use bytemuck::{Pod, Zeroable};
+use multimap::MultiMap;
 use nix::libc::{Elf64_Ehdr, Elf64_Shdr, Elf64_Sym};
 use nix::{
     fcntl::{OFlag, open},
@@ -9,7 +10,8 @@ use nix::{
     },
 };
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::{
     num::NonZeroUsize,
@@ -63,6 +65,8 @@ pub struct Elf {
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
     load_bias: VirtualAddress,
     symbol_table: Vec<Rc<SdbElf64Sym>>,
+    symbol_name_map: MultiMap<String, Rc<SdbElf64Sym>>,
+    symbol_addr_map: BTreeMap<FileAddressRange, Rc<RefCell<SdbElf64Sym>>>,
     _map: NonNull<c_void>,
 }
 
@@ -105,6 +109,8 @@ impl Elf {
             section_map: HashMap::default(),
             load_bias: 0.into(),
             symbol_table: Vec::default(),
+            symbol_name_map: MultiMap::default(),
+            symbol_addr_map: BTreeMap::default(),
             _map: map,
         };
         ret.parse_section_headers();
@@ -233,6 +239,57 @@ impl Elf {
                 ..symtab.0.sh_offset as usize + symtab.0.sh_size as usize],
         );
         self.symbol_table = symtab.into_iter().map(Rc::new).collect()
+    }
+
+    pub fn get_symbols_by_name(name: &str) -> Vec<Rc<SdbElf64Sym>> {
+        todo!()
+    }
+
+    pub fn get_symbol_at_file_address(address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
+        todo!()
+    }
+
+    pub fn get_symbol_at_virt_address(address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
+        todo!()
+    }
+
+    pub fn get_symbol_containing_file_address(address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
+        todo!()
+    }
+
+    pub fn get_symbol_containin_virt_address(address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
+        todo!()
+    }
+
+    fn build_symbol_maps(&mut self) {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+struct FileAddressRange(FileAddress, FileAddress);
+
+impl PartialEq for FileAddressRange {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1 == other.1
+    }
+}
+
+impl Eq for FileAddressRange {}
+
+impl PartialOrd for FileAddressRange {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileAddressRange {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let order = self.0.cmp(&other.0);
+        if order != Ordering::Equal {
+            return order;
+        }
+        self.1.cmp(&other.1)
     }
 }
 
