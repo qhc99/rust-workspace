@@ -116,6 +116,7 @@ impl Elf {
         ret.parse_section_headers();
         ret.build_section_map();
         ret.parse_symbol_table();
+        ret.build_symbol_maps();
         Ok(ret)
     }
 
@@ -285,11 +286,7 @@ impl PartialOrd for FileAddressRange {
 
 impl Ord for FileAddressRange {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let order = self.0.cmp(&other.0);
-        if order != Ordering::Equal {
-            return order;
-        }
-        self.1.cmp(&other.1)
+        self.0.cmp(&other.0)
     }
 }
 

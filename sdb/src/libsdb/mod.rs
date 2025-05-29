@@ -29,6 +29,7 @@ mod parse;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
+mod ffi;
 
 pub mod syscalls;
 pub mod traits;
