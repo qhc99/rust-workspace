@@ -1,5 +1,8 @@
+use super::ffi::demangle;
 use bytemuck::checked::pod_read_unaligned;
 use bytemuck::{Pod, Zeroable};
+use elf::abi::STT_TLS;
+use goblin::elf::sym::st_type;
 use multimap::MultiMap;
 use nix::libc::{Elf64_Ehdr, Elf64_Shdr, Elf64_Sym};
 use nix::{
@@ -64,13 +67,13 @@ pub struct Elf {
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
     load_bias: VirtualAddress,
     symbol_table: Vec<Rc<SdbElf64Sym>>,
-    symbol_name_map: MultiMap<String, Rc<SdbElf64Sym>>,
-    symbol_addr_map: BTreeMap<FileAddressRange, Rc<RefCell<SdbElf64Sym>>>,
+    symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
+    symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
     _map: NonNull<c_void>,
 }
 
 impl Elf {
-    pub fn new(path: &Path) -> Result<Self, SdbError> {
+    pub fn new(path: &Path) -> Result<Rc<RefCell<Self>>, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
         let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
@@ -98,7 +101,7 @@ impl Elf {
 
         let header = pod_read_unaligned(&bytes[..mem::size_of::<SdbElf64Ehdr>()]);
 
-        let mut ret = Self {
+        let mut obj = Self {
             fd,
             path: path.to_path_buf(),
             file_size,
@@ -108,13 +111,14 @@ impl Elf {
             section_map: HashMap::default(),
             load_bias: 0.into(),
             symbol_table: Vec::default(),
-            symbol_name_map: MultiMap::default(),
-            symbol_addr_map: BTreeMap::default(),
+            symbol_name_map: RefCell::new(MultiMap::default()),
+            symbol_addr_map: RefCell::new(BTreeMap::default()),
             _map: map,
         };
-        ret.parse_section_headers();
-        ret.build_section_map();
-        ret.parse_symbol_table();
+        obj.parse_section_headers();
+        obj.build_section_map();
+        obj.parse_symbol_table();
+        let ret = Rc::new(RefCell::new(obj));
         ret.build_symbol_maps();
         Ok(ret)
     }
@@ -241,8 +245,13 @@ impl Elf {
         self.symbol_table = symtab.into_iter().map(Rc::new).collect()
     }
 
-    pub fn get_symbols_by_name(name: &str) -> Vec<Rc<SdbElf64Sym>> {
-        todo!()
+    pub fn get_symbols_by_name(&self, name: &str) -> Vec<Rc<SdbElf64Sym>> {
+        self.symbol_name_map
+            .borrow()
+            .get_vec(name)
+            .map(|vec| vec.to_owned())
+            .or(Some(Vec::new()))
+            .unwrap()
     }
 
     pub fn get_symbol_at_file_address(address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
@@ -258,10 +267,6 @@ impl Elf {
     }
 
     pub fn get_symbol_containin_virt_address(address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        todo!()
-    }
-
-    fn build_symbol_maps(&mut self) {
         todo!()
     }
 }
@@ -291,6 +296,8 @@ impl Ord for FileAddressRange {
 
 pub trait ElfExt {
     fn get_section_start_address(&self, name: &str) -> Option<FileAddress>;
+
+    fn build_symbol_maps(&self);
 }
 
 impl ElfExt for Rc<RefCell<Elf>> {
@@ -299,6 +306,33 @@ impl ElfExt for Rc<RefCell<Elf>> {
             .borrow()
             .get_section(name)
             .map(|section| FileAddress::new(self, section.0.sh_addr));
+    }
+
+    fn build_symbol_maps(&self) {
+        let this = self.borrow();
+        for symbol in &this.symbol_table {
+            let mangled_name = this.get_string(symbol.0.st_name as usize).to_owned();
+            let demangled_name = demangle(&mangled_name);
+            let mut symbol_name_map = this.symbol_name_map.borrow_mut();
+            if let Some(demangled_name) = demangled_name {
+                symbol_name_map.insert(demangled_name, symbol.clone());
+            }
+            symbol_name_map.insert(mangled_name.to_owned(), symbol.clone());
+            if symbol.0.st_value != 0
+                && symbol.0.st_name != 0
+                && st_type(symbol.0.st_info) != STT_TLS
+            {
+                let addr_range = FileAddressRange(
+                    FileAddress::new(self, symbol.0.st_value),
+                    FileAddress::new(self, symbol.0.st_value + symbol.0.st_size),
+                );
+                this.symbol_addr_map
+                    .borrow_mut()
+                    .insert(addr_range, symbol.clone());
+            }
+        }
+
+        todo!()
     }
 }
 

@@ -2,9 +2,9 @@ use core::mem::offset_of;
 use libc::user;
 use libc::user_fpregs_struct;
 use libc::user_regs_struct;
+use libsdb_register_codegen::generate_registers;
 use nix::libc;
 use num_enum::TryFromPrimitive;
-use libsdb_register_codegen::generate_registers;
 
 macro_rules! gpr_offset {
     ($reg:ident) => {

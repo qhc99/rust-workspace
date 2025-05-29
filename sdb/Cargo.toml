@@ -29,6 +29,7 @@ elf = "0.7.4"
 zydis-sys = "0.1.2"
 syscall-numbers = "4.0.2"
 multimap = "0.10.1"
+goblin = "0.10.0"
 
 [dependencies.nix]
 features = ["process", "ptrace", "personality", "uio", "mman"]
