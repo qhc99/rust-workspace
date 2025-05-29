@@ -10,7 +10,6 @@ use nix::{
     },
 };
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::{
