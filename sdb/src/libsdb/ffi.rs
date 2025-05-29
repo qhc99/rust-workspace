@@ -3,6 +3,7 @@ use nix::libc;
 use std::os::raw::{c_char, c_int};
 use libc::size_t;
 
+#[link(name = "stdc++")]    // Only support Linux os
 unsafe extern "C" {
     fn __cxa_demangle(
         mangled: *const c_char,
