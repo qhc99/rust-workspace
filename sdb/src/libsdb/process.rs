@@ -168,7 +168,7 @@ impl Process {
     pub fn set_syscall_catch_policy(&self, info: SyscallCatchPolicy) {
         *self.syscall_catch_policy.borrow_mut() = info;
     }
-
+    // TODO remove refcell
     fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<RefCell<Self>> {
         let res = Self {
             pid,
