@@ -14,7 +14,7 @@ use nix::{
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::{
     num::NonZeroUsize,
     os::{
@@ -254,20 +254,42 @@ impl Elf {
             .unwrap()
     }
 
-    pub fn get_symbol_at_file_address(address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
-        todo!()
+    pub fn get_symbol_at_file_address(&self, address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
+        if !ptr::eq(self, address.elf_file().as_ptr()) {
+            return None;
+        }
+        self.symbol_addr_map
+            .borrow()
+            .get(&FileAddressRange(address, FileAddress::null()))
+            .cloned()
     }
 
-    pub fn get_symbol_at_virt_address(address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        todo!()
-    }
+    pub fn get_symbol_containing_file_address(
+        &self,
+        address: FileAddress,
+    ) -> Option<Rc<SdbElf64Sym>> {
+        if !ptr::eq(address.elf_file().as_ptr(), self) {
+            return None;
+        }
+        let borrow_map = self.symbol_addr_map.borrow();
 
-    pub fn get_symbol_containing_file_address(address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
-        todo!()
-    }
-
-    pub fn get_symbol_containin_virt_address(address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        todo!()
+        if let Some((key, val)) = borrow_map
+            .range(FileAddressRange(address.clone(), FileAddress::null())..)
+            .next()
+        {
+            if key.0 == address {
+                return Some((*val).clone());
+            }
+        }
+        if let Some((key, val)) = borrow_map
+            .range(..FileAddressRange(address.clone(), FileAddress::null()))
+            .next_back()
+        {
+            if key.0 < address && key.1 > address {
+                return Some((*val).clone());
+            }
+        }
+        return None;
     }
 }
 
@@ -298,6 +320,13 @@ pub trait ElfExt {
     fn get_section_start_address(&self, name: &str) -> Option<FileAddress>;
 
     fn build_symbol_maps(&self);
+
+    fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>>;
+
+    fn get_symbol_containing_virt_address(
+        &self,
+        address: VirtualAddress,
+    ) -> Option<Rc<SdbElf64Sym>>;
 }
 
 impl ElfExt for Rc<RefCell<Elf>> {
@@ -331,8 +360,19 @@ impl ElfExt for Rc<RefCell<Elf>> {
                     .insert(addr_range, symbol.clone());
             }
         }
+    }
 
-        todo!()
+    fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
+        self.borrow()
+            .get_symbol_at_file_address(address.to_file_addr(self))
+    }
+
+    fn get_symbol_containing_virt_address(
+        &self,
+        address: VirtualAddress,
+    ) -> Option<Rc<SdbElf64Sym>> {
+        self.borrow()
+            .get_symbol_containing_file_address(address.to_file_addr(self))
     }
 }
 

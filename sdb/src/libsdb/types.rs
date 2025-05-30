@@ -39,7 +39,7 @@ impl FileOffset {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct FileAddress {
     addr: u64,
     elf: Weak<RefCell<Elf>>,
@@ -50,6 +50,13 @@ impl FileAddress {
         Self {
             addr,
             elf: Rc::downgrade(elf),
+        }
+    }
+
+    pub fn null()-> Self {
+        Self {
+            addr: 0,
+            elf: Weak::new(),
         }
     }
 
