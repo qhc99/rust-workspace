@@ -12,7 +12,6 @@ use bytemuck::Pod;
 use bytemuck::Zeroable;
 use extended::Extended;
 use nix::libc::user;
-use std::cell::RefCell;
 use std::fmt::Display;
 use std::fmt::Write;
 use std::rc::Rc;
@@ -47,7 +46,7 @@ impl F80 {
 #[derive(Debug)]
 pub struct Registers {
     pub data: User,
-    process: Weak<RefCell<Process>>,
+    process: Weak<Process>,
 }
 
 pub enum RegisterValue {
@@ -174,7 +173,7 @@ macro_rules! write_cases {
 }
 
 impl Registers {
-    pub fn new(proc: &Rc<RefCell<Process>>) -> Self {
+    pub fn new(proc: &Rc<Process>) -> Self {
         Self {
             data: User::zeroed(),
             process: Rc::downgrade(proc),
@@ -232,14 +231,12 @@ impl Registers {
             self.process
                 .upgrade()
                 .unwrap()
-                .borrow()
                 .write_fprs(&mut self.data.0.i387)?;
         } else {
             let aligned_offset = info.offset & !0b111;
             self.process
                 .upgrade()
                 .unwrap()
-                .borrow()
                 .write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]))?;
         }
 

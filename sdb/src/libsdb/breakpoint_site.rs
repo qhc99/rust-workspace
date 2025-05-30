@@ -4,7 +4,6 @@ use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
 use std::{
-    cell::RefCell,
     rc::{Rc, Weak},
     sync::atomic::AtomicI32,
 };
@@ -21,7 +20,7 @@ pub type IdType = i32;
 
 #[derive(Debug)]
 pub struct BreakpointSite {
-    process: Weak<RefCell<Process>>,
+    process: Weak<Process>,
     address: VirtualAddress,
     is_enabled: bool,
     saved_data: u8,
@@ -53,10 +52,9 @@ impl StoppointTrait for BreakpointSite {
                 .process
                 .upgrade()
                 .unwrap()
-                .borrow()
                 .set_hardware_breakpoint(self.id, self.address)?;
         } else {
-            let pid = self.process.upgrade().unwrap().borrow().pid();
+            let pid = self.process.upgrade().unwrap().pid();
             let address = self.address.get_addr() as AddressType;
             let data = read(pid, address).map_err(|errno| {
                 SdbError::errno::<()>("Enabling breakpoint site failed", errno).unwrap_err()
@@ -80,11 +78,10 @@ impl StoppointTrait for BreakpointSite {
             self.process
                 .upgrade()
                 .unwrap()
-                .borrow()
                 .clear_hardware_stoppoint(self.hardware_register_index)?;
             self.hardware_register_index = -1;
         } else {
-            let pid = self.process.upgrade().unwrap().borrow().pid();
+            let pid = self.process.upgrade().unwrap().pid();
             let address = self.address.get_addr() as AddressType;
             let data = read(pid, address).map_err(|errno| {
                 SdbError::errno::<()>("Disabling breakpoint site failed", errno).unwrap_err()
@@ -110,7 +107,7 @@ impl StoppointTrait for BreakpointSite {
 
 impl BreakpointSite {
     pub fn new(
-        process: &Rc<RefCell<Process>>,
+        process: &Rc<Process>,
         addr: VirtualAddress,
         is_hardware: bool, // false
         is_internal: bool, // false

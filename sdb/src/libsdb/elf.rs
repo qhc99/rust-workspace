@@ -56,7 +56,6 @@ unsafe impl Pod for SdbElf64Sym {}
 
 unsafe impl Zeroable for SdbElf64Sym {}
 
-// TODO add wrapper
 pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,
@@ -192,7 +191,7 @@ impl Elf {
     }
 
     pub fn load_bias(&self) -> VirtualAddress {
-        self.load_bias.borrow().clone()
+        *self.load_bias.borrow()
     }
 
     pub fn notify_loaded(&self, address: VirtualAddress) {
@@ -221,7 +220,8 @@ impl Elf {
     ) -> Option<Rc<SdbElf64Shdr>> {
         for section in &self.section_headers {
             if (*self.load_bias.borrow() + section.0.sh_addr as i64) <= address
-                && (*self.load_bias.borrow() + section.0.sh_addr as i64 + section.0.sh_size as i64) > address
+                && (*self.load_bias.borrow() + section.0.sh_addr as i64 + section.0.sh_size as i64)
+                    > address
             {
                 return Some(section.clone());
             }
@@ -361,16 +361,14 @@ impl ElfExt for Rc<Elf> {
     }
 
     fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        self
-            .get_symbol_at_file_address(address.to_file_addr(self))
+        self.get_symbol_at_file_address(address.to_file_addr(self))
     }
 
     fn get_symbol_containing_virt_address(
         &self,
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
-        self
-            .get_symbol_containing_file_address(address.to_file_addr(self))
+        self.get_symbol_containing_file_address(address.to_file_addr(self))
     }
 }
 

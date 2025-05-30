@@ -19,20 +19,20 @@ mod test_utils;
 mod tests;
 
 thread_local! {
-    static GLOBAL: RefCell<Weak<RefCell<Process>>> = const {RefCell::new(Weak::new())};
+    static GLOBAL: RefCell<Weak<Process>> = const {RefCell::new(Weak::new())};
 }
 
-pub fn set_global(handle: &Rc<RefCell<Process>>) {
+pub fn set_global(handle: &Rc<Process>) {
     GLOBAL.with(|g| *g.borrow_mut() = Rc::downgrade(handle));
 }
 
-pub fn get_global() -> Option<Rc<RefCell<Process>>> {
+pub fn get_global() -> Option<Rc<Process>> {
     GLOBAL.with(|g| g.borrow().upgrade())
 }
 
 extern "C" fn handle_sigint(_: c_int) {
     unsafe {
-        let pid = get_global().unwrap().borrow().pid();
+        let pid = get_global().unwrap().pid();
         kill(i32::from(pid), Signal::SIGSTOP as i32);
     }
 }
@@ -61,7 +61,7 @@ fn main() {
     }
 }
 
-fn main_loop(process: &Rc<RefCell<Process>>) {
+fn main_loop(process: &Rc<Process>) {
     let mut rl = DefaultEditor::new().unwrap();
     loop {
         let readline = rl.readline(">> ");

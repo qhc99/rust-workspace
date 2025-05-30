@@ -13,7 +13,6 @@ use process::{
 };
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
-use std::cell::{Ref, RefCell};
 use std::cmp::min;
 use std::path::Path;
 use std::{ffi::CString, rc::Rc};
@@ -31,8 +30,8 @@ mod stoppoint_collection;
 mod utils;
 mod watchpoint;
 
-pub mod target;
 pub mod syscalls;
+pub mod target;
 pub mod traits;
 pub use utils::ResultLogExt;
 pub mod bit;
@@ -45,20 +44,20 @@ pub mod types;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
-pub fn attach(args: &[&str]) -> Result<Rc<RefCell<Process>>, SdbError> {
+pub fn attach(args: &[&str]) -> Result<Rc<Process>, SdbError> {
     if args.len() == 3 && args[1] == "-p" {
         let pid = Pid::from_raw(args[2].parse().unwrap());
         return Process::attach(pid);
     } else {
         let program_path = CString::new(args[1]).unwrap();
         let proc = Process::launch(Path::new(program_path.to_str().unwrap()), true, None)?;
-        let pid = proc.borrow().pid();
+        let pid = proc.pid();
         println!("Launched process with PID {pid}");
         return Ok(proc);
     }
 }
 
-fn print_stop_reason(process: &Ref<Process>, reason: StopReason) -> Result<(), SdbError> {
+fn print_stop_reason(process: &Rc<Process>, reason: StopReason) -> Result<(), SdbError> {
     let pid = process.pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
@@ -91,7 +90,7 @@ fn print_stop_reason(process: &Ref<Process>, reason: StopReason) -> Result<(), S
     Ok(())
 }
 
-fn get_sigtrap_info(process: &Ref<Process>, reason: StopReason) -> Result<String, SdbError> {
+fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String, SdbError> {
     if reason.trap_reason == Some(TrapType::SoftwareBreak) {
         let site = process
             .breakpoint_sites()
@@ -145,29 +144,28 @@ fn get_sigtrap_info(process: &Ref<Process>, reason: StopReason) -> Result<String
     return Ok("".to_string());
 }
 
-pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(process: &Rc<Process>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let cmd = args[0];
-    let process = &owned_process.borrow();
     if cmd == "continue" {
         process.resume()?;
         let reason = process.wait_on_signal()?;
-        handle_stop(owned_process, reason)?;
+        handle_stop(process, reason)?;
     } else if cmd == "help" {
         print_help(&args);
     } else if cmd == "register" {
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
-        handle_breakpoint_command(owned_process, &args)?;
+        handle_breakpoint_command(process, &args)?;
     } else if cmd == "step" {
         let reason = process.step_instruction()?;
-        handle_stop(owned_process, reason)?;
+        handle_stop(process, reason)?;
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
         handle_disassemble_command(process, &args)?;
     } else if cmd == "watchpoint" {
-        handle_watchpoint_command(owned_process, &args)?;
+        handle_watchpoint_command(process, &args)?;
     } else if cmd == "catchpoint" {
         handle_catchpoint_command(process, &args)?;
     } else {
@@ -176,7 +174,7 @@ pub fn handle_command(owned_process: &Rc<RefCell<Process>>, line: &str) -> Resul
     Ok(())
 }
 
-fn handle_catchpoint_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_catchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "catchpoint"]);
         return Ok(());
@@ -187,10 +185,7 @@ fn handle_catchpoint_command(process: &Ref<Process>, args: &[&str]) -> Result<()
     Ok(())
 }
 
-fn handle_syscall_catchpoint_command(
-    process: &Ref<Process>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_syscall_catchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     let mut policy = SyscallCatchPolicy::All;
     if args.len() == 3 && args[2] == "none" {
         policy = SyscallCatchPolicy::None;
@@ -217,10 +212,7 @@ fn is_digits(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
 }
 
-fn handle_watchpoint_command(
-    process: &Rc<RefCell<Process>>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_watchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "watchpoint"]);
         return Ok(());
@@ -246,7 +238,6 @@ fn handle_watchpoint_command(
         .map_err(|_| SdbError::new_err("Command expects watchpoint id"))?;
     if command == "enable" {
         process
-            .borrow()
             .watchpoints()
             .borrow()
             .get_by_id(id)?
@@ -254,24 +245,18 @@ fn handle_watchpoint_command(
             .enable()?;
     } else if command == "disable" {
         process
-            .borrow()
             .watchpoints()
             .borrow()
             .get_by_id(id)?
             .borrow_mut()
             .disable()?;
     } else if command == "delete" {
-        process
-            .borrow()
-            .watchpoints()
-            .borrow_mut()
-            .remove_by_id(id)?;
+        process.watchpoints().borrow_mut().remove_by_id(id)?;
     }
     Ok(())
 }
 
-fn handle_watchpoint_list(process: &Rc<RefCell<Process>>) -> Result<(), SdbError> {
-    let process = process.borrow();
+fn handle_watchpoint_list(process: &Rc<Process>) -> Result<(), SdbError> {
     let watchpoints = process.watchpoints();
     let watchpoints = watchpoints.borrow();
     if watchpoints.empty() {
@@ -297,7 +282,7 @@ fn handle_watchpoint_list(process: &Rc<RefCell<Process>>) -> Result<(), SdbError
     Ok(())
 }
 
-fn handle_watchpoint_set(process: &Rc<RefCell<Process>>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_watchpoint_set(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() != 5 {
         print_help(&["help", "watchpoint"]);
         return Ok(());
@@ -322,7 +307,7 @@ fn handle_watchpoint_set(process: &Rc<RefCell<Process>>, args: &[&str]) -> Resul
     Ok(())
 }
 
-fn handle_disassemble_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_disassemble_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     let mut address = process.get_pc();
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
@@ -352,16 +337,15 @@ fn handle_disassemble_command(process: &Ref<Process>, args: &[&str]) -> Result<(
     Ok(())
 }
 
-fn handle_stop(process: &Rc<RefCell<Process>>, reason: StopReason) -> Result<(), SdbError> {
-    let ref_process = &process.borrow();
-    print_stop_reason(ref_process, reason)?;
+fn handle_stop(process: &Rc<Process>, reason: StopReason) -> Result<(), SdbError> {
+    print_stop_reason(process, reason)?;
     if reason.reason == ProcessState::Stopped {
-        print_disassembly(ref_process, ref_process.get_pc(), 5)?;
+        print_disassembly(process, process.get_pc(), 5)?;
     }
     Ok(())
 }
 
-fn handle_memory_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 3 {
         print_help(&["help", "memory"]);
         return Ok(());
@@ -377,7 +361,7 @@ fn handle_memory_command(process: &Ref<Process>, args: &[&str]) -> Result<(), Sd
     Ok(())
 }
 
-fn handle_memory_read_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_read_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     let address = u64::from_integral_lower_hex_radix(args[2], 16)?;
     let mut n_bytes = 32usize;
     if args.len() == 4 {
@@ -399,7 +383,7 @@ fn handle_memory_read_command(process: &Ref<Process>, args: &[&str]) -> Result<(
     Ok(())
 }
 
-fn handle_memory_write_command(process: &Ref<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_write_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() != 4 {
         print_help(&["help", "memory"]);
         return Ok(());
@@ -410,15 +394,11 @@ fn handle_memory_write_command(process: &Ref<Process>, args: &[&str]) -> Result<
     Ok(())
 }
 
-fn handle_breakpoint_command(
-    owned_process: &Rc<RefCell<Process>>,
-    args: &[&str],
-) -> Result<(), SdbError> {
+fn handle_breakpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return Ok(());
     }
-    let process = &owned_process.borrow();
     let command = args[1];
     if command == "list" {
         let owned_breakpoint_sites = process.breakpoint_sites();
@@ -465,7 +445,7 @@ fn handle_breakpoint_command(
                 return SdbError::err("Invalid breakpoint command argument");
             }
         }
-        let bs = owned_process.create_breakpoint_site(
+        let bs = process.create_breakpoint_site(
             VirtualAddress::from(address.unwrap()),
             hardware,
             false,
@@ -496,7 +476,7 @@ fn handle_breakpoint_command(
     return Ok(());
 }
 
-fn handle_register_command(process: &Ref<Process>, args: &[&str]) {
+fn handle_register_command(process: &Rc<Process>, args: &[&str]) {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return;
@@ -511,7 +491,7 @@ fn handle_register_command(process: &Ref<Process>, args: &[&str]) {
     }
 }
 
-fn handle_register_read(process: &Ref<Process>, args: &[&str]) {
+fn handle_register_read(process: &Rc<Process>, args: &[&str]) {
     if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
         for info in GRegisterInfos {
             let should_print =
@@ -519,14 +499,24 @@ fn handle_register_read(process: &Ref<Process>, args: &[&str]) {
             if !should_print {
                 continue;
             }
-            let value = process.get_registers().borrow().as_ref().unwrap().read(info);
+            let value = process
+                .get_registers()
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .read(info);
             println!("{}:\t{}", info.name, value.unwrap());
         }
     } else if args.len() == 3 {
         let info_res = register_info_by_name(args[2]);
         match info_res {
             Ok(info) => {
-                let value = process.get_registers().borrow().as_ref().unwrap().read(&info);
+                let value = process
+                    .get_registers()
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .read(&info);
                 println!("{}:\t{}", info.name, value.unwrap());
             }
             Err(_) => {
@@ -538,7 +528,7 @@ fn handle_register_read(process: &Ref<Process>, args: &[&str]) {
     }
 }
 
-fn handle_register_write(process: &Ref<Process>, args: &[&str]) {
+fn handle_register_write(process: &Rc<Process>, args: &[&str]) {
     if args.len() != 4 {
         print_help(&["help", "register"]);
         return;
@@ -546,7 +536,12 @@ fn handle_register_write(process: &Ref<Process>, args: &[&str]) {
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
-        process.get_registers().borrow_mut().as_mut().unwrap().write(&info, value)?;
+        process
+            .get_registers()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .write(&info, value)?;
         Ok(())
     })() {
         eprintln!("{e}");

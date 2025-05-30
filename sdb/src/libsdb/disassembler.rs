@@ -2,7 +2,7 @@ use super::sdb_error::SdbError;
 
 use super::process::Process;
 use super::types::VirtualAddress;
-use std::cell::Ref;
+use std::rc::Rc;
 use zydis::{Decoder, Formatter, VisibleOperands};
 use zydis_sys::ZyanUSize;
 
@@ -54,7 +54,7 @@ impl<'this> Disassembler<'this> {
 }
 
 pub fn print_disassembly(
-    process: &Ref<Process>,
+    process: &Rc<Process>,
     address: VirtualAddress,
     n_instructions: usize,
 ) -> Result<(), SdbError> {

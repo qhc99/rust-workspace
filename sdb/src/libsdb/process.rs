@@ -168,8 +168,8 @@ impl Process {
     pub fn set_syscall_catch_policy(&self, info: SyscallCatchPolicy) {
         *self.syscall_catch_policy.borrow_mut() = info;
     }
-    // TODO remove refcell
-    fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<RefCell<Self>> {
+
+    fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<Self> {
         let res = Self {
             pid,
             terminate_on_end,
@@ -182,8 +182,8 @@ impl Process {
             expecting_syscall_exit: RefCell::new(false),
         };
 
-        let res = Rc::new(RefCell::new(res));
-        *res.borrow().registers.borrow_mut() = Some(Registers::new(&res));
+        let res = Rc::new(res);
+        *res.registers.borrow_mut() = Some(Registers::new(&res));
         res
     }
 
@@ -273,7 +273,7 @@ impl Process {
         path: &Path,
         debug: bool, /*true*/
         stdout_replacement: Option<i32>,
-    ) -> Result<Rc<RefCell<Process>>, SdbError> {
+    ) -> Result<Rc<Process>, SdbError> {
         let fork_res;
         let mut channel = Pipe::new(true)?;
         let mut pid = Pid::from_raw(0);
@@ -325,13 +325,13 @@ impl Process {
 
         let proc = Process::new(pid, true, debug);
         if debug {
-            proc.borrow().wait_on_signal()?;
+            proc.wait_on_signal()?;
             set_ptrace_options(pid)?;
         }
         return Ok(proc);
     }
 
-    pub fn attach(pid: Pid) -> Result<Rc<RefCell<Process>>, SdbError> {
+    pub fn attach(pid: Pid) -> Result<Rc<Process>, SdbError> {
         if pid.as_raw() <= 0 {
             return SdbError::err("Invalid pid");
         }
@@ -339,7 +339,7 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false, true);
-        proc.borrow().wait_on_signal()?;
+        proc.wait_on_signal()?;
         set_ptrace_options(pid)?;
         return Ok(proc);
     }
@@ -771,21 +771,20 @@ pub trait ProcessExt {
     ) -> Result<Rc<RefCell<WatchPoint>>, SdbError>;
 }
 
-impl ProcessExt for Rc<RefCell<Process>> {
+impl ProcessExt for Rc<Process> {
     fn create_breakpoint_site(
         &self,
         address: VirtualAddress,
         hardware: bool, // false
         internal: bool, // false
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
-        let process = &self.borrow();
-        if process.breakpoint_sites.borrow().contain_address(address) {
+        if self.breakpoint_sites.borrow().contain_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
                 address.get_addr()
             ));
         }
-        Ok(process
+        Ok(self
             .breakpoint_sites
             .borrow_mut()
             .push(BreakpointSite::new(self, address, hardware, internal)))
@@ -797,14 +796,13 @@ impl ProcessExt for Rc<RefCell<Process>> {
         mode: StoppointMode,
         size: usize,
     ) -> Result<Rc<RefCell<WatchPoint>>, SdbError> {
-        let process = &self.borrow();
-        if process.watchpoints.borrow().contain_address(address) {
+        if self.watchpoints.borrow().contain_address(address) {
             return SdbError::err(&format!(
                 "Watchpoint already created at address {}",
                 address.get_addr()
             ));
         }
-        Ok(process
+        Ok(self
             .watchpoints
             .borrow_mut()
             .push(WatchPoint::new(self, address, mode, size)?))
@@ -843,7 +841,7 @@ mod tests {
     #[test]
     fn process_launch_success() {
         let proc = super::Process::launch(Path::new("yes"), true, None);
-        assert!(process_exists(proc.unwrap().borrow().pid()));
+        assert!(process_exists(proc.unwrap().pid()));
     }
 
     #[test]

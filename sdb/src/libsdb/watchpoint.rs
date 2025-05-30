@@ -7,8 +7,8 @@ use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
 use std::mem::swap;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::{cell::RefCell, rc::Weak};
 
 static NEXT_ID: AtomicI32 = AtomicI32::new(0);
 
@@ -19,7 +19,7 @@ fn get_next_id() -> IdType {
 #[derive(Debug)]
 pub struct WatchPoint {
     id: IdType,
-    process: Weak<RefCell<Process>>,
+    process: Weak<Process>,
     address: VirtualAddress,
     mode: StoppointMode,
     size: usize,
@@ -38,7 +38,7 @@ impl StoppointTrait for WatchPoint {
         if self.is_enabled {
             return Ok(());
         }
-        self.hardware_register_index = self.process.upgrade().unwrap().borrow().set_watchpoint(
+        self.hardware_register_index = self.process.upgrade().unwrap().set_watchpoint(
             self.id,
             self.address,
             self.mode,
@@ -55,7 +55,6 @@ impl StoppointTrait for WatchPoint {
         self.process
             .upgrade()
             .unwrap()
-            .borrow()
             .clear_hardware_stoppoint(self.hardware_register_index)?;
         self.is_enabled = false;
         Ok(())
@@ -80,7 +79,7 @@ impl StoppointTrait for WatchPoint {
 
 impl WatchPoint {
     pub fn new(
-        process: &Rc<RefCell<Process>>,
+        process: &Rc<Process>,
         address: VirtualAddress,
         mode: StoppointMode,
         size: usize,
@@ -123,7 +122,6 @@ impl WatchPoint {
             .process
             .upgrade()
             .unwrap()
-            .borrow()
             .read_memory(self.address, self.size)?;
         bytes_of_mut(&mut new_data)[..self.size].copy_from_slice(&read[..self.size]);
         swap(&mut self.data, &mut self.previous_data);
