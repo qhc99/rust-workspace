@@ -14,7 +14,7 @@ use nix::{
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::{
     num::NonZeroUsize,
     os::{

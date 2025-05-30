@@ -19,7 +19,7 @@ path = "src/sdb.rs"
 rustyline = "15.0.0"
 zydis = "4.1.1"
 once_cell = "1.21.0"
-libsdb_register_codegen = { path = "src/libsdb/codegen", version = "*"}
+libsdb_register_codegen = { path = "src/libsdb/codegen", version = "0.1.0"}
 bytemuck = "1.22.0"
 num_enum = "0.7.3"
 extended = "0.1.0"
@@ -30,7 +30,7 @@ zydis-sys = "0.1.2"
 syscall-numbers = "4.0.2"
 multimap = "0.10.1"
 goblin = "0.10.0"
-
+byteorder = "1.5.0"
 [dependencies.nix]
 features = ["process", "ptrace", "personality", "uio", "mman"]
 version = "0.29.0"

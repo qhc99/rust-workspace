@@ -14,6 +14,9 @@ use super::utils::ResultLogExt;
 use super::watchpoint::WatchPoint;
 use bytemuck::Pod;
 use bytemuck::bytes_of_mut;
+use byteorder::NativeEndian;
+use byteorder::ReadBytesExt;
+use nix::libc::AT_NULL;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
 use nix::sys::personality::Persona;
@@ -48,11 +51,13 @@ use nix::{
     unistd::{ForkResult, Pid, execvp, fork},
 };
 use std::cmp::min;
+use std::collections::HashMap;
 use std::ffi::c_long;
+use std::fs::File;
 use std::io::IoSliceMut;
+use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProcessState {
     Stopped,
@@ -718,6 +723,21 @@ impl Process {
                 .id();
             Ok(StoppointId::Watchpoint(watch_id))
         }
+    }
+
+    pub fn get_auxv(&self) -> HashMap<i32, u64> {
+        let path = format!("/proc/{}/auxv", self.pid);
+        let mut file = File::open(path).unwrap();
+        let mut auxv = HashMap::new();
+        loop {
+            let id = file.read_u64::<NativeEndian>().unwrap();
+            if id == AT_NULL as u64 {
+                break;
+            }
+            let value = file.read_u64::<NativeEndian>().unwrap();
+            auxv.insert(id as i32, value);
+        }
+        auxv
     }
 }
 
