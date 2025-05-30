@@ -102,7 +102,7 @@ fn write_registers() {
 
     {
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
             .unwrap();
 
@@ -116,7 +116,7 @@ fn write_registers() {
 
     {
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
             .unwrap();
 
@@ -130,7 +130,7 @@ fn write_registers() {
 
     {
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::xmm0, 42.24)
             .unwrap();
 
@@ -144,15 +144,15 @@ fn write_registers() {
 
     {
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::st0, F80::new(42.24))
             .unwrap();
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::fsw, 0b0011100000000000_u16)
             .unwrap();
         proc.get_registers()
-            .borrow_mut()
+            .borrow_mut().as_mut().unwrap()
             .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
             .unwrap();
 
@@ -178,16 +178,16 @@ fn read_registers() {
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
+    assert!(regs.borrow().as_ref().unwrap().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
+    assert!(regs.borrow().as_ref().unwrap().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
     assert!(
-        regs.borrow()
+        regs.borrow().as_ref().unwrap()
             .read_by_id_as::<Byte64>(RegisterId::mm0)
             .unwrap()
             == to_byte64(0xba5eba11_u64)
@@ -196,7 +196,7 @@ fn read_registers() {
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
     assert!(
-        regs.borrow()
+        regs.borrow().as_ref().unwrap()
             .read_by_id_as::<Byte128>(RegisterId::xmm0)
             .unwrap()
             == to_byte128(64.125)
@@ -204,7 +204,7 @@ fn read_registers() {
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
+    assert!(regs.borrow().as_ref().unwrap().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }
 
 #[test]
