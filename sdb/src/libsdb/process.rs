@@ -55,7 +55,6 @@ use std::collections::HashMap;
 use std::ffi::c_long;
 use std::fs::File;
 use std::io::IoSliceMut;
-use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -731,7 +730,7 @@ impl Process {
         let mut auxv = HashMap::new();
         loop {
             let id = file.read_u64::<NativeEndian>().unwrap();
-            if id == AT_NULL as u64 {
+            if id == AT_NULL {
                 break;
             }
             let value = file.read_u64::<NativeEndian>().unwrap();

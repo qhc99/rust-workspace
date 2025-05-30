@@ -53,7 +53,7 @@ impl FileAddress {
         }
     }
 
-    pub fn null()-> Self {
+    pub fn null() -> Self {
         Self {
             addr: 0,
             elf: Weak::new(),

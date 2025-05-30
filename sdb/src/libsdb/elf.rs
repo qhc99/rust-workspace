@@ -250,8 +250,7 @@ impl Elf {
             .borrow()
             .get_vec(name)
             .map(|vec| vec.to_owned())
-            .or(Some(Vec::new()))
-            .unwrap()
+            .unwrap_or_default()
     }
 
     pub fn get_symbol_at_file_address(&self, address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
