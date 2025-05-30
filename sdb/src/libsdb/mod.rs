@@ -31,6 +31,7 @@ mod stoppoint_collection;
 mod utils;
 mod watchpoint;
 
+pub mod target;
 pub mod syscalls;
 pub mod traits;
 pub use utils::ResultLogExt;

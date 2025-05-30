@@ -65,7 +65,7 @@ pub struct Elf {
     header: SdbElf64Ehdr,
     section_headers: Vec<Rc<SdbElf64Shdr>>,
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
-    load_bias: VirtualAddress,
+    load_bias: RefCell<VirtualAddress>,
     symbol_table: Vec<Rc<SdbElf64Sym>>,
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
@@ -73,7 +73,7 @@ pub struct Elf {
 }
 
 impl Elf {
-    pub fn new(path: &Path) -> Result<Rc<RefCell<Self>>, SdbError> {
+    pub fn new(path: &Path) -> Result<Rc<Self>, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
         let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
@@ -109,7 +109,7 @@ impl Elf {
             header,
             section_headers: Vec::default(),
             section_map: HashMap::default(),
-            load_bias: 0.into(),
+            load_bias: RefCell::new(0.into()),
             symbol_table: Vec::default(),
             symbol_name_map: RefCell::new(MultiMap::default()),
             symbol_addr_map: RefCell::new(BTreeMap::default()),
@@ -118,7 +118,7 @@ impl Elf {
         obj.parse_section_headers();
         obj.build_section_map();
         obj.parse_symbol_table();
-        let ret = Rc::new(RefCell::new(obj));
+        let ret = Rc::new(obj);
         ret.build_symbol_maps();
         Ok(ret)
     }
@@ -192,18 +192,18 @@ impl Elf {
     }
 
     pub fn load_bias(&self) -> VirtualAddress {
-        self.load_bias
+        self.load_bias.borrow().clone()
     }
 
-    pub fn notify_loaded(&mut self, address: VirtualAddress) {
-        self.load_bias = address
+    pub fn notify_loaded(&self, address: VirtualAddress) {
+        *self.load_bias.borrow_mut() = address
     }
 
     pub fn get_section_containing_file_addr(
         &self,
         address: &FileAddress,
     ) -> Option<Rc<SdbElf64Shdr>> {
-        if ptr::eq(self, &*address.elf_file().borrow()) {
+        if ptr::eq(self, &*address.elf_file()) {
             for section in &self.section_headers {
                 if section.0.sh_addr <= address.addr()
                     && (section.0.sh_addr + section.0.sh_size) > address.addr()
@@ -220,8 +220,8 @@ impl Elf {
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Shdr>> {
         for section in &self.section_headers {
-            if (self.load_bias + section.0.sh_addr as i64) <= address
-                && (self.load_bias + section.0.sh_addr as i64 + section.0.sh_size as i64) > address
+            if (*self.load_bias.borrow() + section.0.sh_addr as i64) <= address
+                && (*self.load_bias.borrow() + section.0.sh_addr as i64 + section.0.sh_size as i64) > address
             {
                 return Some(section.clone());
             }
@@ -254,7 +254,7 @@ impl Elf {
     }
 
     pub fn get_symbol_at_file_address(&self, address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
-        if !ptr::eq(self, address.elf_file().as_ptr()) {
+        if !ptr::eq(self, address.elf_file().as_ref()) {
             return None;
         }
         self.symbol_addr_map
@@ -267,7 +267,7 @@ impl Elf {
         &self,
         address: FileAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
-        if !ptr::eq(address.elf_file().as_ptr(), self) {
+        if !ptr::eq(address.elf_file().as_ref(), self) {
             return None;
         }
         let borrow_map = self.symbol_addr_map.borrow();
@@ -328,16 +328,15 @@ pub trait ElfExt {
     ) -> Option<Rc<SdbElf64Sym>>;
 }
 
-impl ElfExt for Rc<RefCell<Elf>> {
+impl ElfExt for Rc<Elf> {
     fn get_section_start_address(&self, name: &str) -> Option<FileAddress> {
         return self
-            .borrow()
             .get_section(name)
             .map(|section| FileAddress::new(self, section.0.sh_addr));
     }
 
     fn build_symbol_maps(&self) {
-        let this = self.borrow();
+        let this = self;
         for symbol in &this.symbol_table {
             let mangled_name = this.get_string(symbol.0.st_name as usize).to_owned();
             let demangled_name = demangle(&mangled_name);
@@ -362,7 +361,7 @@ impl ElfExt for Rc<RefCell<Elf>> {
     }
 
     fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        self.borrow()
+        self
             .get_symbol_at_file_address(address.to_file_addr(self))
     }
 
@@ -370,7 +369,7 @@ impl ElfExt for Rc<RefCell<Elf>> {
         &self,
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
-        self.borrow()
+        self
             .get_symbol_containing_file_address(address.to_file_addr(self))
     }
 }
