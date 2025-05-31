@@ -28,13 +28,13 @@ use types::{StoppointMode, VirtualAddress};
 
 mod breakpoint_site;
 mod disassembler;
-mod elf;
 mod ffi;
 mod parse;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
 
+pub mod elf;
 pub mod syscalls;
 pub mod target;
 pub mod traits;

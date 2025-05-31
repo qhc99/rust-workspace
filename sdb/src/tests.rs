@@ -8,7 +8,6 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use libsdb::process::{ProcessState, SyscallData, TrapType};
 use libsdb::register_info::RegisterId;
 use libsdb::syscalls::syscall_id_to_name;
 use libsdb::syscalls::syscall_name_to_id;
@@ -21,6 +20,11 @@ use libsdb::{
     process::Process,
     registers::F80,
     types::{Byte64, Byte128},
+};
+use libsdb::{
+    elf::Elf,
+    process::{ProcessState, SyscallData, TrapType},
+    types::FileAddress,
 };
 use libsdb::{process::ProcessExt, traits::StoppointTrait};
 use nix::{
@@ -611,4 +615,21 @@ fn syscall_catchpoint() {
         reason.syscall_info.unwrap().data,
         SyscallData::Ret(_)
     ));
+}
+
+#[test]
+fn elf_parser() {
+    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let path = bin.target_path();
+    let elf = Elf::new(path).unwrap();
+    let entry = elf.get_header().0.e_entry;
+    let sym = elf
+        .get_symbol_at_file_address(FileAddress::new(&elf, entry))
+        .unwrap();
+    let name = elf.get_string(sym.0.st_name as usize);
+    assert_eq!("_start", name);
+
+    let syms = elf.get_symbols_by_name("_start");
+    let name = elf.get_string(syms[0].0.st_name as usize);
+    assert_eq!("_start", name);
 }
