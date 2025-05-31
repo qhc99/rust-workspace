@@ -5,6 +5,7 @@ compile_error!("No supported on non-linux system.");
 
 use libsdb::handle_command;
 use libsdb::process::Process;
+use libsdb::target::Target;
 use libsdb::{ResultLogExt, attach};
 use nix::libc::c_int;
 use nix::libc::kill;
@@ -48,20 +49,21 @@ fn main() {
         exit(-1);
     }
     let args_slice: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let process = attach(&args_slice);
-    match process {
-        Ok(process) => {
+    let target = attach(&args_slice);
+    match target {
+        Ok(target) => {
+            let process = target.get_process();
             set_global(&process);
             unsafe {
                 signal(Signal::SIGINT, SigHandler::Handler(handle_sigint)).unwrap();
             }
-            main_loop(&process);
+            main_loop(&target);
         }
         err => err.log_error(),
     }
 }
 
-fn main_loop(process: &Rc<Process>) {
+fn main_loop(target: &Rc<Target>) {
     let mut rl = DefaultEditor::new().unwrap();
     loop {
         let readline = rl.readline(">> ");
@@ -80,7 +82,7 @@ fn main_loop(process: &Rc<Process>) {
                         .expect("Fail to save history");
                 }
                 if !line_str.is_empty() {
-                    handle_command(process, line_str).log_error();
+                    handle_command(target, line_str).log_error();
                 }
             }
             Err(ReadlineError::Interrupted) => {

@@ -34,7 +34,7 @@ pub fn from_array_bytes<T: Pod>(data: &[u8]) -> Vec<T> {
     let mut vec = Vec::with_capacity(count);
     for i in 0..count {
         let offset = i * mem::size_of::<T>();
-        let obj: T = pod_read_unaligned(&data[offset..mem::size_of::<T>()]);
+        let obj: T = pod_read_unaligned(&data[offset..offset+mem::size_of::<T>()]);
         vec.push(obj);
     }
     vec

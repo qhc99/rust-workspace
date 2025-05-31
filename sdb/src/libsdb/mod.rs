@@ -1,8 +1,12 @@
 #![cfg(target_os = "linux")]
 #![allow(dead_code)]
 
+use ::elf::abi::STT_FUNC;
 use breakpoint_site::IdType;
 use disassembler::print_disassembly;
+use elf::ElfExt;
+use ffi::sig_abbrev;
+use goblin::elf::sym::st_type;
 use indoc::indoc;
 use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
@@ -15,8 +19,9 @@ use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cmp::min;
 use std::path::Path;
-use std::{ffi::CString, rc::Rc};
+use std::rc::Rc;
 use syscalls::{syscall_id_to_name, syscall_name_to_id};
+use target::Target;
 use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::{StoppointMode, VirtualAddress};
@@ -44,20 +49,21 @@ pub mod types;
 
 /// Not async-signal-safe
 /// https://man7.org/linux/man-pages/man7/signal-safety.7.html
-pub fn attach(args: &[&str]) -> Result<Rc<Process>, SdbError> {
+pub fn attach(args: &[&str]) -> Result<Rc<Target>, SdbError> {
     if args.len() == 3 && args[1] == "-p" {
         let pid = Pid::from_raw(args[2].parse().unwrap());
-        return Process::attach(pid);
+        return Target::attach(pid);
     } else {
-        let program_path = CString::new(args[1]).unwrap();
-        let proc = Process::launch(Path::new(program_path.to_str().unwrap()), true, None)?;
-        let pid = proc.pid();
+        let program_path = args[1];
+        let target = Target::launch(Path::new(program_path), None)?;
+        let pid = target.get_process().pid();
         println!("Launched process with PID {pid}");
-        return Ok(proc);
+        return Ok(target);
     }
 }
 
-fn print_stop_reason(process: &Rc<Process>, reason: StopReason) -> Result<(), SdbError> {
+fn print_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
+    let process = &target.get_process();
     let pid = process.pid();
     let msg_start = format!("Process {pid}");
     let msg = match reason.reason {
@@ -70,25 +76,40 @@ fn print_stop_reason(process: &Rc<Process>, reason: StopReason) -> Result<(), Sd
             format!("{msg_start} terminated with signal {}", sig.as_str())
         }
         ProcessState::Stopped => {
-            let sig: Signal = reason.info.try_into().unwrap();
-            let addr = process.get_pc();
-            let mut msg = format!(
-                "{msg_start} stopped with signal {} at {addr:#x}",
-                sig.as_str()
-            );
-            if reason.info == SIGTRAP {
-                msg += &get_sigtrap_info(process, reason)?;
-            }
-            msg
+            get_signal_stop_reason(target, reason)?
         }
         ProcessState::Running => {
             eprintln!("Incorrect state");
             String::new()
         }
     };
-    println!("{msg}");
+    println!("Process {pid} {msg}");
     Ok(())
 }
+fn get_signal_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<String, SdbError> {
+    let process = target.get_process();
+    let mut msg = format!(
+        "stopped with signal {} at {:#x}",
+        sig_abbrev(reason.info),
+        process.get_pc().get_addr()
+    );
+    let func = target
+        .get_elf()
+        .get_symbol_containing_virt_address(process.get_pc());
+    if let Some(func) = func {
+        if st_type(func.0.st_info) == STT_FUNC {
+            msg += &format!(
+                " ({})",
+                target.get_elf().get_string(func.0.st_name as usize)
+            );
+        }
+    }
+    if reason.info == SIGTRAP {
+        msg += &get_sigtrap_info(&process, reason)?;
+    }
+    Ok(msg)
+}
+
 
 fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String, SdbError> {
     if reason.trap_reason == Some(TrapType::SoftwareBreak) {
@@ -144,13 +165,14 @@ fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String,
     return Ok("".to_string());
 }
 
-pub fn handle_command(process: &Rc<Process>, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
+    let process = &target.get_process();
     let cmd = args[0];
     if cmd == "continue" {
         process.resume()?;
         let reason = process.wait_on_signal()?;
-        handle_stop(process, reason)?;
+        handle_stop(target, reason)?;
     } else if cmd == "help" {
         print_help(&args);
     } else if cmd == "register" {
@@ -159,7 +181,7 @@ pub fn handle_command(process: &Rc<Process>, line: &str) -> Result<(), SdbError>
         handle_breakpoint_command(process, &args)?;
     } else if cmd == "step" {
         let reason = process.step_instruction()?;
-        handle_stop(process, reason)?;
+        handle_stop(target, reason)?;
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
@@ -337,8 +359,9 @@ fn handle_disassemble_command(process: &Rc<Process>, args: &[&str]) -> Result<()
     Ok(())
 }
 
-fn handle_stop(process: &Rc<Process>, reason: StopReason) -> Result<(), SdbError> {
-    print_stop_reason(process, reason)?;
+fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
+    let process = &target.get_process();
+    print_stop_reason(target, reason)?;
     if reason.reason == ProcessState::Stopped {
         print_disassembly(process, process.get_pc(), 5)?;
     }
