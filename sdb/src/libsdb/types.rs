@@ -139,6 +139,10 @@ impl SubAssign<i64> for FileAddress {
 }
 
 impl VirtualAddress {
+    pub fn new(addr: u64) -> Self {
+        Self { addr }
+    }
+
     pub fn to_file_addr(self, elf: &Rc<Elf>) -> FileAddress {
         let obj = elf;
         let section = obj.get_section_containing_virt_addr(self);

@@ -34,7 +34,7 @@ use std::{mem, ptr};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub struct SdbElf64Ehdr(Elf64_Ehdr);
+pub struct SdbElf64Ehdr(pub Elf64_Ehdr);
 
 unsafe impl Pod for SdbElf64Ehdr {}
 
@@ -42,7 +42,7 @@ unsafe impl Zeroable for SdbElf64Ehdr {}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub struct SdbElf64Shdr(Elf64_Shdr);
+pub struct SdbElf64Shdr(pub Elf64_Shdr);
 
 unsafe impl Pod for SdbElf64Shdr {}
 
@@ -50,7 +50,7 @@ unsafe impl Zeroable for SdbElf64Shdr {}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub struct SdbElf64Sym(Elf64_Sym);
+pub struct SdbElf64Sym(pub Elf64_Sym);
 
 unsafe impl Pod for SdbElf64Sym {}
 
