@@ -31,6 +31,9 @@ syscall-numbers = "4.0.2"
 multimap = "0.10.1"
 goblin = "0.10.0"
 byteorder = "1.5.0"
+gimli = "0.31.1"
+
+
 [dependencies.nix]
 features = ["process", "ptrace", "personality", "uio", "mman"]
 version = "0.29.0"
