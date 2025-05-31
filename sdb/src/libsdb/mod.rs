@@ -75,9 +75,7 @@ fn print_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbE
             let sig: Signal = reason.info.try_into().unwrap();
             format!("{msg_start} terminated with signal {}", sig.as_str())
         }
-        ProcessState::Stopped => {
-            get_signal_stop_reason(target, reason)?
-        }
+        ProcessState::Stopped => get_signal_stop_reason(target, reason)?,
         ProcessState::Running => {
             eprintln!("Incorrect state");
             String::new()
@@ -109,7 +107,6 @@ fn get_signal_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<Str
     }
     Ok(msg)
 }
-
 
 fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String, SdbError> {
     if reason.trap_reason == Some(TrapType::SoftwareBreak) {
