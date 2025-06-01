@@ -63,10 +63,10 @@ pub struct Elf {
     file_size: usize,
     data: Vec<u8>,
     header: SdbElf64Ehdr,
-    section_headers: Vec<Rc<SdbElf64Shdr>>,
+    section_headers: Vec<Rc<SdbElf64Shdr>>, // TODO refcell without RC
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
     load_bias: RefCell<VirtualAddress>,
-    symbol_table: Vec<Rc<SdbElf64Sym>>,
+    symbol_table: Vec<Rc<SdbElf64Sym>>, // TODO refcell without RC
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
     _map: NonNull<c_void>,
@@ -158,16 +158,12 @@ impl Elf {
         self.section_map.get(name).cloned()
     }
 
-    pub fn get_section_contents(&self, name: &str) -> Vec<u8> {
+    pub fn get_section_contents(&self, name: &str) -> &[u8] {
         if let Some(section) = self.get_section(name) {
-            let mut ret = Vec::with_capacity(section.0.sh_size as usize);
-            ret.extend_from_slice(
-                &self.data[section.0.sh_offset as usize
-                    ..(section.0.sh_offset + section.0.sh_size) as usize],
-            );
-            return ret;
+            return &self.data
+                [section.0.sh_offset as usize..(section.0.sh_offset + section.0.sh_size) as usize];
         }
-        return vec![];
+        return &[];
     }
 
     fn build_section_map(&mut self) {
