@@ -33,8 +33,44 @@ impl Dwarf {
     }
 }
 
-fn parse_abbrev_table(elf: &Rc<Elf>, offset: usize) -> HashMap<u64, Abbrev> {
-    todo!()
+fn parse_abbrev_table(obj: &Rc<Elf>, offset: usize) -> HashMap<u64, Abbrev> {
+    let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"), 0);
+    cursor += offset;
+    let mut table: HashMap<u64, Abbrev> = HashMap::new();
+    let mut code: u64;
+    loop {
+        code = cursor.uleb128();
+        let tag = cursor.uleb128();
+        let has_children = cursor.u8() != 0;
+        let mut attr_specs = Vec::<AttrSpec>::new();
+        let mut attr: u64;
+        loop {
+            attr = cursor.uleb128();
+            let form = cursor.uleb128();
+            if attr != 0 {
+                attr_specs.push(AttrSpec { attr, form });
+            }
+            if attr == 0 {
+                break;
+            }
+        }
+        if code != 0 {
+            table.insert(
+                code,
+                Abbrev {
+                    code,
+                    tag,
+                    has_children,
+                    attr_specs,
+                },
+            );
+        }
+        if code == 0 {
+            break;
+        }
+    }
+
+    table
 }
 
 #[derive(Debug, Clone, Copy)]
