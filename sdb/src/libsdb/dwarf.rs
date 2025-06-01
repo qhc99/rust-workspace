@@ -11,6 +11,15 @@ use super::elf::Elf;
 use super::sdb_error::SdbError;
 
 #[derive(Debug)]
+pub struct Die {
+    pos: Bytes,
+    cu: Rc<CompileUnit>,
+    abbrev: Rc<Abbrev>,
+    next: Bytes,
+    attr_locs: Vec<Bytes>,
+}
+
+#[derive(Debug)]
 pub struct CompileUnit {
     parent: Weak<Dwarf>,
     data: Bytes,
@@ -34,18 +43,22 @@ impl CompileUnit {
         &self.data
     }
 
-    pub fn abbrev_table(&self) -> Rc<HashMap<u64, Abbrev>> {
+    pub fn abbrev_table(&self) -> Rc<HashMap<u64, Rc<Abbrev>>> {
         self.parent
             .upgrade()
             .unwrap()
             .get_abbrev_table(self.abbrev_offset)
+    }
+
+    pub fn root(&self) -> Die {
+        todo!()
     }
 }
 
 #[derive(Debug)]
 pub struct Dwarf {
     elf: Rc<Elf>,
-    abbrev_tables: RefCell<HashMap<usize, Rc<HashMap<u64, Abbrev>>>>,
+    abbrev_tables: RefCell<HashMap<usize, Rc<HashMap<u64, Rc<Abbrev>>>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
 }
 
@@ -65,7 +78,7 @@ impl Dwarf {
         self.elf.clone()
     }
 
-    pub fn get_abbrev_table(&self, offset: usize) -> Rc<HashMap<u64, Abbrev>> {
+    pub fn get_abbrev_table(&self, offset: usize) -> Rc<HashMap<u64, Rc<Abbrev>>> {
         if !self.abbrev_tables.borrow().contains_key(&offset) {
             self.abbrev_tables
                 .borrow_mut()
@@ -114,10 +127,10 @@ fn parse_compile_unit(
     Ok(CompileUnit::new(dwarf, data, abbrev as usize))
 }
 
-fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Abbrev> {
+fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Rc<Abbrev>> {
     let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"), 0);
     cursor += offset;
-    let mut table: HashMap<u64, Abbrev> = HashMap::new();
+    let mut table: HashMap<u64, Rc<Abbrev>> = HashMap::new();
     let mut code: u64;
     loop {
         code = cursor.uleb128();
@@ -138,12 +151,12 @@ fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Abbrev> {
         if code != 0 {
             table.insert(
                 code,
-                Abbrev {
+                Rc::new(Abbrev {
                     code,
                     tag,
                     has_children,
                     attr_specs,
-                },
+                }),
             );
         }
         if code == 0 {
