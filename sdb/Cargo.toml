@@ -32,7 +32,7 @@ multimap = "0.10.1"
 goblin = "0.10.0"
 byteorder = "1.5.0"
 gimli = "0.31.1"
-
+bytes = "1.10.1"
 
 [dependencies.nix]
 features = ["process", "ptrace", "personality", "uio", "mman"]

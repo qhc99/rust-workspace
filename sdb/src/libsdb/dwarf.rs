@@ -1,39 +1,122 @@
+use std::cell::RefCell;
 use std::ffi::CStr;
+use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 
 use bytemuck::Pod;
+use bytes::Bytes;
 
 use super::bit::from_bytes;
 use super::elf::Elf;
 
 #[derive(Debug)]
+pub struct CompileUnit {
+    parent: Weak<Dwarf>,
+    data: Bytes,
+    abbrev_offset: usize,
+}
+
+impl CompileUnit {
+    pub fn new(parent: &Rc<Dwarf>, data: &Bytes, abbrev_offset: usize) -> Rc<Self> {
+        Rc::new(Self {
+            parent: Rc::downgrade(parent),
+            data: data.clone(),
+            abbrev_offset,
+        })
+    }
+
+    pub fn dwarf_info(&self) -> Rc<Dwarf> {
+        self.parent.upgrade().unwrap()
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn abbrev_table(&self) -> Rc<HashMap<u64, Abbrev>> {
+        self.parent
+            .upgrade()
+            .unwrap()
+            .get_abbrev_table(self.abbrev_offset)
+    }
+}
+
+#[derive(Debug)]
 pub struct Dwarf {
     elf: Rc<Elf>,
-    abbrev_tables: HashMap<usize, HashMap<u64, Abbrev>>,
+    abbrev_tables: RefCell<HashMap<usize, Rc<HashMap<u64, Abbrev>>>>,
+    compile_units: Vec<Rc<CompileUnit>>,
 }
 
 impl Dwarf {
-    pub fn new(elf: &Rc<Elf>) -> Self {
-        Self {
-            elf: elf.clone(),
-            abbrev_tables: HashMap::default(),
-        }
+    pub fn new(parent: &Rc<Elf>) -> Rc<Self> {
+        let mut obj = Self {
+            elf: parent.clone(),
+            abbrev_tables: RefCell::new(HashMap::default()),
+            compile_units: Vec::default(),
+        };
+        let t = parse_compile_units(&mut obj, parent);
+        obj.compile_units = t;
+        Rc::new(obj)
     }
 
     pub fn elf_file(&self) -> Rc<Elf> {
         self.elf.clone()
     }
 
-    pub fn get_abbrev_table(&mut self, offset: usize) -> &HashMap<u64, Abbrev> {
-        if !self.abbrev_tables.contains_key(&offset) {
+    pub fn get_abbrev_table(&self, offset: usize) -> Rc<HashMap<u64, Abbrev>> {
+        if !self.abbrev_tables.borrow().contains_key(&offset) {
             self.abbrev_tables
-                .insert(offset, parse_abbrev_table(&self.elf, offset));
+                .borrow_mut()
+                .insert(offset, Rc::new(parse_abbrev_table(&self.elf, offset)));
         }
-        &self.abbrev_tables[&offset]
+        self.abbrev_tables.borrow()[&offset].clone()
+    }
+
+    pub fn compile_units(&self) -> &Vec<Rc<CompileUnit>> {
+        &self.compile_units
     }
 }
+fn parse_compile_units(dwarf: &mut Dwarf, obj: &Elf) -> Vec<Rc<CompileUnit>> {
+    let debug_info = obj.get_section_contents(".debug_info");
+    let mut cursor = Cursor::new(debug_info, 0);
+    let mut units: Vec<Rc<CompileUnit>> = Vec::new();
+    while !cursor.finished() {
+        let unit = parse_compile_unit(dwarf, obj, &mut cursor);
+        cursor += unit.data.len();
+        units.push(unit);
+    }
+    units
+}
 
-fn parse_abbrev_table(obj: &Rc<Elf>, offset: usize) -> HashMap<u64, Abbrev> {
+fn parse_compile_unit(dwarf: &Dwarf, obj: &Elf, cursor: &mut Cursor) -> Rc<CompileUnit> {
+    todo!()
+}
+/**
+std::unique_ptr<sdb::compile_unit> parse_compile_unit(
+    sdb::dwarf& dwarf, const sdb::elf& obj, cursor cur) {
+    auto start = cur.position();
+    auto size = cur.u32();
+    auto version = cur.u16();
+    auto abbrev = cur.u32();
+    auto address_size = cur.u8();
+    if (size == 0xffffffff) {
+        sdb::error::send("Only DWARF32 is supported");
+    }
+    if (version != 4) {
+        sdb::error::send("Only DWARF version 4 is supported");
+    }
+    if (address_size != 8) {
+        sdb::error::send("Invalid address size for DWARF");
+    }
+    size += sizeof(std::uint32_t);
+    sdb::span<const std::byte> data = { start, size };
+    return std::make_unique<sdb::compile_unit>(dwarf, data, abbrev);
+}
+ *
+ */
+
+fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Abbrev> {
     let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"), 0);
     cursor += offset;
     let mut table: HashMap<u64, Abbrev> = HashMap::new();

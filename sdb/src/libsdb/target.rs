@@ -44,7 +44,7 @@ impl Target {
     }
 }
 
-fn create_loaded_elf(proc: &Rc<Process>, path: &Path) -> Result<Rc<Elf>, SdbError> {
+fn create_loaded_elf(proc: &Process, path: &Path) -> Result<Rc<Elf>, SdbError> {
     let auxv = proc.get_auxv();
     let obj = Elf::new(path)?;
     obj.notify_loaded(VirtualAddress::new(

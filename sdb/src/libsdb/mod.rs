@@ -63,7 +63,7 @@ pub fn attach(args: &[&str]) -> Result<Rc<Target>, SdbError> {
     }
 }
 
-fn print_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
+fn print_stop_reason(target: &Target, reason: StopReason) -> Result<(), SdbError> {
     let process = &target.get_process();
     let pid = process.pid();
     let msg_start = format!("Process {pid}");
@@ -85,7 +85,7 @@ fn print_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbE
     println!("Process {pid} {msg}");
     Ok(())
 }
-fn get_signal_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<String, SdbError> {
+fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String, SdbError> {
     let process = target.get_process();
     let mut msg = format!(
         "stopped with signal {} at {:#x}",
@@ -109,7 +109,7 @@ fn get_signal_stop_reason(target: &Rc<Target>, reason: StopReason) -> Result<Str
     Ok(msg)
 }
 
-fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String, SdbError> {
+fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, SdbError> {
     if reason.trap_reason == Some(TrapType::SoftwareBreak) {
         let site = process
             .breakpoint_sites()
@@ -163,7 +163,7 @@ fn get_sigtrap_info(process: &Rc<Process>, reason: StopReason) -> Result<String,
     return Ok("".to_string());
 }
 
-pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let process = &target.get_process();
     let cmd = args[0];
@@ -194,7 +194,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     Ok(())
 }
 
-fn handle_catchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_catchpoint_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "catchpoint"]);
         return Ok(());
@@ -205,7 +205,7 @@ fn handle_catchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(),
     Ok(())
 }
 
-fn handle_syscall_catchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_syscall_catchpoint_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     let mut policy = SyscallCatchPolicy::All;
     if args.len() == 3 && args[2] == "none" {
         policy = SyscallCatchPolicy::None;
@@ -276,7 +276,7 @@ fn handle_watchpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(),
     Ok(())
 }
 
-fn handle_watchpoint_list(process: &Rc<Process>) -> Result<(), SdbError> {
+fn handle_watchpoint_list(process: &Process) -> Result<(), SdbError> {
     let watchpoints = process.watchpoints();
     let watchpoints = watchpoints.borrow();
     if watchpoints.empty() {
@@ -327,7 +327,7 @@ fn handle_watchpoint_set(process: &Rc<Process>, args: &[&str]) -> Result<(), Sdb
     Ok(())
 }
 
-fn handle_disassemble_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_disassemble_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     let mut address = process.get_pc();
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
@@ -357,7 +357,7 @@ fn handle_disassemble_command(process: &Rc<Process>, args: &[&str]) -> Result<()
     Ok(())
 }
 
-fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
+fn handle_stop(target: &Target, reason: StopReason) -> Result<(), SdbError> {
     let process = &target.get_process();
     print_stop_reason(target, reason)?;
     if reason.reason == ProcessState::Stopped {
@@ -366,7 +366,7 @@ fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> 
     Ok(())
 }
 
-fn handle_memory_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 3 {
         print_help(&["help", "memory"]);
         return Ok(());
@@ -382,7 +382,7 @@ fn handle_memory_command(process: &Rc<Process>, args: &[&str]) -> Result<(), Sdb
     Ok(())
 }
 
-fn handle_memory_read_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_read_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     let address = u64::from_integral_lower_hex_radix(args[2], 16)?;
     let mut n_bytes = 32usize;
     if args.len() == 4 {
@@ -404,7 +404,7 @@ fn handle_memory_read_command(process: &Rc<Process>, args: &[&str]) -> Result<()
     Ok(())
 }
 
-fn handle_memory_write_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_memory_write_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
     if args.len() != 4 {
         print_help(&["help", "memory"]);
         return Ok(());
@@ -497,7 +497,7 @@ fn handle_breakpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(),
     return Ok(());
 }
 
-fn handle_register_command(process: &Rc<Process>, args: &[&str]) {
+fn handle_register_command(process: &Process, args: &[&str]) {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return;
@@ -512,7 +512,7 @@ fn handle_register_command(process: &Rc<Process>, args: &[&str]) {
     }
 }
 
-fn handle_register_read(process: &Rc<Process>, args: &[&str]) {
+fn handle_register_read(process: &Process, args: &[&str]) {
     if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
         for info in GRegisterInfos {
             let should_print =
@@ -549,7 +549,7 @@ fn handle_register_read(process: &Rc<Process>, args: &[&str]) {
     }
 }
 
-fn handle_register_write(process: &Rc<Process>, args: &[&str]) {
+fn handle_register_write(process: &Process, args: &[&str]) {
     if args.len() != 4 {
         print_help(&["help", "register"]);
         return;

@@ -1,6 +1,7 @@
 use super::ffi::demangle;
 use bytemuck::checked::pod_read_unaligned;
 use bytemuck::{Pod, Zeroable};
+use bytes::Bytes;
 use elf::abi::STT_TLS;
 use goblin::elf::sym::st_type;
 use multimap::MultiMap;
@@ -17,12 +18,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::{
     num::NonZeroUsize,
-    os::{
-        fd::{FromRawFd, OwnedFd},
-        raw::c_void,
-    },
+    os::fd::{FromRawFd, OwnedFd},
     path::{Path, PathBuf},
-    ptr::NonNull,
 };
 
 use super::bit::cstr_view;
@@ -61,7 +58,7 @@ pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,
     file_size: usize,
-    data: Vec<u8>,
+    data: Bytes,
     header: SdbElf64Ehdr,
     section_headers: Vec<Rc<SdbElf64Shdr>>,
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
@@ -69,7 +66,6 @@ pub struct Elf {
     symbol_table: Vec<Rc<SdbElf64Sym>>,
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
-    _map: NonNull<c_void>,
 }
 
 impl Elf {
@@ -98,14 +94,16 @@ impl Elf {
         let bytes = unsafe { std::slice::from_raw_parts(map.as_ptr() as *const u8, file_size) };
         let mut data = Vec::<u8>::with_capacity(file_size);
         data.extend_from_slice(bytes);
+        unsafe { munmap(map, file_size).expect("mmap uniquely managed by Elf object") };
+        let _ = bytes; // drop
 
-        let header = pod_read_unaligned(&bytes[..mem::size_of::<SdbElf64Ehdr>()]);
+        let header = pod_read_unaligned(&data[..mem::size_of::<SdbElf64Ehdr>()]);
 
         let mut obj = Self {
             fd,
             path: path.to_path_buf(),
             file_size,
-            data,
+            data: Bytes::from(data),
             header,
             section_headers: Vec::default(),
             section_map: HashMap::default(),
@@ -113,7 +111,6 @@ impl Elf {
             symbol_table: Vec::default(),
             symbol_name_map: RefCell::new(MultiMap::default()),
             symbol_addr_map: RefCell::new(BTreeMap::default()),
-            _map: map,
         };
         obj.parse_section_headers();
         obj.build_section_map();
@@ -366,11 +363,5 @@ impl ElfExt for Rc<Elf> {
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
         self.get_symbol_containing_file_address(address.to_file_addr(self))
-    }
-}
-
-impl Drop for Elf {
-    fn drop(&mut self) {
-        unsafe { munmap(self._map, self.file_size).expect("mmap uniquely managed by Elf object") };
     }
 }
