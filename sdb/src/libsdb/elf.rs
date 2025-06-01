@@ -155,12 +155,13 @@ impl Elf {
         self.section_map.get(name).cloned()
     }
 
-    pub fn get_section_contents(&self, name: &str) -> &[u8] {
+    pub fn get_section_contents(&self, name: &str) -> Bytes {
         if let Some(section) = self.get_section(name) {
-            return &self.data
-                [section.0.sh_offset as usize..(section.0.sh_offset + section.0.sh_size) as usize];
+            return self.data.slice(
+                section.0.sh_offset as usize..(section.0.sh_offset + section.0.sh_size) as usize,
+            );
         }
-        return &[];
+        return Bytes::new();
     }
 
     fn build_section_map(&mut self) {

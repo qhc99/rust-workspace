@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
@@ -8,6 +8,7 @@ use bytes::Bytes;
 
 use super::bit::from_bytes;
 use super::elf::Elf;
+use super::sdb_error::SdbError;
 
 #[derive(Debug)]
 pub struct CompileUnit {
@@ -17,10 +18,10 @@ pub struct CompileUnit {
 }
 
 impl CompileUnit {
-    pub fn new(parent: &Rc<Dwarf>, data: &Bytes, abbrev_offset: usize) -> Rc<Self> {
+    pub fn new(parent: &Rc<Dwarf>, data: Bytes, abbrev_offset: usize) -> Rc<Self> {
         Rc::new(Self {
             parent: Rc::downgrade(parent),
-            data: data.clone(),
+            data: data,
             abbrev_offset,
         })
     }
@@ -45,19 +46,19 @@ impl CompileUnit {
 pub struct Dwarf {
     elf: Rc<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<HashMap<u64, Abbrev>>>>,
-    compile_units: Vec<Rc<CompileUnit>>,
+    compile_units: RefCell<Vec<Rc<CompileUnit>>>,
 }
 
 impl Dwarf {
-    pub fn new(parent: &Rc<Elf>) -> Rc<Self> {
-        let mut obj = Self {
+    pub fn new(parent: &Rc<Elf>) -> Result<Rc<Self>, SdbError> {
+        let ret = Self {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
-            compile_units: Vec::default(),
+            compile_units: RefCell::new(Vec::default()),
         };
-        let t = parse_compile_units(&mut obj, parent);
-        obj.compile_units = t;
-        Rc::new(obj)
+        let ret = Rc::new(ret);
+        *ret.compile_units.borrow_mut() = parse_compile_units(&ret, parent)?;
+        Ok(ret)
     }
 
     pub fn elf_file(&self) -> Rc<Elf> {
@@ -73,48 +74,45 @@ impl Dwarf {
         self.abbrev_tables.borrow()[&offset].clone()
     }
 
-    pub fn compile_units(&self) -> &Vec<Rc<CompileUnit>> {
-        &self.compile_units
+    pub fn compile_units(&self) -> Ref<'_, Vec<Rc<CompileUnit>>> {
+        self.compile_units.borrow()
     }
 }
-fn parse_compile_units(dwarf: &mut Dwarf, obj: &Elf) -> Vec<Rc<CompileUnit>> {
+fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUnit>>, SdbError> {
     let debug_info = obj.get_section_contents(".debug_info");
     let mut cursor = Cursor::new(debug_info, 0);
     let mut units: Vec<Rc<CompileUnit>> = Vec::new();
     while !cursor.finished() {
-        let unit = parse_compile_unit(dwarf, obj, &mut cursor);
+        let unit = parse_compile_unit(dwarf, obj, &mut cursor)?;
         cursor += unit.data.len();
         units.push(unit);
     }
-    units
+    Ok(units)
 }
 
-fn parse_compile_unit(dwarf: &Dwarf, obj: &Elf, cursor: &mut Cursor) -> Rc<CompileUnit> {
-    todo!()
+fn parse_compile_unit(
+    dwarf: &Rc<Dwarf>,
+    _obj: &Elf,
+    cursor: &mut Cursor,
+) -> Result<Rc<CompileUnit>, SdbError> {
+    let start = cursor.position();
+    let mut size = cursor.u32();
+    let version = cursor.u16();
+    let abbrev = cursor.u32();
+    let address_size = cursor.u8();
+    if size == 0xffffffff {
+        return SdbError::err("Only DWARF32 is supported");
+    }
+    if version != 4 {
+        return SdbError::err("Only DWARF version 4 is supported");
+    }
+    if address_size != 8 {
+        return SdbError::err("Invalid address size for DWARF");
+    }
+    size += size_of::<u32>() as u32;
+    let data = start.slice(..size as usize);
+    Ok(CompileUnit::new(dwarf, data, abbrev as usize))
 }
-/**
-std::unique_ptr<sdb::compile_unit> parse_compile_unit(
-    sdb::dwarf& dwarf, const sdb::elf& obj, cursor cur) {
-    auto start = cur.position();
-    auto size = cur.u32();
-    auto version = cur.u16();
-    auto abbrev = cur.u32();
-    auto address_size = cur.u8();
-    if (size == 0xffffffff) {
-        sdb::error::send("Only DWARF32 is supported");
-    }
-    if (version != 4) {
-        sdb::error::send("Only DWARF version 4 is supported");
-    }
-    if (address_size != 8) {
-        sdb::error::send("Invalid address size for DWARF");
-    }
-    size += sizeof(std::uint32_t);
-    sdb::span<const std::byte> data = { start, size };
-    return std::make_unique<sdb::compile_unit>(dwarf, data, abbrev);
-}
- *
- */
 
 fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Abbrev> {
     let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"), 0);
@@ -171,8 +169,8 @@ pub struct Abbrev {
 }
 
 #[derive(Debug)]
-struct Cursor<'this> {
-    data: &'this [u8],
+struct Cursor {
+    data: Bytes,
 }
 
 macro_rules! gen_fixed_int {
@@ -185,34 +183,38 @@ macro_rules! gen_fixed_int {
     };
 }
 
-impl<'this> Cursor<'this> {
-    pub fn new(data: &'this [u8], pos: usize) -> Self {
-        Self { data: &data[pos..] }
+impl Cursor {
+    pub fn new(data: Bytes, pos: usize) -> Self {
+        Self {
+            data: data.slice(pos..),
+        }
     }
 
     pub fn finished(&self) -> bool {
         self.data.len() > 0
     }
 
+    pub fn position(&self) -> Bytes {
+        self.data.clone()
+    }
+
     pub fn fixed_int<T: Pod>(&mut self) -> T {
-        let t = from_bytes::<T>(self.data);
-        self.data = &self.data[size_of::<T>()..];
+        let t = from_bytes::<T>(&self.data);
+        self.data = self.data.slice(size_of::<T>()..);
         t
     }
 
-    pub fn string(&mut self) -> &str {
+    pub fn string(&mut self) -> String {
         if let Some(pos) = self.data.iter().position(|&b| b == 0) {
             let next = pos + 1;
-            let s = CStr::from_bytes_with_nul(&self.data[..next])
-                .unwrap()
-                .to_str()
-                .unwrap();
+            let s = self.data.slice(..next);
+            let s = CStr::from_bytes_with_nul(&s).unwrap().to_str().unwrap();
             if next < self.data.len() {
-                self.data = &self.data[next..];
+                self.data = self.data.slice(next..);
             } else {
-                self.data = &[];
+                self.data = Bytes::new();
             }
-            return s;
+            return s.to_owned();
         }
 
         panic!("Cannot find cstr")
@@ -265,8 +267,8 @@ impl<'this> Cursor<'this> {
     }
 }
 
-impl<'this> AddAssign<usize> for Cursor<'this> {
+impl AddAssign<usize> for Cursor {
     fn add_assign(&mut self, rhs: usize) {
-        self.data = &self.data[rhs..]
+        self.data = self.data.slice(rhs..)
     }
 }
