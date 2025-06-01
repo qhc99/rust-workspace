@@ -13,10 +13,54 @@ use super::sdb_error::SdbError;
 #[derive(Debug)]
 pub struct Die {
     pos: Bytes,
-    cu: Rc<CompileUnit>,
-    abbrev: Rc<Abbrev>,
+    cu: Weak<CompileUnit>,
+    abbrev: Option<Rc<Abbrev>>,
     next: Bytes,
     attr_locs: Vec<Bytes>,
+}
+
+impl Die {
+    pub fn new(
+        pos: Bytes,
+        cu: &Rc<CompileUnit>,
+        abbrev: Rc<Abbrev>,
+        attr_locs: Vec<Bytes>,
+        next: Bytes,
+    ) -> Self {
+        Self {
+            pos,
+            cu: Rc::downgrade(cu),
+            abbrev: Some(abbrev),
+            next,
+            attr_locs,
+        }
+    }
+
+    pub fn null(next: Bytes) -> Self {
+        Self {
+            pos: Bytes::new(),
+            cu: Weak::new(),
+            abbrev: None,
+            next,
+            attr_locs: Vec::new(),
+        }
+    }
+
+    pub fn cu(&self) -> Rc<CompileUnit> {
+        self.cu.upgrade().unwrap()
+    }
+
+    pub fn abbrev_entry(&self) -> Rc<Abbrev> {
+        self.abbrev.as_ref().unwrap().clone()
+    }
+
+    pub fn position(&self) -> Bytes {
+        self.pos.clone()
+    }
+
+    pub fn next(&self) -> Bytes {
+        self.next.clone()
+    }
 }
 
 #[derive(Debug)]
@@ -51,8 +95,14 @@ impl CompileUnit {
     }
 
     pub fn root(&self) -> Die {
-        todo!()
+        let header_size = 11usize;
+        let mut cursor = Cursor::new(self.data.clone(), header_size);
+        return parse_die(self, &mut cursor);
     }
+}
+
+fn parse_die(cu: &CompileUnit, cursor: &mut Cursor) -> Die {
+    todo!()
 }
 
 #[derive(Debug)]
