@@ -56,6 +56,7 @@ unsafe impl Pod for SdbElf64Sym {}
 
 unsafe impl Zeroable for SdbElf64Sym {}
 
+#[derive(Debug)]
 pub struct Elf {
     fd: OwnedFd,
     path: PathBuf,

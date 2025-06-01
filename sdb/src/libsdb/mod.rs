@@ -28,6 +28,7 @@ use types::{StoppointMode, VirtualAddress};
 
 mod breakpoint_site;
 mod disassembler;
+mod dwarf;
 mod ffi;
 mod parse;
 mod stoppoint_collection;
