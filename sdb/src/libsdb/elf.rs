@@ -63,10 +63,10 @@ pub struct Elf {
     file_size: usize,
     data: Vec<u8>,
     header: SdbElf64Ehdr,
-    section_headers: Vec<Rc<SdbElf64Shdr>>, // TODO refcell without RC
+    section_headers: Vec<Rc<SdbElf64Shdr>>,
     section_map: HashMap<String, Rc<SdbElf64Shdr>>,
     load_bias: RefCell<VirtualAddress>,
-    symbol_table: Vec<Rc<SdbElf64Sym>>, // TODO refcell without RC
+    symbol_table: Vec<Rc<SdbElf64Sym>>,
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
     _map: NonNull<c_void>,
