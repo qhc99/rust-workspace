@@ -93,16 +93,36 @@ impl CompileUnit {
             .unwrap()
             .get_abbrev_table(self.abbrev_offset)
     }
+}
 
-    pub fn root(&self) -> Die {
+pub trait CompileUnitExt {
+    fn root(&self) -> Die;
+}
+
+impl CompileUnitExt for Rc<CompileUnit> {
+    fn root(&self) -> Die {
         let header_size = 11usize;
-        let mut cursor = Cursor::new(self.data.clone(), header_size);
+        let mut cursor = Cursor::new(self.data.slice(header_size..));
         return parse_die(self, &mut cursor);
     }
 }
 
-fn parse_die(cu: &CompileUnit, cursor: &mut Cursor) -> Die {
-    todo!()
+fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Die {
+    let pos = cursor.position();
+    let abbrev_code = cursor.uleb128();
+    if abbrev_code == 0 {
+        let next = cursor.position();
+        return Die::null(next);
+    }
+    let abbrev_table = cu.abbrev_table();
+    let abbrev = &abbrev_table[&abbrev_code];
+    let mut attr_locs = Vec::<Bytes>::with_capacity(abbrev.attr_specs.len());
+    for attr in &abbrev.attr_specs {
+        attr_locs.push(cursor.position());
+        cursor.skip_form(attr.form);
+    }
+    let next = cursor.position();
+    return Die::new(pos, cu, abbrev.clone(), attr_locs, next);
 }
 
 #[derive(Debug)]
@@ -143,7 +163,7 @@ impl Dwarf {
 }
 fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUnit>>, SdbError> {
     let debug_info = obj.get_section_contents(".debug_info");
-    let mut cursor = Cursor::new(debug_info, 0);
+    let mut cursor = Cursor::new(debug_info);
     let mut units: Vec<Rc<CompileUnit>> = Vec::new();
     while !cursor.finished() {
         let unit = parse_compile_unit(dwarf, obj, &mut cursor)?;
@@ -178,7 +198,7 @@ fn parse_compile_unit(
 }
 
 fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Rc<Abbrev>> {
-    let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"), 0);
+    let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"));
     cursor += offset;
     let mut table: HashMap<u64, Rc<Abbrev>> = HashMap::new();
     let mut code: u64;
@@ -247,10 +267,8 @@ macro_rules! gen_fixed_int {
 }
 
 impl Cursor {
-    pub fn new(data: Bytes, pos: usize) -> Self {
-        Self {
-            data: data.slice(pos..),
-        }
+    pub fn new(data: Bytes) -> Self {
+        Self { data }
     }
 
     pub fn finished(&self) -> bool {
@@ -316,6 +334,10 @@ impl Cursor {
             res |= !0u64 << shift;
         }
         res
+    }
+
+    pub fn skip_form(&mut self, form: u64) {
+        todo!()
     }
 
     gen_fixed_int! {
