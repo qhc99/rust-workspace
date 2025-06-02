@@ -5,6 +5,13 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 
 use bytemuck::Pod;
 use bytes::Bytes;
+use gimli::{
+    DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1,
+    DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag,
+    DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1,
+    DW_FORM_ref2, DW_FORM_ref4, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp,
+    DW_FORM_udata, DwForm,
+};
 
 use super::bit::from_bytes;
 use super::elf::Elf;
@@ -98,33 +105,33 @@ impl CompileUnit {
 }
 
 pub trait CompileUnitExt {
-    fn root(&self) -> Die;
+    fn root(&self) -> Result<Die, SdbError>;
 }
 
 impl CompileUnitExt for Rc<CompileUnit> {
-    fn root(&self) -> Die {
+    fn root(&self) -> Result<Die, SdbError> {
         let header_size = 11usize;
         let mut cursor = Cursor::new(self.data.slice(header_size..));
         return parse_die(self, &mut cursor);
     }
 }
 
-fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Die {
+fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Result<Die, SdbError> {
     let pos = cursor.position();
     let abbrev_code = cursor.uleb128();
     if abbrev_code == 0 {
         let next = cursor.position();
-        return Die::null(next);
+        return Ok(Die::null(next));
     }
     let abbrev_table = cu.abbrev_table();
     let abbrev = &abbrev_table[&abbrev_code];
     let mut attr_locs = Vec::<Bytes>::with_capacity(abbrev.attr_specs.len());
     for attr in &abbrev.attr_specs {
         attr_locs.push(cursor.position());
-        cursor.skip_form(attr.form);
+        cursor.skip_form(attr.form)?;
     }
     let next = cursor.position();
-    return Die::new(pos, cu, abbrev.clone(), attr_locs, next);
+    return Ok(Die::new(pos, cu, abbrev.clone(), attr_locs, next));
 }
 
 #[derive(Debug)]
@@ -337,9 +344,78 @@ impl Cursor {
         }
         res
     }
+    #[allow(non_upper_case_globals)]
+    pub fn skip_form(&mut self, form: u64) -> Result<(), SdbError> {
+        return match DwForm(form.try_into().unwrap()) {
+            /* 0-byte forms -------------------------------------------------- */
+            DW_FORM_flag_present => Ok(()),
 
-    pub fn skip_form(&mut self, form: u64) {
-        todo!()
+            /* fixed-size scalar/reference forms ----------------------------- */
+            DW_FORM_data1 | DW_FORM_ref1 | DW_FORM_flag => {
+                self.data = self.data.slice(1..);
+                Ok(())
+            }
+            DW_FORM_data2 | DW_FORM_ref2 => {
+                self.data = self.data.slice(2..);
+                Ok(())
+            }
+            DW_FORM_data4 | DW_FORM_ref4 | DW_FORM_ref_addr | DW_FORM_sec_offset | DW_FORM_strp => {
+                self.data = self.data.slice(4..);
+                Ok(())
+            }
+            DW_FORM_data8 | DW_FORM_addr => {
+                self.data = self.data.slice(8..);
+                Ok(())
+            }
+
+            /* variable-length scalars --------------------------------------- */
+            DW_FORM_sdata => {
+                self.sleb128();
+                Ok(())
+            }
+            DW_FORM_udata | DW_FORM_ref_udata => {
+                self.uleb128();
+                Ok(())
+            }
+
+            /* blocks whose length precedes the data ------------------------- */
+            DW_FORM_block1 => {
+                let s = self.u8() as usize;
+                self.data = self.data.slice(s..);
+                Ok(())
+            }
+            DW_FORM_block2 => {
+                let s = self.u16() as usize;
+                self.data = self.data.slice(s..);
+                Ok(())
+            }
+            DW_FORM_block4 => {
+                let s = self.u32() as usize;
+                self.data = self.data.slice(s..);
+                Ok(())
+            }
+            DW_FORM_block | DW_FORM_exprloc => {
+                let s = self.uleb128() as usize;
+                self.data = self.data.slice(s..);
+                Ok(())
+            }
+
+            /* in-line, NUL-terminated string ------------------------------- */
+            DW_FORM_string => {
+                while !self.finished() && self.data[0] != 0 {
+                    self.data = self.data.slice(1..);
+                }
+                self.data = self.data.slice(1..); // consume trailing NUL
+                Ok(())
+            }
+            /* indirection: the *next* ULEB128 is another form code ---------- */
+            DW_FORM_indirect => {
+                let s = self.uleb128();
+                self.skip_form(s)?;
+                Ok(())
+            }
+            _ => SdbError::err("s"),
+        };
     }
 
     gen_fixed_int! {
