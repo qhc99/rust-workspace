@@ -10,6 +10,8 @@ use super::bit::from_bytes;
 use super::elf::Elf;
 use super::sdb_error::SdbError;
 
+type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
+
 #[derive(Debug)]
 pub struct Die {
     pos: Bytes,
@@ -74,7 +76,7 @@ impl CompileUnit {
     pub fn new(parent: &Rc<Dwarf>, data: Bytes, abbrev_offset: usize) -> Rc<Self> {
         Rc::new(Self {
             parent: Rc::downgrade(parent),
-            data: data,
+            data,
             abbrev_offset,
         })
     }
@@ -87,7 +89,7 @@ impl CompileUnit {
         &self.data
     }
 
-    pub fn abbrev_table(&self) -> Rc<HashMap<u64, Rc<Abbrev>>> {
+    pub fn abbrev_table(&self) -> Rc<AbbrevTable> {
         self.parent
             .upgrade()
             .unwrap()
@@ -128,7 +130,7 @@ fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Die {
 #[derive(Debug)]
 pub struct Dwarf {
     elf: Rc<Elf>,
-    abbrev_tables: RefCell<HashMap<usize, Rc<HashMap<u64, Rc<Abbrev>>>>>,
+    abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
 }
 
@@ -148,7 +150,7 @@ impl Dwarf {
         self.elf.clone()
     }
 
-    pub fn get_abbrev_table(&self, offset: usize) -> Rc<HashMap<u64, Rc<Abbrev>>> {
+    pub fn get_abbrev_table(&self, offset: usize) -> Rc<AbbrevTable> {
         if !self.abbrev_tables.borrow().contains_key(&offset) {
             self.abbrev_tables
                 .borrow_mut()
@@ -197,10 +199,10 @@ fn parse_compile_unit(
     Ok(CompileUnit::new(dwarf, data, abbrev as usize))
 }
 
-fn parse_abbrev_table(obj: &Elf, offset: usize) -> HashMap<u64, Rc<Abbrev>> {
+fn parse_abbrev_table(obj: &Elf, offset: usize) -> AbbrevTable {
     let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"));
     cursor += offset;
-    let mut table: HashMap<u64, Rc<Abbrev>> = HashMap::new();
+    let mut table: AbbrevTable = HashMap::new();
     let mut code: u64;
     loop {
         code = cursor.uleb128();
@@ -272,7 +274,7 @@ impl Cursor {
     }
 
     pub fn finished(&self) -> bool {
-        self.data.len() > 0
+        !self.data.is_empty()
     }
 
     pub fn position(&self) -> Bytes {
@@ -330,7 +332,7 @@ impl Cursor {
                 break;
             }
         }
-        if ((shift as usize) < size_of::<u64>() * 8) && (byte & 0x40) != 0 {
+        if ((shift as usize) < (u64::BITS as usize) * 8) && (byte & 0x40) != 0 {
             res |= !0u64 << shift;
         }
         res
