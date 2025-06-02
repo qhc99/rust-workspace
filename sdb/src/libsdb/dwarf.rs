@@ -332,7 +332,7 @@ impl Cursor {
                 break;
             }
         }
-        if ((shift as usize) < (u64::BITS as usize) * 8) && (byte & 0x40) != 0 {
+        if ((shift as usize) < u64::BITS as usize) && (byte & 0x40) != 0 {
             res |= !0u64 << shift;
         }
         res
