@@ -1,6 +1,5 @@
 use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
-use std::ops::Index;
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 
@@ -73,15 +72,29 @@ impl Die {
     }
 
     pub fn contains(&self, attribute: u64) -> bool {
-        todo!()
+        if let Some(abbrev) = &self.abbrev {
+            return abbrev.attr_specs.iter().any(|spec| spec.attr == attribute);
+        }
+        false
     }
-}
 
-impl Index<u64> for Die {
-    type Output = DieAttr;
-
-    fn index(&self, index: u64) -> &Self::Output {
-        todo!()
+    fn index(&self, attribute: u64) -> Result<DieAttr, SdbError> {
+        if let Some(abbrev) = &self.abbrev {
+            if let Some((i, spec)) = abbrev
+                .attr_specs
+                .iter()
+                .enumerate()
+                .find(|(_, spec)| spec.attr == attribute)
+            {
+                return Ok(DieAttr::new(
+                    &self.cu(),
+                    spec.attr,
+                    spec.form,
+                    self.attr_locs[i].clone(),
+                ));
+            }
+        }
+        SdbError::err("Attribute not found")
     }
 }
 
@@ -95,7 +108,23 @@ impl DieExt for Rc<Die> {
     }
 }
 
-pub struct DieAttr {}
+pub struct DieAttr {
+    cu: Weak<CompileUnit>,
+    type_: u64,
+    form: u64,
+    location: Bytes,
+}
+
+impl DieAttr {
+    pub fn new(cu: &Rc<CompileUnit>, type_: u64, form: u64, location: Bytes) -> Self {
+        Self {
+            cu: Rc::downgrade(cu),
+            type_,
+            form,
+            location: location.clone(),
+        }
+    }
+}
 
 pub struct DieChildenIter {
     die: Option<Result<Rc<Die>, SdbError>>,
