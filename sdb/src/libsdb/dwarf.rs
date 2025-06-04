@@ -1,5 +1,6 @@
 use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
+use std::ops::Index;
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 
@@ -70,24 +71,48 @@ impl Die {
     pub fn next(&self) -> Bytes {
         self.next.clone()
     }
+
+    pub fn contains(&self, attribute: u64) -> bool {
+        todo!()
+    }
 }
 
-struct DieChildenIter {
-    die: Option<Rc<Die>>,
+impl Index<u64> for Die {
+    type Output = DieAttr;
+
+    fn index(&self, index: u64) -> &Self::Output {
+        todo!()
+    }
+}
+
+pub trait DieExt {
+    fn children(&self) -> DieChildenIter;
+}
+
+impl DieExt for Rc<Die> {
+    fn children(&self) -> DieChildenIter {
+        DieChildenIter::new(self)
+    }
+}
+
+pub struct DieAttr {}
+
+pub struct DieChildenIter {
+    die: Option<Result<Rc<Die>, SdbError>>,
 }
 
 impl DieChildenIter {
-    pub fn new(die: &Rc<Die>) -> Result<Self, SdbError> {
+    pub fn new(die: &Rc<Die>) -> Self {
         if let Some(abbrev) = &die.abbrev {
             if abbrev.has_children {
                 let mut next_cursor = Cursor::new(die.next.clone());
-                let next_die = parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor)?;
-                return Ok(Self {
+                let next_die = parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor);
+                return Self {
                     die: Some(next_die),
-                });
+                };
             }
         }
-        Ok(Self { die: None })
+        Self { die: None }
     }
 }
 
@@ -95,21 +120,15 @@ impl Iterator for DieChildenIter {
     type Item = Result<Rc<Die>, SdbError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current_die) = &self.die {
+        if let Some(Ok(current_die)) = &self.die {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
                     let mut next_cursor = Cursor::new(current_die.next.clone());
                     let next_die = parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
-                    if let Ok(ret) = &next_die {
-                        self.die.replace(ret.clone());
-                    }
+                    self.die = Some(next_die.clone());
                     return Some(next_die);
                 } else {
-                    let sub_children = DieChildenIter::new(&current_die);
-                    if let Err(e) = sub_children {
-                        return Some(Err(e));
-                    }
-                    let mut sub_children = sub_children.expect("Checked err");
+                    let mut sub_children = DieChildenIter::new(current_die);
                     let mut child: Option<Result<Rc<Die>, SdbError>>;
                     loop {
                         child = sub_children.next();
@@ -125,9 +144,7 @@ impl Iterator for DieChildenIter {
                         let mut next_cursor = Cursor::new(child.next.clone());
                         let next_die =
                             parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
-                        if let Ok(ret) = &next_die {
-                            self.die.replace(ret.clone());
-                        }
+                        self.die = Some(next_die.clone());
                         return Some(next_die);
                     } else {
                         return Some(Err(child.unwrap_err()));
