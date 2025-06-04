@@ -35,24 +35,24 @@ impl Die {
         abbrev: Rc<Abbrev>,
         attr_locs: Vec<Bytes>,
         next: Bytes,
-    ) -> Self {
-        Self {
+    ) -> Rc<Self> {
+        Rc::new(Self {
             pos,
             cu: Rc::downgrade(cu),
             abbrev: Some(abbrev),
             next,
             attr_locs,
-        }
+        })
     }
 
-    pub fn null(next: Bytes) -> Self {
-        Self {
+    pub fn null(next: Bytes) -> Rc<Self> {
+        Rc::new(Self {
             pos: Bytes::new(),
             cu: Weak::new(),
             abbrev: None,
             next,
             attr_locs: Vec::new(),
-        }
+        })
     }
 
     pub fn cu(&self) -> Rc<CompileUnit> {
@@ -69,6 +69,73 @@ impl Die {
 
     pub fn next(&self) -> Bytes {
         self.next.clone()
+    }
+}
+
+struct DieChildenIter {
+    die: Option<Rc<Die>>,
+}
+
+impl DieChildenIter {
+    pub fn new(die: &Rc<Die>) -> Result<Self, SdbError> {
+        if let Some(abbrev) = &die.abbrev {
+            if abbrev.has_children {
+                let mut next_cursor = Cursor::new(die.next.clone());
+                let next_die = parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor)?;
+                return Ok(Self {
+                    die: Some(next_die),
+                });
+            }
+        }
+        Ok(Self { die: None })
+    }
+}
+
+impl Iterator for DieChildenIter {
+    type Item = Result<Rc<Die>, SdbError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current_die) = &self.die {
+            if let Some(abbrev) = &current_die.abbrev {
+                if !abbrev.has_children {
+                    let mut next_cursor = Cursor::new(current_die.next.clone());
+                    let next_die = parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
+                    if let Ok(ret) = &next_die {
+                        self.die.replace(ret.clone());
+                    }
+                    return Some(next_die);
+                } else {
+                    let sub_children = DieChildenIter::new(&current_die);
+                    if let Err(e) = sub_children {
+                        return Some(Err(e));
+                    }
+                    let mut sub_children = sub_children.expect("Checked err");
+                    let mut child: Option<Result<Rc<Die>, SdbError>>;
+                    loop {
+                        child = sub_children.next();
+                        if let Some(Ok(die)) = &child {
+                            if die.abbrev.is_some() {
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+                    let child = child.expect("Has null die");
+                    if let Ok(child) = child {
+                        let mut next_cursor = Cursor::new(child.next.clone());
+                        let next_die =
+                            parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
+                        if let Ok(ret) = &next_die {
+                            self.die.replace(ret.clone());
+                        }
+                        return Some(next_die);
+                    } else {
+                        return Some(Err(child.unwrap_err()));
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -105,18 +172,18 @@ impl CompileUnit {
 }
 
 pub trait CompileUnitExt {
-    fn root(&self) -> Result<Die, SdbError>;
+    fn root(&self) -> Result<Rc<Die>, SdbError>;
 }
 
 impl CompileUnitExt for Rc<CompileUnit> {
-    fn root(&self) -> Result<Die, SdbError> {
+    fn root(&self) -> Result<Rc<Die>, SdbError> {
         let header_size = 11usize;
         let mut cursor = Cursor::new(self.data.slice(header_size..));
         return parse_die(self, &mut cursor);
     }
 }
 
-fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Result<Die, SdbError> {
+fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Result<Rc<Die>, SdbError> {
     let pos = cursor.position();
     let abbrev_code = cursor.uleb128();
     if abbrev_code == 0 {
@@ -414,7 +481,7 @@ impl Cursor {
                 self.skip_form(s)?;
                 Ok(())
             }
-            _ => SdbError::err("s"),
+            _ => SdbError::err("Unrecognized DWARF form"),
         };
     }
 
