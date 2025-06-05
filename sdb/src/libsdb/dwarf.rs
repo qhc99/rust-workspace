@@ -16,6 +16,7 @@ use gimli::{
 use super::bit::from_bytes;
 use super::elf::Elf;
 use super::sdb_error::SdbError;
+use super::types::FileAddress;
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
 
@@ -124,6 +125,36 @@ impl DieAttr {
             location: location.clone(),
         }
     }
+
+    pub fn name(&self) -> u64 {
+        self.type_
+    }
+
+    pub fn form(&self) -> u64 {
+        self.form
+    }
+
+    pub fn as_address(&self) -> FileAddress {
+        todo!()
+    }
+
+    pub fn as_section_offset(&self) -> u32 {
+        todo!()
+    }
+
+    pub fn as_block(&self) -> Bytes {
+        todo!()
+    }
+
+    pub fn as_int(&self) -> u64 {
+        todo!()
+    }
+
+    pub fn as_string(&self) -> String {
+        todo!()
+    }
+
+    pub fn as_reference(&self)->Die{todo!()}
 }
 
 pub struct DieChildenIter {
