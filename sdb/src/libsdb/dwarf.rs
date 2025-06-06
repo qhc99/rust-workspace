@@ -134,8 +134,13 @@ impl DieAttr {
         self.form
     }
 
-    pub fn as_address(&self) -> FileAddress {
-        todo!()
+    pub fn as_address(&self) -> Result<FileAddress, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        if self.form as u16 != DW_FORM_addr.0{
+            return SdbError::err("Invalid address type");
+        }
+        let elf = self.cu.upgrade().unwrap().dwarf_info().elf_file();
+        return Ok(FileAddress::new(&elf, cursor.u64()));
     }
 
     pub fn as_section_offset(&self) -> u32 {
@@ -154,7 +159,9 @@ impl DieAttr {
         todo!()
     }
 
-    pub fn as_reference(&self)->Die{todo!()}
+    pub fn as_reference(&self) -> Die {
+        todo!()
+    }
 }
 
 pub struct DieChildenIter {
@@ -165,7 +172,7 @@ impl DieChildenIter {
     pub fn new(die: &Rc<Die>) -> Self {
         if let Some(abbrev) = &die.abbrev {
             if abbrev.has_children {
-                let mut next_cursor = Cursor::new(die.next.clone());
+                let mut next_cursor = Cursor::new(&die.next);
                 let next_die = parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor);
                 return Self {
                     die: Some(next_die),
@@ -183,7 +190,7 @@ impl Iterator for DieChildenIter {
         if let Some(Ok(current_die)) = &self.die {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
-                    let mut next_cursor = Cursor::new(current_die.next.clone());
+                    let mut next_cursor = Cursor::new(&current_die.next);
                     let next_die = parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
                     self.die = Some(next_die.clone());
                     return Some(next_die);
@@ -201,7 +208,7 @@ impl Iterator for DieChildenIter {
                     }
                     let child = child.expect("Has null die");
                     if let Ok(child) = child {
-                        let mut next_cursor = Cursor::new(child.next.clone());
+                        let mut next_cursor = Cursor::new(&child.next);
                         let next_die =
                             parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
                         self.die = Some(next_die.clone());
@@ -255,7 +262,7 @@ pub trait CompileUnitExt {
 impl CompileUnitExt for Rc<CompileUnit> {
     fn root(&self) -> Result<Rc<Die>, SdbError> {
         let header_size = 11usize;
-        let mut cursor = Cursor::new(self.data.slice(header_size..));
+        let mut cursor = Cursor::new(&self.data.slice(header_size..));
         return parse_die(self, &mut cursor);
     }
 }
@@ -316,7 +323,7 @@ impl Dwarf {
 }
 fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUnit>>, SdbError> {
     let debug_info = obj.get_section_contents(".debug_info");
-    let mut cursor = Cursor::new(debug_info);
+    let mut cursor = Cursor::new(&debug_info);
     let mut units: Vec<Rc<CompileUnit>> = Vec::new();
     while !cursor.finished() {
         let unit = parse_compile_unit(dwarf, obj, &mut cursor)?;
@@ -351,7 +358,7 @@ fn parse_compile_unit(
 }
 
 fn parse_abbrev_table(obj: &Elf, offset: usize) -> AbbrevTable {
-    let mut cursor = Cursor::new(obj.get_section_contents(".debug_abbrev"));
+    let mut cursor = Cursor::new(&obj.get_section_contents(".debug_abbrev"));
     cursor += offset;
     let mut table: AbbrevTable = HashMap::new();
     let mut code: u64;
@@ -420,8 +427,8 @@ macro_rules! gen_fixed_int {
 }
 
 impl Cursor {
-    pub fn new(data: Bytes) -> Self {
-        Self { data }
+    pub fn new(data: &Bytes) -> Self {
+        Self { data: data.clone() }
     }
 
     pub fn finished(&self) -> bool {
