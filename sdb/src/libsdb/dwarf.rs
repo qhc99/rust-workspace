@@ -114,17 +114,28 @@ impl Die {
     }
 
     pub fn high_pc(&self) -> Result<FileAddress, SdbError> {
-        let attr = self.index(DW_AT_high_pc.0 as u64)?;
-        let addr: u64;
-        if attr.form() == DW_FORM_addr.0.into() {
-            addr = attr.as_address()?.addr();
-        } else {
-            addr = self.low_pc()?.addr() + attr.as_int()?;
+        if self.contains(DW_AT_ranges.0 as u64) {
+            let last_entry = self
+                .index(DW_AT_ranges.0 as u64)?
+                .as_range_list()?
+                .into_iter()
+                .last()
+                .unwrap();
+            return Ok(last_entry.high);
+        } else if self.contains(DW_AT_high_pc.0 as u64) {
+            let attr = self.index(DW_AT_high_pc.0 as u64)?;
+            let addr: u64;
+            if attr.form() == DW_FORM_addr.0.into() {
+                addr = attr.as_address()?.addr();
+            } else {
+                addr = self.low_pc()?.addr() + attr.as_int()?;
+            }
+            return Ok(FileAddress::new(
+                &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
+                addr,
+            ));
         }
-        Ok(FileAddress::new(
-            &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
-            addr,
-        ))
+        SdbError::err("DIE does not have high PC")
     }
 
     pub fn contains_address(&self, addr: &FileAddress) -> Result<bool, SdbError> {
