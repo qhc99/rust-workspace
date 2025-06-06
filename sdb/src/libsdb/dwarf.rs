@@ -251,6 +251,10 @@ impl DieAttr {
         let mut ref_cursor = Cursor::new(&cu.data.slice(offset..));
         parse_die(&cu, &mut ref_cursor)
     }
+
+    pub fn as_range_list(&self) -> Result<CompileUnitRangeList, SdbError> {
+        todo!()
+    }
 }
 
 pub struct DieChildenIter {
@@ -350,6 +354,87 @@ impl CompileUnit {
             .upgrade()
             .unwrap()
             .get_abbrev_table(self.abbrev_offset)
+    }
+}
+
+pub struct CompileUnitRangeList {
+    cu: Rc<CompileUnit>,
+    data: Bytes,
+    base_address: FileAddress,
+}
+
+impl CompileUnitRangeList {
+    pub fn new(cu: &Rc<CompileUnit>, data: &Bytes, base_address: FileAddress) -> Self {
+        Self {
+            cu: cu.clone(),
+            data: data.clone(),
+            base_address,
+        }
+    }
+
+    pub fn contains(&self, addr: &FileAddress) -> bool {
+        todo!()
+    }
+}
+
+pub struct CompileUnitRangeListIter {
+    cu: Rc<CompileUnit>,
+    pos: Bytes,
+    base_address: FileAddress,
+    current: CompileUnitRangeEntry,
+}
+
+impl CompileUnitRangeListIter {
+    pub fn new(cu: &Rc<CompileUnit>, data: &Bytes, base_address: FileAddress) -> Self {
+        let mut ret = Self {
+            cu: cu.clone(),
+            pos: data.clone(),
+            base_address,
+            current: CompileUnitRangeEntry::default(),
+        };
+        ret.next();
+        ret
+    }
+}
+
+impl Iterator for CompileUnitRangeListIter {
+    type Item = CompileUnitRangeEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos.is_empty() {
+            return None;
+        }
+        let elf = self.cu.dwarf_info().elf_file();
+        let base_address_flag = !0u64;
+        let mut cursor = Cursor::new(&self.pos);
+        let prev_current = self.current.clone();
+        loop {
+            self.current.low = FileAddress::new(&elf, cursor.u64());
+            self.current.high = FileAddress::new(&elf, cursor.u64());
+            if self.current.low.addr() == base_address_flag {
+                self.base_address = self.current.high.clone();
+            } else if self.current.low.addr() == 0 && self.current.high.addr() == 0 {
+                self.pos = Bytes::new();
+                break;
+            } else {
+                self.pos = cursor.position();
+                self.current.low += self.base_address.addr() as i64;
+                self.current.high += self.base_address.addr() as i64;
+                break;
+            }
+        }
+        return Some(prev_current);
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct CompileUnitRangeEntry {
+    low: FileAddress,
+    high: FileAddress,
+}
+
+impl CompileUnitRangeEntry {
+    pub fn contains(&self, addr: &FileAddress) -> bool {
+        &self.low <= addr && addr < &self.high
     }
 }
 
