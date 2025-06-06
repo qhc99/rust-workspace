@@ -386,7 +386,9 @@ impl CompileUnitRangeList {
     }
 
     pub fn contains(&self, addr: &FileAddress) -> bool {
-        todo!()
+        let mut iter =
+            CompileUnitRangeListIter::new(&self.cu, &self.data, self.base_address.clone());
+        iter.any(|e| e.contains(addr))
     }
 }
 
