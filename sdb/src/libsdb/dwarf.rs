@@ -153,13 +153,12 @@ impl DieAttr {
 
     pub fn as_block(&self) -> Result<Bytes, SdbError> {
         let mut cursor = Cursor::new(&self.location);
-        let size: usize;
         #[allow(non_upper_case_globals)]
-        match DwForm(self.form as u16) {
-            DW_FORM_block1 => size = cursor.u8() as usize,
-            DW_FORM_block2 => size = cursor.u16() as usize,
-            DW_FORM_block4 => size = cursor.u32() as usize,
-            DW_FORM_block => size = cursor.uleb128() as usize,
+        let size = match DwForm(self.form as u16) {
+            DW_FORM_block1 => cursor.u8() as usize,
+            DW_FORM_block2 => cursor.u16() as usize,
+            DW_FORM_block4 => cursor.u32() as usize,
+            DW_FORM_block => cursor.uleb128() as usize,
             _ => return SdbError::err("Invalid block type"),
         };
         Ok(self.location.slice(..size))
@@ -184,19 +183,38 @@ impl DieAttr {
 
     pub fn as_reference(&self) -> Result<Rc<Die>, SdbError> {
         let mut cursor = Cursor::new(&self.location);
-        let offset: usize;
         #[allow(non_upper_case_globals)]
-        match DwForm(self.form as u16) {
-            DW_FORM_ref1 => offset = cursor.u8() as usize,
-            DW_FORM_ref2 => offset = cursor.u16() as usize,
-            DW_FORM_ref4 => offset = cursor.u32() as usize,
-            DW_FORM_ref8 => offset = cursor.u64() as usize,
-            DW_FORM_udata => todo!(),
+        let offset = match DwForm(self.form as u16) {
+            DW_FORM_ref1 => cursor.u8() as usize,
+            DW_FORM_ref2 => cursor.u16() as usize,
+            DW_FORM_ref4 => cursor.u32() as usize,
+            DW_FORM_ref8 => cursor.u64() as usize,
+            DW_FORM_ref_udata => cursor.uleb128() as usize,
+            DW_FORM_ref_addr => {
+                let offset = cursor.u8() as usize;
+                let cu = self.cu.upgrade().unwrap();
+                let dwarf_info = cu.dwarf_info();
+                let section = dwarf_info.elf_file().get_section_contents(".debug_info");
+                let die_pos = section.slice(offset..);
+                let die_ptr = die_pos.as_ptr() as usize;
+                let cus = dwarf_info.compile_units();
+                let cu_for_offset = cus
+                    .iter()
+                    .find(|cu| {
+                        let cu_ptr = cu.data.as_ptr() as usize;
+                        let cu_end = cu_ptr + cu.data.len();
+                        cu_ptr <= die_ptr && cu_end > die_ptr
+                    })
+                    .unwrap();
+                let offset_in_cu = die_ptr - (cu_for_offset.data().as_ptr() as usize);
+                let mut ref_cursor = Cursor::new(&cu_for_offset.data.slice(offset_in_cu..));
+                return parse_die(cu_for_offset, &mut ref_cursor);
+            }
             _ => return SdbError::err("Invalid reference type"),
-        }
+        };
         let cu = self.cu.upgrade().unwrap();
         let mut ref_cursor = Cursor::new(&cu.data.slice(offset..));
-        Ok(parse_die(&cu, &mut ref_cursor)?)
+        parse_die(&cu, &mut ref_cursor)
     }
 }
 
