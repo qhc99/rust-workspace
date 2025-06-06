@@ -9,8 +9,8 @@ use gimli::{
     DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1,
     DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag,
     DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1,
-    DW_FORM_ref2, DW_FORM_ref4, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp,
-    DW_FORM_udata, DwForm,
+    DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string,
+    DW_FORM_strp, DW_FORM_udata, DwForm,
 };
 
 use super::bit::from_bytes;
@@ -136,31 +136,67 @@ impl DieAttr {
 
     pub fn as_address(&self) -> Result<FileAddress, SdbError> {
         let mut cursor = Cursor::new(&self.location);
-        if self.form as u16 != DW_FORM_addr.0{
+        if self.form as u16 != DW_FORM_addr.0 {
             return SdbError::err("Invalid address type");
         }
         let elf = self.cu.upgrade().unwrap().dwarf_info().elf_file();
         return Ok(FileAddress::new(&elf, cursor.u64()));
     }
 
-    pub fn as_section_offset(&self) -> u32 {
-        todo!()
+    pub fn as_section_offset(&self) -> Result<u32, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        if self.form as u16 != DW_FORM_sec_offset.0 {
+            return SdbError::err("Invalid offset type");
+        }
+        return Ok(cursor.u32());
     }
 
-    pub fn as_block(&self) -> Bytes {
-        todo!()
+    pub fn as_block(&self) -> Result<Bytes, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        let size: usize;
+        #[allow(non_upper_case_globals)]
+        match DwForm(self.form as u16) {
+            DW_FORM_block1 => size = cursor.u8() as usize,
+            DW_FORM_block2 => size = cursor.u16() as usize,
+            DW_FORM_block4 => size = cursor.u32() as usize,
+            DW_FORM_block => size = cursor.uleb128() as usize,
+            _ => return SdbError::err("Invalid block type"),
+        };
+        Ok(self.location.slice(..size))
     }
 
-    pub fn as_int(&self) -> u64 {
-        todo!()
+    pub fn as_int(&self) -> Result<u64, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        #[allow(non_upper_case_globals)]
+        return match DwForm(self.form as u16) {
+            DW_FORM_data1 => Ok(cursor.u8() as u64),
+            DW_FORM_data2 => Ok(cursor.u16() as u64),
+            DW_FORM_data4 => Ok(cursor.u32() as u64),
+            DW_FORM_data8 => Ok(cursor.u64()),
+            DW_FORM_udata => Ok(cursor.uleb128()),
+            _ => SdbError::err("Invalid integer type"),
+        };
     }
 
     pub fn as_string(&self) -> String {
         todo!()
     }
 
-    pub fn as_reference(&self) -> Die {
-        todo!()
+    pub fn as_reference(&self) -> Result<Rc<Die>, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        let offset: usize;
+        #[allow(non_upper_case_globals)]
+        match DwForm(self.form as u16) {
+            DW_FORM_ref1 => offset = cursor.u8() as usize,
+            DW_FORM_ref2 => offset = cursor.u16() as usize,
+            DW_FORM_ref4 => offset = cursor.u32() as usize,
+            DW_FORM_ref8 => offset = cursor.u64() as usize,
+            DW_FORM_udata => todo!(),
+            _ => return SdbError::err("Invalid reference type"),
+        }
+        let cu = self.cu.upgrade().unwrap();
+        let mut ref_cursor = Cursor::new(&cu.data.slice(offset..));
+        Ok(parse_die(&cu, &mut ref_cursor)?)
     }
 }
 
