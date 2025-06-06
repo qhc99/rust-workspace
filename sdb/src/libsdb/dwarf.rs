@@ -253,7 +253,20 @@ impl DieAttr {
     }
 
     pub fn as_range_list(&self) -> Result<CompileUnitRangeList, SdbError> {
-        todo!()
+        let cu = self.cu.upgrade().unwrap();
+        let section = cu
+            .dwarf_info()
+            .elf_file()
+            .get_section_contents(".debug_ranges");
+        let offset = self.as_section_offset()? as usize;
+        let data = section.slice(offset..);
+        let root = cu.root()?;
+        let base_address = if root.contains(DW_AT_low_pc.0 as u64) {
+            root.index(DW_AT_low_pc.0 as u64)?.as_address()?
+        } else {
+            FileAddress::default()
+        };
+        Ok(CompileUnitRangeList::new(&cu, &data, base_address))
     }
 }
 
