@@ -6,11 +6,11 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_high_pc, DW_AT_low_pc, DW_AT_sibling, DW_FORM_addr, DW_FORM_block, DW_FORM_block1,
-    DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8,
-    DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr,
-    DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata,
-    DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DwForm,
+    DW_AT_high_pc, DW_AT_low_pc, DW_AT_ranges, DW_AT_sibling, DW_FORM_addr, DW_FORM_block,
+    DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
+    DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
+    DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
+    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DwForm,
 };
 
 use super::bit::from_bytes;
@@ -114,6 +114,26 @@ impl Die {
             &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
             addr,
         ))
+    }
+
+    pub fn contains_address(&self, addr: &FileAddress) -> Result<bool, SdbError> {
+        if !Rc::ptr_eq(
+            &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
+            &addr.elf_file(),
+        ) {
+            return Ok(false);
+        }
+        if self.contains(DW_AT_ranges.0 as u64) {
+            return Ok(self
+                .index(DW_AT_ranges.0 as u64)?
+                .as_range_list()?
+                .contains(addr));
+        } else if self.contains(DW_AT_low_pc.0 as u64) {
+            let low_pc = self.low_pc()?;
+            let high_pc = self.high_pc()?;
+            return Ok(&low_pc <= addr && &high_pc > addr);
+        }
+        Ok(false)
     }
 }
 
