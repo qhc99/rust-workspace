@@ -99,7 +99,18 @@ impl Die {
     }
 
     pub fn low_pc(&self) -> Result<FileAddress, SdbError> {
-        self.index(DW_AT_low_pc.0 as u64)?.as_address()
+        if self.contains(DW_AT_ranges.0 as u64) {
+            let first_entry = self
+                .index(DW_AT_ranges.0 as u64)?
+                .as_range_list()?
+                .into_iter()
+                .next()
+                .unwrap();
+            return Ok(first_entry.low);
+        } else if self.contains(DW_AT_low_pc.0 as u64) {
+            return self.index(DW_AT_low_pc.0 as u64)?.as_address();
+        }
+        SdbError::err("DIE does not have low PC")
     }
 
     pub fn high_pc(&self) -> Result<FileAddress, SdbError> {
@@ -409,6 +420,15 @@ impl CompileUnitRangeList {
         let mut iter =
             CompileUnitRangeListIter::new(&self.cu, &self.data, self.base_address.clone());
         iter.any(|e| e.contains(addr))
+    }
+}
+
+impl IntoIterator for CompileUnitRangeList {
+    type Item = CompileUnitRangeEntry;
+    type IntoIter = CompileUnitRangeListIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CompileUnitRangeListIter::new(&self.cu, &self.data, self.base_address)
     }
 }
 
