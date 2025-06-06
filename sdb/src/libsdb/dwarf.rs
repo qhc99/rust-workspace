@@ -184,10 +184,14 @@ impl DieAttr {
             DW_FORM_string => Ok(cursor.string()),
             DW_FORM_strp => {
                 let offset = cursor.u32() as usize;
-                let cu = self.cu.upgrade().unwrap();
-                let dwarf_info = cu.dwarf_info();
-                let section = dwarf_info.elf_file().get_section_contents(".debug_str");
-                let mut stab_cur = Cursor::new(&section.slice(offset..));
+                let stab = self
+                    .cu
+                    .upgrade()
+                    .unwrap()
+                    .dwarf_info()
+                    .elf_file()
+                    .get_section_contents(".debug_str");
+                let mut stab_cur = Cursor::new(&stab.slice(offset..));
                 Ok(stab_cur.string())
             }
             _ => SdbError::err("Invalid string type"),
