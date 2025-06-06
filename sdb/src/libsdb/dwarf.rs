@@ -177,8 +177,21 @@ impl DieAttr {
         };
     }
 
-    pub fn as_string(&self) -> String {
-        todo!()
+    pub fn as_string(&self) -> Result<String, SdbError> {
+        let mut cursor = Cursor::new(&self.location);
+        #[allow(non_upper_case_globals)]
+        match DwForm(self.form as u16) {
+            DW_FORM_string => Ok(cursor.string()),
+            DW_FORM_strp => {
+                let offset = cursor.u32() as usize;
+                let cu = self.cu.upgrade().unwrap();
+                let dwarf_info = cu.dwarf_info();
+                let section = dwarf_info.elf_file().get_section_contents(".debug_str");
+                let mut stab_cur = Cursor::new(&section.slice(offset..));
+                Ok(stab_cur.string())
+            }
+            _ => SdbError::err("Invalid string type"),
+        }
     }
 
     pub fn as_reference(&self) -> Result<Rc<Die>, SdbError> {
