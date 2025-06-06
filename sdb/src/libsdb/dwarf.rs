@@ -6,11 +6,11 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_sibling, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4,
-    DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag,
-    DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1,
-    DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string,
-    DW_FORM_strp, DW_FORM_udata, DwForm,
+    DW_AT_high_pc, DW_AT_low_pc, DW_AT_sibling, DW_FORM_addr, DW_FORM_block, DW_FORM_block1,
+    DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8,
+    DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr,
+    DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata,
+    DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DwForm,
 };
 
 use super::bit::from_bytes;
@@ -79,7 +79,7 @@ impl Die {
         false
     }
 
-    fn index(&self, attribute: u64) -> Result<DieAttr, SdbError> {
+    pub fn index(&self, attribute: u64) -> Result<DieAttr, SdbError> {
         if let Some(abbrev) = &self.abbrev {
             if let Some((i, spec)) = abbrev
                 .attr_specs
@@ -96,6 +96,24 @@ impl Die {
             }
         }
         SdbError::err("Attribute not found")
+    }
+
+    pub fn low_pc(&self) -> Result<FileAddress, SdbError> {
+        self.index(DW_AT_low_pc.0 as u64)?.as_address()
+    }
+
+    pub fn high_pc(&self) -> Result<FileAddress, SdbError> {
+        let attr = self.index(DW_AT_high_pc.0 as u64)?;
+        let addr: u64;
+        if attr.form() == DW_FORM_addr.0.into() {
+            addr = attr.as_address()?.addr();
+        } else {
+            addr = self.low_pc()?.addr() + attr.as_int()?;
+        }
+        Ok(FileAddress::new(
+            &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
+            addr,
+        ))
     }
 }
 
@@ -261,7 +279,10 @@ impl Iterator for DieChildenIter {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
                     let mut next_cursor = Cursor::new(&current_die.next);
-                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor));
+                    self.die = Some(parse_die(
+                        &current_die.cu.upgrade().unwrap(),
+                        &mut next_cursor,
+                    ));
                     return Some(Ok(current_die));
                 } else if current_die.contains(DW_AT_sibling.0 as u64) {
                     self.die = Some(
@@ -285,7 +306,10 @@ impl Iterator for DieChildenIter {
                     let child = child.expect("Has null die");
                     if let Ok(child) = child {
                         let mut next_cursor = Cursor::new(&child.next);
-                        self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor));
+                        self.die = Some(parse_die(
+                            &current_die.cu.upgrade().unwrap(),
+                            &mut next_cursor,
+                        ));
                         return Some(Ok(current_die));
                     } else {
                         return Some(Err(child.unwrap_err()));
