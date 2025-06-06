@@ -6,8 +6,8 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1,
-    DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag,
+    DW_AT_sibling, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4,
+    DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag,
     DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1,
     DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string,
     DW_FORM_strp, DW_FORM_udata, DwForm,
@@ -244,9 +244,8 @@ impl DieChildenIter {
         if let Some(abbrev) = &die.abbrev {
             if abbrev.has_children {
                 let mut next_cursor = Cursor::new(&die.next);
-                let next_die = parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor);
                 return Self {
-                    die: Some(next_die),
+                    die: Some(parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor)),
                 };
             }
         }
@@ -258,15 +257,21 @@ impl Iterator for DieChildenIter {
     type Item = Result<Rc<Die>, SdbError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(Ok(current_die)) = &self.die {
+        if let Some(Ok(current_die)) = self.die.take() {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
                     let mut next_cursor = Cursor::new(&current_die.next);
-                    let next_die = parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
-                    self.die = Some(next_die.clone());
-                    return Some(next_die);
+                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor));
+                    return Some(Ok(current_die));
+                } else if current_die.contains(DW_AT_sibling.0 as u64) {
+                    self.die = Some(
+                        current_die
+                            .index(DW_AT_sibling.0 as u64)
+                            .map(|attr| attr.as_reference().unwrap()),
+                    );
+                    return Some(Ok(current_die));
                 } else {
-                    let mut sub_children = DieChildenIter::new(current_die);
+                    let mut sub_children = DieChildenIter::new(&current_die);
                     let mut child: Option<Result<Rc<Die>, SdbError>>;
                     loop {
                         child = sub_children.next();
@@ -280,10 +285,8 @@ impl Iterator for DieChildenIter {
                     let child = child.expect("Has null die");
                     if let Ok(child) = child {
                         let mut next_cursor = Cursor::new(&child.next);
-                        let next_die =
-                            parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor);
-                        self.die = Some(next_die.clone());
-                        return Some(next_die);
+                        self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), &mut next_cursor));
+                        return Some(Ok(current_die));
                     } else {
                         return Some(Err(child.unwrap_err()));
                     }
