@@ -8,8 +8,7 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
-use gimli::{DW_AT_language, DW_LANG_C_plus_plus};
-use libsdb::syscalls::syscall_name_to_id;
+use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
 use libsdb::types::StoppointMode;
 use libsdb::types::VirtualAddress;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
@@ -22,6 +21,7 @@ use libsdb::{
 };
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
+use libsdb::{dwarf::Dwarf, syscalls::syscall_name_to_id};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
@@ -420,7 +420,7 @@ fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
 fn breakpoint_on_address() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     let offset = get_entry_point_offset(bin.target_path()).unwrap();
@@ -468,7 +468,7 @@ fn remove_breakpoint_sites() {
 fn read_and_write_memory() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", "memory.cpp");
+    let bin = BinBuilder::cpp("resource", &["memory.cpp"]);
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
@@ -496,7 +496,7 @@ fn read_and_write_memory() {
 fn hardware_breapoint_evade_memory_checksum() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
@@ -540,7 +540,7 @@ fn hardware_breapoint_evade_memory_checksum() {
 fn watchpoint_detect_read() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
@@ -586,7 +586,7 @@ fn syscall_mapping() {
 fn syscall_catchpoint() {
     let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let fd = f.as_raw_fd();
-    let bin = BinBuilder::cpp("resource", "anti_debugger.cpp");
+    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
 
     let proc = Process::launch(bin.target_path(), true, Some(fd)).unwrap();
     let write_syscall = syscall_name_to_id("write").unwrap();
@@ -620,7 +620,7 @@ fn syscall_catchpoint() {
 
 #[test]
 fn elf_parser() {
-    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
     let entry = elf.get_header().0.e_entry;
@@ -637,7 +637,7 @@ fn elf_parser() {
 
 #[test]
 fn correct_dwarf_language() {
-    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
@@ -656,7 +656,7 @@ fn correct_dwarf_language() {
 
 #[test]
 fn iterate_dwarf() {
-    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
@@ -670,4 +670,48 @@ fn iterate_dwarf() {
         .filter(|d| d.as_ref().unwrap().abbrev_entry().code != 0)
         .count();
     assert!(count > 0);
+}
+
+/*
+TEST_CASE("Find main", "[dwarf]") {
+    auto path = "targets/multi_cu";
+    sdb::elf elf(path);
+    sdb::dwarf dwarf(elf);
+    bool found = false;
+    for (auto& cu : dwarf.compile_units()) {
+        for (auto& die : cu->root().children()) {
+            if (die.abbrev_entry()->tag == DW_TAG_subprogram
+                && die.contains(DW_AT_name)) {
+                auto name = die[DW_AT_name].as_string();
+                if (name == "main") {
+                    found = true;
+                }
+            }
+        }
+    }
+    REQUIRE(found);
+}
+*/
+
+#[test]
+fn find_main() {
+    let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
+    let path = bin.target_path();
+    let elf = Elf::new(path).unwrap();
+    let dwarf = Dwarf::new(&elf).unwrap();
+    let found = dwarf
+        .compile_units()
+        .iter()
+        .any(|cu| {
+            cu.root()
+                .unwrap()
+                .children()
+                .any(|d| {
+                    let die = d.as_ref().unwrap();
+                    die.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
+                        && die.contains(DW_AT_name.0 as u64)
+                        && die.index(DW_AT_name.0 as u64).unwrap().as_string().unwrap() == "main"
+                })
+        });
+    assert!(found);
 }

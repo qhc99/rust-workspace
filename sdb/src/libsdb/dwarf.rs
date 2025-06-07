@@ -699,7 +699,7 @@ fn parse_compile_unit(
         return SdbError::err("Only DWARF32 is supported");
     }
     if version != 4 {
-        return SdbError::err("Only DWARF version 4 is supported");
+        return SdbError::err(&format!("Only DWARF version 4 is supported, found version {version}"));
     }
     if address_size != 8 {
         return SdbError::err("Invalid address size for DWARF");
