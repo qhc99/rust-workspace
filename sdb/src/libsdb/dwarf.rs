@@ -6,12 +6,7 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_high_pc, DW_AT_low_pc, DW_AT_ranges, DW_AT_sibling, DW_FORM_addr, DW_FORM_block,
-    DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
-    DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
-    DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
-    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
-    DW_TAG_subprogram, DwForm,
+    DW_AT_abstract_origin, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm
 };
 use multimap::MultiMap;
 
@@ -157,6 +152,19 @@ impl Die {
             return Ok(&low_pc <= addr && &high_pc > addr);
         }
         Ok(false)
+    }
+
+    pub fn name(&self) -> Result<Option<String>, SdbError> {
+        if self.contains(DW_AT_name.0 as u64) {
+            return Ok(Some(self.index(DW_AT_name.0 as u64)?.as_string()?));
+        }
+        if self.contains(DW_AT_specification.0 as u64) {
+            return self.index(DW_AT_specification.0 as u64)?.as_reference()?.name();
+        }
+        if self.contains(DW_AT_abstract_origin.0 as u64) {
+            return self.index(DW_AT_abstract_origin.0 as u64)?.as_reference()?.name();
+        }
+        Ok(None)
     }
 }
 
@@ -540,7 +548,7 @@ pub struct Dwarf {
     elf: Rc<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
-    function_index: MultiMap<String, DwarfIndexEntry>,
+    function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
 }
 
 impl Dwarf {
@@ -549,7 +557,7 @@ impl Dwarf {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
             compile_units: RefCell::new(Vec::default()),
-            function_index: MultiMap::default(),
+            function_index: RefCell::new(MultiMap::default()),
         };
         let ret = Rc::new(ret);
         *ret.compile_units.borrow_mut() = parse_compile_units(&ret, parent)?;
@@ -590,7 +598,7 @@ impl Dwarf {
         address: &FileAddress,
     ) -> Result<Option<Rc<Die>>, SdbError> {
         self.index()?;
-        for (_name, entry) in self.function_index.iter() {
+        for (_name, entry) in self.function_index.borrow().iter() {
             let mut cursor = Cursor::new(&entry.pos);
             let die = parse_die(&entry.cu, &mut cursor)?;
             if die.contains_address(address)?
@@ -605,7 +613,8 @@ impl Dwarf {
     pub fn find_functions(&self, name: &str) -> Result<Vec<Rc<Die>>, SdbError> {
         self.index()?;
         let mut found: Vec<Rc<Die>> = Vec::new();
-        let entrys = self.function_index.get_vec(name);
+        let function_index = self.function_index.borrow();
+        let entrys = function_index.get_vec(name);
         if let Some(entrys) = entrys {
             for entry in entrys {
                 let mut cursor = Cursor::new(&entry.pos);
@@ -617,7 +626,7 @@ impl Dwarf {
     }
 
     fn index(&self) -> Result<(), SdbError> {
-        if !self.function_index.is_empty() {
+        if !self.function_index.borrow().is_empty() {
             return Ok(());
         }
         for cu in self.compile_units.borrow().iter() {
@@ -627,7 +636,23 @@ impl Dwarf {
     }
 
     fn index_die(&self, die: &Rc<Die>) -> Result<(), SdbError> {
-        todo!()
+        let has_range = die.contains(DW_AT_low_pc.0 as u64)
+            || die.contains(DW_AT_ranges.0 as u64);
+        let is_function = die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
+            || die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64;
+        if has_range && is_function {
+            if let Some(name) = die.name()? {
+                let entry = DwarfIndexEntry {
+                    cu: die.cu.upgrade().unwrap(),
+                    pos: die.pos.clone(),
+                };
+                self.function_index.borrow_mut().insert(name, entry);
+            }
+        }
+        for child in die.children() {
+            self.index_die(&child?)?;
+        }
+        Ok(())
     }
 }
 

@@ -50,7 +50,7 @@ impl BinBuilder {
         let output_name = source.strip_suffix(".cpp").unwrap();
         let output_name = format!("{output_name}_{suffix}");
         let status = Command::new("clang++")
-            .args(&["-pie", "-g", "-O0", "-o", &output_name, source])
+            .args(&["-pie", "-g", "-O0", "-o", "-gdwarf-4", &output_name, source])
             .current_dir(&current_dir)
             .status()
             .expect("Failed to run clang++");

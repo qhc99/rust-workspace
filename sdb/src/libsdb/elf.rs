@@ -1,3 +1,5 @@
+use super::dwarf::Dwarf;
+
 use super::ffi::demangle;
 use bytemuck::checked::pod_read_unaligned;
 use bytemuck::{Pod, Zeroable};
@@ -66,6 +68,7 @@ pub struct Elf {
     symbol_table: Vec<Rc<SdbElf64Sym>>,
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
+    dwarf: RefCell<Option<Rc<Dwarf>>>,
 }
 
 impl Elf {
@@ -111,12 +114,14 @@ impl Elf {
             symbol_table: Vec::default(),
             symbol_name_map: RefCell::new(MultiMap::default()),
             symbol_addr_map: RefCell::new(BTreeMap::default()),
+            dwarf: RefCell::new(None),
         };
         obj.parse_section_headers();
         obj.build_section_map();
         obj.parse_symbol_table();
         let ret = Rc::new(obj);
         ret.build_symbol_maps();
+        *ret.dwarf.borrow_mut() = Some(Dwarf::new(&ret)?);
         Ok(ret)
     }
 
@@ -284,6 +289,10 @@ impl Elf {
             }
         }
         return None;
+    }
+
+    pub fn get_dwarf(&self) -> Rc<Dwarf> {
+        self.dwarf.borrow().clone().unwrap()
     }
 }
 
