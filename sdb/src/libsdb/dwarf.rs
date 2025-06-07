@@ -705,6 +705,10 @@ fn parse_abbrev_table(obj: &Elf, offset: usize) -> AbbrevTable {
     let mut code: u64;
     loop {
         code = cursor.uleb128();
+        // Bug fixed: should break early
+        if code == 0 {
+            break;
+        }
         let tag = cursor.uleb128();
         let has_children = cursor.u8() != 0;
         let mut attr_specs = Vec::<AttrSpec>::new();
@@ -719,20 +723,15 @@ fn parse_abbrev_table(obj: &Elf, offset: usize) -> AbbrevTable {
                 break;
             }
         }
-        if code != 0 {
-            table.insert(
+        table.insert(
+            code,
+            Rc::new(Abbrev {
                 code,
-                Rc::new(Abbrev {
-                    code,
-                    tag,
-                    has_children,
-                    attr_specs,
-                }),
-            );
-        }
-        if code == 0 {
-            break;
-        }
+                tag,
+                has_children,
+                attr_specs,
+            }),
+        );
     }
 
     table
@@ -773,7 +772,7 @@ impl Cursor {
     }
 
     pub fn finished(&self) -> bool {
-        !self.data.is_empty()
+        self.data.is_empty()
     }
 
     pub fn position(&self) -> Bytes {
@@ -924,6 +923,6 @@ impl Cursor {
 
 impl AddAssign<usize> for Cursor {
     fn add_assign(&mut self, rhs: usize) {
-        self.data = self.data.slice(rhs..)
+        self.data = self.data.slice(std::cmp::min(self.data.len(), rhs)..);
     }
 }

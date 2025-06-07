@@ -49,11 +49,11 @@ impl BinBuilder {
         let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
         let output_name = source.strip_suffix(".cpp").unwrap();
         let output_name = format!("{output_name}_{suffix}");
-        let status = Command::new("clang++")
-            .args(&["-pie", "-g", "-O0", "-o", "-gdwarf-4", &output_name, source])
+        let status = Command::new("g++")
+            .args(&["-pie", "-g", "-O0", "-gdwarf-4", "-o", &output_name, source])
             .current_dir(&current_dir)
             .status()
-            .expect("Failed to run clang++");
+            .expect("Failed to run g++");
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
