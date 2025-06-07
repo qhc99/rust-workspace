@@ -167,13 +167,13 @@ impl Die {
         if self.contains(DW_AT_specification.0 as u64) {
             return self
                 .index(DW_AT_specification.0 as u64)?
-                .as_reference()?
+                .as_reference()
                 .name();
         }
         if self.contains(DW_AT_abstract_origin.0 as u64) {
             return self
                 .index(DW_AT_abstract_origin.0 as u64)?
-                .as_reference()?
+                .as_reference()
                 .name();
         }
         Ok(None)
@@ -279,7 +279,7 @@ impl DieAttr {
         }
     }
 
-    pub fn as_reference(&self) -> Result<Rc<Die>, SdbError> {
+    pub fn as_reference(&self) -> Rc<Die> {
         let mut cursor = Cursor::new(&self.location);
         #[allow(non_upper_case_globals)]
         let offset = match DwForm(self.form as u16) {
@@ -308,7 +308,7 @@ impl DieAttr {
                 let ref_cursor = Cursor::new(&cu_for_offset.data.slice(offset_in_cu..));
                 return parse_die(cu_for_offset, ref_cursor);
             }
-            _ => return SdbError::err("Invalid reference type"),
+            _ => panic!("Invalid reference type"),
         };
         let cu = self.cu.upgrade().unwrap();
         let ref_cursor = Cursor::new(&cu.data.slice(offset..));
@@ -323,7 +323,7 @@ impl DieAttr {
             .get_section_contents(".debug_ranges");
         let offset = self.as_section_offset()? as usize;
         let data = section.slice(offset..);
-        let root = cu.root()?;
+        let root = cu.root();
         let base_address = if root.contains(DW_AT_low_pc.0 as u64) {
             root.index(DW_AT_low_pc.0 as u64)?.as_address()?
         } else {
@@ -334,7 +334,7 @@ impl DieAttr {
 }
 
 pub struct DieChildenIter {
-    die: Option<Result<Rc<Die>, SdbError>>,
+    die: Option<Rc<Die>>,
 }
 
 impl DieChildenIter {
@@ -352,41 +352,36 @@ impl DieChildenIter {
 }
 
 impl Iterator for DieChildenIter {
-    type Item = Result<Rc<Die>, SdbError>;
+    type Item = Rc<Die>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(Ok(current_die)) = self.die.take() {
+        if let Some(current_die) = self.die.take() {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
                     let next_cursor = Cursor::new(&current_die.next);
                     self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
-                    return Some(Ok(current_die));
+                    return Some(current_die);
                 } else if current_die.contains(DW_AT_sibling.0 as u64) {
                     self.die = Some(
                         current_die
                             .index(DW_AT_sibling.0 as u64)
-                            .map(|attr| attr.as_reference().unwrap()),
+                            .unwrap()
+                            .as_reference()
                     );
-                    return Some(Ok(current_die));
+                    return Some(current_die);
                 } else {
                     let mut sub_children = DieChildenIter::new(&current_die);
                     let child = sub_children
                         .find(|child| {
-                            if let Ok(die) = child {
-                                if die.abbrev.is_some() {
-                                    return false;
-                                }
+                            if child.abbrev.is_some() {
+                                return false;
                             }
                             return true;
                         })
                         .unwrap();
-                    if let Ok(child) = child {
-                        let next_cursor = Cursor::new(&child.next);
-                        self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
-                        return Some(Ok(current_die));
-                    } else {
-                        return Some(Err(child.unwrap_err()));
-                    }
+                    let next_cursor = Cursor::new(&child.next);
+                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
+                    return Some(child);
                 }
             }
         }
@@ -519,33 +514,33 @@ impl CompileUnitRangeEntry {
 }
 
 pub trait CompileUnitExt {
-    fn root(&self) -> Result<Rc<Die>, SdbError>;
+    fn root(&self) -> Rc<Die>;
 }
 
 impl CompileUnitExt for Rc<CompileUnit> {
-    fn root(&self) -> Result<Rc<Die>, SdbError> {
+    fn root(&self) -> Rc<Die> {
         let header_size = 11usize;
         let cursor = Cursor::new(&self.data.slice(header_size..));
-        return parse_die(self, cursor);
+        parse_die(self, cursor)
     }
 }
 
-fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Result<Rc<Die>, SdbError> {
+fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Rc<Die> {
     let pos = cursor.position();
     let abbrev_code = cursor.uleb128();
     if abbrev_code == 0 {
         let next = cursor.position();
-        return Ok(Die::null(next));
+        return Die::null(next);
     }
     let abbrev_table = cu.abbrev_table();
     let abbrev = &abbrev_table[&abbrev_code];
     let mut attr_locs = Vec::<Bytes>::with_capacity(abbrev.attr_specs.len());
     for attr in &abbrev.attr_specs {
         attr_locs.push(cursor.position());
-        cursor.skip_form(attr.form)?;
+        cursor.skip_form(attr.form).unwrap();
     }
     let next = cursor.position();
-    return Ok(Die::new(pos, cu, abbrev.clone(), attr_locs, next));
+    Die::new(pos, cu, abbrev.clone(), attr_locs, next)
 }
 
 #[derive(Debug)]
@@ -591,7 +586,7 @@ impl Dwarf {
         address: &FileAddress,
     ) -> Result<Option<Rc<CompileUnit>>, SdbError> {
         for cu in self.compile_units.borrow().iter() {
-            if cu.root()?.contains_address(address)? {
+            if cu.root().contains_address(address)? {
                 return Ok(Some(cu.clone()));
             }
         }
@@ -605,7 +600,7 @@ impl Dwarf {
         self.index()?;
         for (_name, entry) in self.function_index.borrow().iter() {
             let cursor = Cursor::new(&entry.pos);
-            let die = parse_die(&entry.cu, cursor)?;
+            let die = parse_die(&entry.cu, cursor);
             if die.contains_address(address)?
                 && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
             {
@@ -623,7 +618,7 @@ impl Dwarf {
         if let Some(entrys) = entrys {
             for entry in entrys {
                 let cursor = Cursor::new(&entry.pos);
-                let die = parse_die(&entry.cu, cursor)?;
+                let die = parse_die(&entry.cu, cursor);
                 found.push(die);
             }
         }
@@ -635,7 +630,7 @@ impl Dwarf {
             return Ok(());
         }
         for cu in self.compile_units.borrow().iter() {
-            self.index_die(&cu.root()?)?;
+            self.index_die(&cu.root())?;
         }
         Ok(())
     }
@@ -654,7 +649,7 @@ impl Dwarf {
             }
         }
         for child in die.children() {
-            self.index_die(&child?)?;
+            self.index_die(&child)?;
         }
         Ok(())
     }

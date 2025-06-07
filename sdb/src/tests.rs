@@ -646,7 +646,6 @@ fn correct_dwarf_language() {
     let cu = &compile_units[0];
     let lang = cu
         .root()
-        .unwrap()
         .index(DW_AT_language.0 as u64)
         .unwrap()
         .as_int()
@@ -666,9 +665,8 @@ fn iterate_dwarf() {
     let cu = &compile_units[0];
     let count = cu
         .root()
-        .unwrap()
         .children()
-        .filter(|d| d.as_ref().unwrap().abbrev_entry().code != 0)
+        .filter(|d| d.as_ref().abbrev_entry().code != 0)
         .count();
     assert!(count > 0);
 }
@@ -681,8 +679,8 @@ fn find_main() {
     let elf = Elf::new(path).unwrap();
     let dwarf = Dwarf::new(&elf).unwrap();
     let found = dwarf.compile_units().iter().any(|cu| {
-        cu.root().unwrap().children().any(|d| {
-            let die = d.as_ref().unwrap();
+        cu.root().children().any(|d| {
+            let die = d.as_ref();
             die.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
                 && die.contains(DW_AT_name.0 as u64)
                 && die.index(DW_AT_name.0 as u64).unwrap().as_string().unwrap() == "main"
