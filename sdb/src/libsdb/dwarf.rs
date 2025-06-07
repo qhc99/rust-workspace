@@ -366,7 +366,7 @@ impl Iterator for DieChildenIter {
                         current_die
                             .index(DW_AT_sibling.0 as u64)
                             .unwrap()
-                            .as_reference()
+                            .as_reference(),
                     );
                     return Some(current_die);
                 } else {
