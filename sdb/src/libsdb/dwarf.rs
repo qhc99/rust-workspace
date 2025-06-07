@@ -305,14 +305,14 @@ impl DieAttr {
                     })
                     .unwrap();
                 let offset_in_cu = die_ptr - (cu_for_offset.data().as_ptr() as usize);
-                let mut ref_cursor = Cursor::new(&cu_for_offset.data.slice(offset_in_cu..));
-                return parse_die(cu_for_offset, &mut ref_cursor);
+                let ref_cursor = Cursor::new(&cu_for_offset.data.slice(offset_in_cu..));
+                return parse_die(cu_for_offset, ref_cursor);
             }
             _ => return SdbError::err("Invalid reference type"),
         };
         let cu = self.cu.upgrade().unwrap();
-        let mut ref_cursor = Cursor::new(&cu.data.slice(offset..));
-        parse_die(&cu, &mut ref_cursor)
+        let ref_cursor = Cursor::new(&cu.data.slice(offset..));
+        parse_die(&cu, ref_cursor)
     }
 
     pub fn as_range_list(&self) -> Result<CompileUnitRangeList, SdbError> {
@@ -341,9 +341,9 @@ impl DieChildenIter {
     pub fn new(die: &Rc<Die>) -> Self {
         if let Some(abbrev) = &die.abbrev {
             if abbrev.has_children {
-                let mut next_cursor = Cursor::new(&die.next);
+                let next_cursor = Cursor::new(&die.next);
                 return Self {
-                    die: Some(parse_die(&die.cu.upgrade().unwrap(), &mut next_cursor)),
+                    die: Some(parse_die(&die.cu.upgrade().unwrap(), next_cursor)),
                 };
             }
         }
@@ -358,10 +358,10 @@ impl Iterator for DieChildenIter {
         if let Some(Ok(current_die)) = self.die.take() {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
-                    let mut next_cursor = Cursor::new(&current_die.next);
+                    let next_cursor = Cursor::new(&current_die.next);
                     self.die = Some(parse_die(
                         &current_die.cu.upgrade().unwrap(),
-                        &mut next_cursor,
+                        next_cursor,
                     ));
                     return Some(Ok(current_die));
                 } else if current_die.contains(DW_AT_sibling.0 as u64) {
@@ -385,10 +385,10 @@ impl Iterator for DieChildenIter {
                     }
                     let child = child.expect("Has null die");
                     if let Ok(child) = child {
-                        let mut next_cursor = Cursor::new(&child.next);
+                        let next_cursor = Cursor::new(&child.next);
                         self.die = Some(parse_die(
                             &current_die.cu.upgrade().unwrap(),
-                            &mut next_cursor,
+                            next_cursor,
                         ));
                         return Some(Ok(current_die));
                     } else {
@@ -532,12 +532,12 @@ pub trait CompileUnitExt {
 impl CompileUnitExt for Rc<CompileUnit> {
     fn root(&self) -> Result<Rc<Die>, SdbError> {
         let header_size = 11usize;
-        let mut cursor = Cursor::new(&self.data.slice(header_size..));
-        return parse_die(self, &mut cursor);
+        let cursor = Cursor::new(&self.data.slice(header_size..));
+        return parse_die(self, cursor);
     }
 }
 
-fn parse_die(cu: &Rc<CompileUnit>, cursor: &mut Cursor) -> Result<Rc<Die>, SdbError> {
+fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Result<Rc<Die>, SdbError> {
     let pos = cursor.position();
     let abbrev_code = cursor.uleb128();
     if abbrev_code == 0 {
@@ -611,8 +611,8 @@ impl Dwarf {
     ) -> Result<Option<Rc<Die>>, SdbError> {
         self.index()?;
         for (_name, entry) in self.function_index.borrow().iter() {
-            let mut cursor = Cursor::new(&entry.pos);
-            let die = parse_die(&entry.cu, &mut cursor)?;
+            let cursor = Cursor::new(&entry.pos);
+            let die = parse_die(&entry.cu, cursor)?;
             if die.contains_address(address)?
                 && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
             {
@@ -629,8 +629,8 @@ impl Dwarf {
         let entrys = function_index.get_vec(name);
         if let Some(entrys) = entrys {
             for entry in entrys {
-                let mut cursor = Cursor::new(&entry.pos);
-                let die = parse_die(&entry.cu, &mut cursor)?;
+                let cursor = Cursor::new(&entry.pos);
+                let die = parse_die(&entry.cu, cursor)?;
                 found.push(die);
             }
         }
@@ -678,9 +678,12 @@ fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUni
     let mut cursor = Cursor::new(&debug_info);
     let mut units: Vec<Rc<CompileUnit>> = Vec::new();
     while !cursor.finished() {
-        let unit = parse_compile_unit(dwarf, obj, &mut cursor)?;
-        cursor += unit.data.len();
-        units.push(unit);
+        if let Ok(unit) = parse_compile_unit(dwarf, obj, cursor.clone()) {
+            cursor += unit.data.len();
+            units.push(unit);
+        }else{
+            break;
+        }
     }
     Ok(units)
 }
@@ -688,7 +691,7 @@ fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUni
 fn parse_compile_unit(
     dwarf: &Rc<Dwarf>,
     _obj: &Elf,
-    cursor: &mut Cursor,
+    mut cursor: Cursor,
 ) -> Result<Rc<CompileUnit>, SdbError> {
     let start = cursor.position();
     let mut size = cursor.u32();
@@ -762,7 +765,7 @@ pub struct Abbrev {
     pub attr_specs: Vec<AttrSpec>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Cursor {
     data: Bytes,
 }
@@ -934,6 +937,6 @@ impl Cursor {
 
 impl AddAssign<usize> for Cursor {
     fn add_assign(&mut self, rhs: usize) {
-        self.data = self.data.slice(std::cmp::min(self.data.len(), rhs)..);
+        self.data = self.data.slice(rhs..);
     }
 }

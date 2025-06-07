@@ -51,12 +51,12 @@ impl BinBuilder {
         let output_name = format!("{output_name}_{suffix}");
         let mut cmd = Command::new("g++");
         cmd.args(&{
-            let mut ret = vec!["-pie", "-g", "-O0", "-gdwarf-4", "-o", &output_name];
-            ret.extend(source);
+            let mut ret = source.to_vec();
+            ret.extend_from_slice(&["-pie", "-g", "-O0", "-gdwarf-4", "-o", &output_name]);
             ret
         })
         .current_dir(&current_dir);
-        let status = cmd.status().expect("Failed to run g++");
+        let status = cmd.status().expect("Failed to run clang++");
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);

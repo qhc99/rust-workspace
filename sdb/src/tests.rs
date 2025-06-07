@@ -672,27 +672,6 @@ fn iterate_dwarf() {
     assert!(count > 0);
 }
 
-/*
-TEST_CASE("Find main", "[dwarf]") {
-    auto path = "targets/multi_cu";
-    sdb::elf elf(path);
-    sdb::dwarf dwarf(elf);
-    bool found = false;
-    for (auto& cu : dwarf.compile_units()) {
-        for (auto& die : cu->root().children()) {
-            if (die.abbrev_entry()->tag == DW_TAG_subprogram
-                && die.contains(DW_AT_name)) {
-                auto name = die[DW_AT_name].as_string();
-                if (name == "main") {
-                    found = true;
-                }
-            }
-        }
-    }
-    REQUIRE(found);
-}
-*/
-
 #[test]
 fn find_main() {
     let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
