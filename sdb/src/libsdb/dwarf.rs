@@ -10,7 +10,8 @@ use gimli::{
     DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
     DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
     DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
-    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DwForm,
+    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
+    DW_TAG_subprogram, DwForm,
 };
 
 use super::bit::from_bytes;
@@ -124,12 +125,11 @@ impl Die {
             return Ok(last_entry.high);
         } else if self.contains(DW_AT_high_pc.0 as u64) {
             let attr = self.index(DW_AT_high_pc.0 as u64)?;
-            let addr: u64;
-            if attr.form() == DW_FORM_addr.0.into() {
-                addr = attr.as_address()?.addr();
+            let addr: u64 = if attr.form() == DW_FORM_addr.0.into() {
+                attr.as_address()?.addr()
             } else {
-                addr = self.low_pc()?.addr() + attr.as_int()?;
-            }
+                self.low_pc()?.addr() + attr.as_int()?
+            };
             return Ok(FileAddress::new(
                 &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
                 addr,
@@ -539,6 +539,7 @@ pub struct Dwarf {
     elf: Rc<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
+    function_index: HashMap<String, Vec<DwarfIndexEntry>>,
 }
 
 impl Dwarf {
@@ -547,6 +548,7 @@ impl Dwarf {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
             compile_units: RefCell::new(Vec::default()),
+            function_index: HashMap::default(),
         };
         let ret = Rc::new(ret);
         *ret.compile_units.borrow_mut() = parse_compile_units(&ret, parent)?;
@@ -569,7 +571,67 @@ impl Dwarf {
     pub fn compile_units(&self) -> Ref<'_, Vec<Rc<CompileUnit>>> {
         self.compile_units.borrow()
     }
+
+    pub fn compile_unit_containing_address(
+        &self,
+        address: &FileAddress,
+    ) -> Result<Option<Rc<CompileUnit>>, SdbError> {
+        for cu in self.compile_units.borrow().iter() {
+            if cu.root()?.contains_address(address)? {
+                return Ok(Some(cu.clone()));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn function_containing_address(
+        &self,
+        address: &FileAddress,
+    ) -> Result<Option<Rc<Die>>, SdbError> {
+        self.index();
+        for (_name, entrys) in self.function_index.iter() {
+            for entry in entrys {
+                let mut cursor = Cursor::new(&entry.pos);
+                let die = parse_die(&entry.cu, &mut cursor)?;
+                if die.contains_address(address)?
+                    && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
+                {
+                    return Ok(Some(die));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn find_functions(&self, name: &str) -> Result<Vec<Rc<Die>>, SdbError> {
+        self.index();
+        let mut found: Vec<Rc<Die>> = Vec::new();
+        let entrys = self.function_index.get(name);
+        if let Some(entrys) = entrys {
+            for entry in entrys {
+                let mut cursor = Cursor::new(&entry.pos);
+                let die = parse_die(&entry.cu, &mut cursor)?;
+                found.push(die);
+            }
+        }
+        Ok(found)
+    }
+
+    fn index(&self) {
+        todo!()
+    }
+
+    fn index_die(&self, die: &Rc<Die>) {
+        todo!()
+    }
 }
+
+#[derive(Debug)]
+pub struct DwarfIndexEntry {
+    cu: Rc<CompileUnit>,
+    pos: Bytes,
+}
+
 fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUnit>>, SdbError> {
     let debug_info = obj.get_section_contents(".debug_info");
     let mut cursor = Cursor::new(&debug_info);
