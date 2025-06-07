@@ -9,7 +9,6 @@ use std::{
 
 use super::test_utils::BinBuilder;
 use gimli::{DW_AT_language, DW_LANG_C_plus_plus};
-use libsdb::syscalls::syscall_id_to_name;
 use libsdb::syscalls::syscall_name_to_id;
 use libsdb::types::StoppointMode;
 use libsdb::types::VirtualAddress;
@@ -22,6 +21,7 @@ use libsdb::{
     types::{Byte64, Byte128},
 };
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
+use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
@@ -635,18 +635,6 @@ fn elf_parser() {
     assert_eq!("_start", name);
 }
 
-/*
-TEST_CASE("Correct DWARF language", "[dwarf]") {
-    auto path = "targets/hello_sdb";
-    sdb::elf elf(path);
-    auto& compile_units = elf.get_dwarf().compile_units();
-    REQUIRE(compile_units.size() == 1);
-    auto& cu = compile_units[0];
-    auto lang = cu->root()[DW_AT_language].as_int();
-    REQUIRE(lang == DW_LANG_C_plus_plus);
-}
-*/
-
 #[test]
 fn correct_dwarf_language() {
     let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
@@ -664,4 +652,22 @@ fn correct_dwarf_language() {
         .as_int()
         .unwrap();
     assert_eq!(DW_LANG_C_plus_plus.0 as u64, lang);
+}
+
+#[test]
+fn iterate_dwarf() {
+    let bin = BinBuilder::cpp("resource", "hello_sdb.cpp");
+    let path = bin.target_path();
+    let elf = Elf::new(path).unwrap();
+    let dwarf = elf.get_dwarf();
+    let compile_units = dwarf.compile_units();
+    assert_eq!(1, compile_units.len());
+    let cu = &compile_units[0];
+    let count = cu
+        .root()
+        .unwrap()
+        .children()
+        .filter(|d| d.as_ref().unwrap().abbrev_entry().code != 0)
+        .count();
+    assert!(count > 0);
 }

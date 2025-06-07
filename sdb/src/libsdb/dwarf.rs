@@ -756,10 +756,10 @@ pub struct AttrSpec {
 
 #[derive(Debug)]
 pub struct Abbrev {
-    code: u64,
-    tag: u64,
-    has_children: bool,
-    attr_specs: Vec<AttrSpec>,
+    pub code: u64,
+    pub tag: u64,
+    pub has_children: bool,
+    pub attr_specs: Vec<AttrSpec>,
 }
 
 #[derive(Debug)]
