@@ -589,7 +589,7 @@ impl Dwarf {
         &self,
         address: &FileAddress,
     ) -> Result<Option<Rc<Die>>, SdbError> {
-        self.index();
+        self.index()?;
         for (_name, entry) in self.function_index.iter() {
             let mut cursor = Cursor::new(&entry.pos);
             let die = parse_die(&entry.cu, &mut cursor)?;
@@ -603,7 +603,7 @@ impl Dwarf {
     }
 
     pub fn find_functions(&self, name: &str) -> Result<Vec<Rc<Die>>, SdbError> {
-        self.index();
+        self.index()?;
         let mut found: Vec<Rc<Die>> = Vec::new();
         let entrys = self.function_index.get_vec(name);
         if let Some(entrys) = entrys {
