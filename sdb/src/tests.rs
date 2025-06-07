@@ -9,7 +9,6 @@ use std::{
 
 use super::test_utils::BinBuilder;
 use gimli::{DW_AT_language, DW_LANG_C_plus_plus};
-use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::syscalls::syscall_id_to_name;
 use libsdb::syscalls::syscall_name_to_id;
 use libsdb::types::StoppointMode;
@@ -22,6 +21,7 @@ use libsdb::{
     registers::F80,
     types::{Byte64, Byte128},
 };
+use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
@@ -656,6 +656,12 @@ fn correct_dwarf_language() {
     let compile_units = dwarf.compile_units();
     assert_eq!(1, compile_units.len());
     let cu = &compile_units[0];
-    let lang = cu.root().unwrap().index(DW_AT_language.0 as u64).unwrap().as_int().unwrap();
+    let lang = cu
+        .root()
+        .unwrap()
+        .index(DW_AT_language.0 as u64)
+        .unwrap()
+        .as_int()
+        .unwrap();
     assert_eq!(DW_LANG_C_plus_plus.0 as u64, lang);
 }

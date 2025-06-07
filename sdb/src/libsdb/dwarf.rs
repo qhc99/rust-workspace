@@ -6,7 +6,13 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_abstract_origin, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm
+    DW_AT_abstract_origin, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling,
+    DW_AT_specification, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2,
+    DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc,
+    DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata,
+    DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata, DW_FORM_sec_offset,
+    DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_TAG_inlined_subroutine, DW_TAG_subprogram,
+    DwForm,
 };
 use multimap::MultiMap;
 
@@ -159,10 +165,16 @@ impl Die {
             return Ok(Some(self.index(DW_AT_name.0 as u64)?.as_string()?));
         }
         if self.contains(DW_AT_specification.0 as u64) {
-            return self.index(DW_AT_specification.0 as u64)?.as_reference()?.name();
+            return self
+                .index(DW_AT_specification.0 as u64)?
+                .as_reference()?
+                .name();
         }
         if self.contains(DW_AT_abstract_origin.0 as u64) {
-            return self.index(DW_AT_abstract_origin.0 as u64)?.as_reference()?.name();
+            return self
+                .index(DW_AT_abstract_origin.0 as u64)?
+                .as_reference()?
+                .name();
         }
         Ok(None)
     }
@@ -636,8 +648,7 @@ impl Dwarf {
     }
 
     fn index_die(&self, die: &Rc<Die>) -> Result<(), SdbError> {
-        let has_range = die.contains(DW_AT_low_pc.0 as u64)
-            || die.contains(DW_AT_ranges.0 as u64);
+        let has_range = die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64);
         let is_function = die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
             || die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64;
         if has_range && is_function {
