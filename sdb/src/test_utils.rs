@@ -56,7 +56,7 @@ impl BinBuilder {
             ret
         })
         .current_dir(&current_dir);
-        let status = cmd.status().expect("Failed to run clang++");
+        let status = cmd.status().expect("Failed to run g++");
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);

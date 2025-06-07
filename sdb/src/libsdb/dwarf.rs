@@ -359,10 +359,7 @@ impl Iterator for DieChildenIter {
             if let Some(abbrev) = &current_die.abbrev {
                 if !abbrev.has_children {
                     let next_cursor = Cursor::new(&current_die.next);
-                    self.die = Some(parse_die(
-                        &current_die.cu.upgrade().unwrap(),
-                        next_cursor,
-                    ));
+                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
                     return Some(Ok(current_die));
                 } else if current_die.contains(DW_AT_sibling.0 as u64) {
                     self.die = Some(
@@ -373,23 +370,19 @@ impl Iterator for DieChildenIter {
                     return Some(Ok(current_die));
                 } else {
                     let mut sub_children = DieChildenIter::new(&current_die);
-                    let mut child: Option<Result<Rc<Die>, SdbError>>;
-                    loop {
-                        child = sub_children.next();
-                        if let Some(Ok(die)) = &child {
-                            if die.abbrev.is_some() {
-                                continue;
+                    let child = sub_children
+                        .find(|child| {
+                            if let Ok(die) = child {
+                                if die.abbrev.is_some() {
+                                    return false;
+                                }
                             }
-                        }
-                        break;
-                    }
-                    let child = child.expect("Has null die");
+                            return true;
+                        })
+                        .unwrap();
                     if let Ok(child) = child {
                         let next_cursor = Cursor::new(&child.next);
-                        self.die = Some(parse_die(
-                            &current_die.cu.upgrade().unwrap(),
-                            next_cursor,
-                        ));
+                        self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
                         return Some(Ok(current_die));
                     } else {
                         return Some(Err(child.unwrap_err()));
@@ -681,7 +674,7 @@ fn parse_compile_units(dwarf: &Rc<Dwarf>, obj: &Elf) -> Result<Vec<Rc<CompileUni
         if let Ok(unit) = parse_compile_unit(dwarf, obj, cursor.clone()) {
             cursor += unit.data.len();
             units.push(unit);
-        }else{
+        } else {
             break;
         }
     }
@@ -702,7 +695,9 @@ fn parse_compile_unit(
         return SdbError::err("Only DWARF32 is supported");
     }
     if version != 4 {
-        return SdbError::err(&format!("Only DWARF version 4 is supported, found version {version}"));
+        return SdbError::err(&format!(
+            "Only DWARF version 4 is supported, found version {version}"
+        ));
     }
     if address_size != 8 {
         return SdbError::err("Invalid address size for DWARF");

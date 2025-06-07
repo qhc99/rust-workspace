@@ -654,6 +654,7 @@ fn correct_dwarf_language() {
     assert_eq!(DW_LANG_C_plus_plus.0 as u64, lang);
 }
 
+// TODO fix test for clang++
 #[test]
 fn iterate_dwarf() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
@@ -672,25 +673,20 @@ fn iterate_dwarf() {
     assert!(count > 0);
 }
 
+// TODO fix test for clang++
 #[test]
 fn find_main() {
     let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
     let dwarf = Dwarf::new(&elf).unwrap();
-    let found = dwarf
-        .compile_units()
-        .iter()
-        .any(|cu| {
-            cu.root()
-                .unwrap()
-                .children()
-                .any(|d| {
-                    let die = d.as_ref().unwrap();
-                    die.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
-                        && die.contains(DW_AT_name.0 as u64)
-                        && die.index(DW_AT_name.0 as u64).unwrap().as_string().unwrap() == "main"
-                })
-        });
+    let found = dwarf.compile_units().iter().any(|cu| {
+        cu.root().unwrap().children().any(|d| {
+            let die = d.as_ref().unwrap();
+            die.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
+                && die.contains(DW_AT_name.0 as u64)
+                && die.index(DW_AT_name.0 as u64).unwrap().as_string().unwrap() == "main"
+        })
+    });
     assert!(found);
 }
