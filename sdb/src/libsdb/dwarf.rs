@@ -13,6 +13,7 @@ use gimli::{
     DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
     DW_TAG_subprogram, DwForm,
 };
+use multimap::MultiMap;
 
 use super::bit::from_bytes;
 use super::elf::Elf;
@@ -539,7 +540,7 @@ pub struct Dwarf {
     elf: Rc<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
-    function_index: HashMap<String, Vec<DwarfIndexEntry>>,
+    function_index: MultiMap<String, DwarfIndexEntry>,
 }
 
 impl Dwarf {
@@ -548,7 +549,7 @@ impl Dwarf {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
             compile_units: RefCell::new(Vec::default()),
-            function_index: HashMap::default(),
+            function_index: MultiMap::default(),
         };
         let ret = Rc::new(ret);
         *ret.compile_units.borrow_mut() = parse_compile_units(&ret, parent)?;
@@ -589,15 +590,13 @@ impl Dwarf {
         address: &FileAddress,
     ) -> Result<Option<Rc<Die>>, SdbError> {
         self.index();
-        for (_name, entrys) in self.function_index.iter() {
-            for entry in entrys {
-                let mut cursor = Cursor::new(&entry.pos);
-                let die = parse_die(&entry.cu, &mut cursor)?;
-                if die.contains_address(address)?
-                    && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
-                {
-                    return Ok(Some(die));
-                }
+        for (_name, entry) in self.function_index.iter() {
+            let mut cursor = Cursor::new(&entry.pos);
+            let die = parse_die(&entry.cu, &mut cursor)?;
+            if die.contains_address(address)?
+                && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
+            {
+                return Ok(Some(die));
             }
         }
         Ok(None)
@@ -606,7 +605,7 @@ impl Dwarf {
     pub fn find_functions(&self, name: &str) -> Result<Vec<Rc<Die>>, SdbError> {
         self.index();
         let mut found: Vec<Rc<Die>> = Vec::new();
-        let entrys = self.function_index.get(name);
+        let entrys = self.function_index.get_vec(name);
         if let Some(entrys) = entrys {
             for entry in entrys {
                 let mut cursor = Cursor::new(&entry.pos);
