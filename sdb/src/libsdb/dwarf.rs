@@ -616,11 +616,17 @@ impl Dwarf {
         Ok(found)
     }
 
-    fn index(&self) {
-        todo!()
+    fn index(&self) -> Result<(), SdbError> {
+        if !self.function_index.is_empty() {
+            return Ok(());
+        }
+        for cu in self.compile_units.borrow().iter() {
+            self.index_die(&cu.root()?)?;
+        }
+        Ok(())
     }
 
-    fn index_die(&self, die: &Rc<Die>) {
+    fn index_die(&self, die: &Rc<Die>) -> Result<(), SdbError> {
         todo!()
     }
 }
