@@ -419,6 +419,7 @@ impl CompileUnit {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CompileUnitRangeList {
     cu: Rc<CompileUnit>,
     data: Bytes,
@@ -501,8 +502,8 @@ impl Iterator for CompileUnitRangeListIter {
 }
 #[derive(Debug, Clone, Default)]
 pub struct CompileUnitRangeEntry {
-    low: FileAddress,
-    high: FileAddress,
+    pub low: FileAddress,
+    pub high: FileAddress,
 }
 
 impl CompileUnitRangeEntry {

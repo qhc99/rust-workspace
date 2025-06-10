@@ -8,8 +8,9 @@ use std::{
 };
 
 use super::test_utils::BinBuilder;
+use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
-use libsdb::types::StoppointMode;
+use libsdb::{dwarf::{CompileUnitRangeList, DieChildenIter}, types::StoppointMode};
 use libsdb::types::VirtualAddress;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
@@ -688,4 +689,47 @@ fn find_main() {
         })
     });
     assert!(found);
+}
+
+#[test]
+fn range_list() {
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
+    let path = bin.target_path();
+    let elf = Elf::new(path).unwrap();
+    let dwarf = Dwarf::new(&elf).unwrap();
+    let compile_units = dwarf.compile_units();
+    assert_eq!(1, compile_units.len());
+    let cu = &compile_units[0];
+    let range_data: Vec<u64> = vec![
+        0x12341234, 0x12341236,
+        !0, 0x32,
+        0x12341234, 0x12341236,
+        0x0, 0x0
+    ];
+    let bytes = Bytes::from_iter(range_data.iter().map(|&x| x.to_ne_bytes()).flatten());
+    let list = CompileUnitRangeList::new(cu, &bytes, FileAddress::new(&elf, 0));
+    let mut it = list.clone().into_iter();
+    let e1 = it.next().unwrap();
+    assert_eq!(e1.low.addr(), 0x12341234);
+    assert_eq!(e1.high.addr(), 0x12341236);
+    assert!(e1.contains(&FileAddress::new(&elf, 0x12341234)));
+    assert!(e1.contains(&FileAddress::new(&elf, 0x12341235)));
+    assert!(!e1.contains(&FileAddress::new(&elf, 0x12341236)));
+
+    let e2 = it.next().unwrap();
+    assert_eq!(e2.low.addr(), 0x12341266);
+    assert_eq!(e2.high.addr(), 0x12341268);
+    assert!(e2.contains(&FileAddress::new(&elf, 0x12341266)));
+    assert!(e2.contains(&FileAddress::new(&elf, 0x12341267)));
+    assert!(!e2.contains(&FileAddress::new(&elf, 0x12341268)));
+
+    
+    assert!(matches!(it.next(), None));
+
+    assert!(list.contains(&FileAddress::new(&elf, 0x12341234)));
+    assert!(list.contains(&FileAddress::new(&elf, 0x12341235)));
+    assert!(!list.contains(&FileAddress::new(&elf, 0x12341236)));
+    assert!(list.contains(&FileAddress::new(&elf, 0x12341266)));
+    assert!(list.contains(&FileAddress::new(&elf, 0x12341267)));
+    assert!(!list.contains(&FileAddress::new(&elf, 0x12341268)));
 }
