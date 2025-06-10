@@ -371,17 +371,15 @@ impl Iterator for DieChildenIter {
                     return Some(current_die);
                 } else {
                     let mut sub_children = DieChildenIter::new(&current_die);
-                    let child = sub_children
-                        .find(|child| {
-                            if child.abbrev.is_some() {
-                                return false;
-                            }
-                            return true;
-                        })
-                        .unwrap();
-                    let next_cursor = Cursor::new(&child.next);
-                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
-                    return Some(child);
+                    while let Some(d) = sub_children.next() {
+                        if d.abbrev.is_none() {
+                            let next_cursor = Cursor::new(&d.next);
+                            self.die =
+                                Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
+                            break;
+                        }
+                    }
+                    return Some(current_die);
                 }
             }
         }

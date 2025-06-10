@@ -653,7 +653,6 @@ fn correct_dwarf_language() {
     assert_eq!(DW_LANG_C_plus_plus.0 as u64, lang);
 }
 
-// TODO fix test for clang++
 #[test]
 fn iterate_dwarf() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
@@ -666,12 +665,14 @@ fn iterate_dwarf() {
     let count = cu
         .root()
         .children()
-        .filter(|d| d.as_ref().abbrev_entry().code != 0)
+        .filter(|d| {
+            assert!(d.as_ref().abbrev_entry().code != 0);
+            true
+        })
         .count();
     assert!(count > 0);
 }
 
-// TODO fix test for clang++
 #[test]
 fn find_main() {
     let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
