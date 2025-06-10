@@ -242,7 +242,7 @@ impl DieAttr {
             DW_FORM_block => cursor.uleb128() as usize,
             _ => return SdbError::err("Invalid block type"),
         };
-        Ok(self.location.slice(..size))
+        Ok(cursor.position().slice(..size))
     }
 
     pub fn as_int(&self) -> Result<u64, SdbError> {
@@ -289,7 +289,7 @@ impl DieAttr {
             DW_FORM_ref8 => cursor.u64() as usize,
             DW_FORM_ref_udata => cursor.uleb128() as usize,
             DW_FORM_ref_addr => {
-                let offset = cursor.u8() as usize;
+                let offset = cursor.u32() as usize;
                 let cu = self.cu.upgrade().unwrap();
                 let dwarf_info = cu.dwarf_info();
                 let section = dwarf_info.elf_file().get_section_contents(".debug_info");
@@ -821,7 +821,7 @@ impl Cursor {
         return res;
     }
 
-    pub fn sleb128(&mut self) -> u64 {
+    pub fn sleb128(&mut self) -> i64 {
         let mut res = 0u64;
         let mut shift = 0i32;
         let mut byte: u8;
@@ -837,7 +837,7 @@ impl Cursor {
         if ((shift as usize) < u64::BITS as usize) && (byte & 0x40) != 0 {
             res |= !0u64 << shift;
         }
-        res
+        res as i64
     }
     #[allow(non_upper_case_globals)]
     pub fn skip_form(&mut self, form: u64) -> Result<(), SdbError> {
