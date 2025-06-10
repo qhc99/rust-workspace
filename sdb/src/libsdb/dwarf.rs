@@ -370,8 +370,8 @@ impl Iterator for DieChildenIter {
                     );
                     return Some(current_die);
                 } else {
-                    let mut sub_children = DieChildenIter::new(&current_die);
-                    while let Some(d) = sub_children.next() {
+                    let sub_children = DieChildenIter::new(&current_die);
+                    for d in sub_children {
                         if d.abbrev.is_none() {
                             let next_cursor = Cursor::new(&d.next);
                             self.die =
