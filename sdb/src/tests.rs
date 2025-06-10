@@ -10,7 +10,6 @@ use std::{
 use super::test_utils::BinBuilder;
 use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
-use libsdb::{dwarf::{CompileUnitRangeList, DieChildenIter}, types::StoppointMode};
 use libsdb::types::VirtualAddress;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
@@ -23,6 +22,10 @@ use libsdb::{
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
 use libsdb::{dwarf::Dwarf, syscalls::syscall_name_to_id};
+use libsdb::{
+    dwarf::{CompileUnitRangeList, DieChildenIter},
+    types::StoppointMode,
+};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
@@ -701,10 +704,7 @@ fn range_list() {
     assert_eq!(1, compile_units.len());
     let cu = &compile_units[0];
     let range_data: Vec<u64> = vec![
-        0x12341234, 0x12341236,
-        !0, 0x32,
-        0x12341234, 0x12341236,
-        0x0, 0x0
+        0x12341234, 0x12341236, !0, 0x32, 0x12341234, 0x12341236, 0x0, 0x0,
     ];
     let bytes = Bytes::from_iter(range_data.iter().map(|&x| x.to_ne_bytes()).flatten());
     let list = CompileUnitRangeList::new(cu, &bytes, FileAddress::new(&elf, 0));
@@ -723,7 +723,6 @@ fn range_list() {
     assert!(e2.contains(&FileAddress::new(&elf, 0x12341267)));
     assert!(!e2.contains(&FileAddress::new(&elf, 0x12341268)));
 
-    
     assert!(matches!(it.next(), None));
 
     assert!(list.contains(&FileAddress::new(&elf, 0x12341234)));
