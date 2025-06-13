@@ -20,12 +20,9 @@ use libsdb::{
     types::{Byte64, Byte128},
 };
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
+use libsdb::{dwarf::CompileUnitRangeList, types::StoppointMode};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
 use libsdb::{dwarf::Dwarf, syscalls::syscall_name_to_id};
-use libsdb::{
-    dwarf::{CompileUnitRangeList, DieChildenIter},
-    types::StoppointMode,
-};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},

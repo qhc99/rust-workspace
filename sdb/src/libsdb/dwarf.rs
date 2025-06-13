@@ -1,6 +1,5 @@
 use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
-use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
@@ -52,35 +51,6 @@ pub struct LineTableEntry {
     file_entry: Option<Rc<LineTableFile>>,
 }
 
-impl LineTableEntry {
-    pub fn new(
-        address: FileAddress,
-        file_index: u64,
-        line: u64,
-        column: u64,
-        is_stmt: bool,
-        basic_block_start: bool,
-        end_sequence: bool,
-        prologue_end: bool,
-        epilogue_begin: bool,
-        discriminator: u64,
-        file_entry: Option<Rc<LineTableFile>>,
-    ) -> Self {
-        Self {
-            address,
-            file_index,
-            line,
-            column,
-            is_stmt,
-            basic_block_start,
-            end_sequence,
-            prologue_end,
-            epilogue_begin,
-            discriminator,
-            file_entry,
-        }
-    }
-}
 
 impl PartialEq for LineTableEntry {
     fn eq(&self, other: &Self) -> bool {
@@ -97,7 +67,7 @@ impl Eq for LineTableEntry {}
 #[derive(Debug, Clone)]
 pub struct LineTableIter {
     table: Rc<LineTable>,
-    current: LineTableEntry,
+    current: Option<LineTableEntry>,
     registers: LineTableEntry,
     pos: Bytes,
 }
@@ -109,7 +79,7 @@ impl LineTableIter {
             .build();
         let mut ret = Self {
             table: table.clone(),
-            current: registers.clone(),
+            current: None,
             registers,
             pos: table.data.clone(),
         };
@@ -122,20 +92,20 @@ impl LineTableIter {
             self.pos = Bytes::new();
             return;
         }
-        let mut emitted = false;
+        let mut emitted;
         loop {
             emitted = self.execute_instruction();
             if emitted {
                 break;
             }
         }
-        self.current.file_entry = Some(Rc::new(
-            self.table.file_names()[self.current.file_index as usize - 1].clone(),
+        self.current.as_mut().unwrap().file_entry = Some(Rc::new(
+            self.table.file_names()[self.current.as_ref().unwrap().file_index as usize - 1].clone(),
         ));
     }
 
-    pub fn current(&self) -> &LineTableEntry {
-        &self.current
+    pub fn extract(&mut self) -> LineTableEntry {
+        self.current.take().unwrap()
     }
 
     pub fn execute_instruction(&mut self) -> bool {
@@ -163,6 +133,7 @@ pub struct LineTable {
 }
 
 impl LineTable {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data: Bytes,
         cu: &Rc<CompileUnit>,
