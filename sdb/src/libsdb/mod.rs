@@ -1,5 +1,7 @@
 #![cfg(target_os = "linux")]
 #![allow(dead_code)]
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!("Not x86_64 arch");
 
 use ::elf::abi::STT_FUNC;
 use breakpoint_site::IdType;

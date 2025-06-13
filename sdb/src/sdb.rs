@@ -3,6 +3,9 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("No supported on non-linux system.");
 
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!("Not x86_64 arch");
+
 use libsdb::handle_command;
 use libsdb::process::Process;
 use libsdb::target::Target;

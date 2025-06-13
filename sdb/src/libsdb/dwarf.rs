@@ -1,18 +1,19 @@
 use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
+use std::path::{Path, PathBuf};
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_abstract_origin, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling,
-    DW_AT_specification, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2,
-    DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc,
-    DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr, DW_FORM_ref_udata,
-    DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata, DW_FORM_sec_offset,
-    DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_TAG_inlined_subroutine, DW_TAG_subprogram,
-    DwForm,
+    DW_AT_abstract_origin, DW_AT_comp_dir, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges,
+    DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
+    DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
+    DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
+    DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
+    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
+    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm,
 };
 use multimap::MultiMap;
 
@@ -22,6 +23,57 @@ use super::sdb_error::SdbError;
 use super::types::FileAddress;
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
+
+#[derive(Debug)]
+pub struct LineTableFile {
+    pub path: PathBuf,
+    pub modification_time: u64,
+    pub file_length: u64,
+}
+
+#[derive(Debug)]
+pub struct LineTable {
+    data: Bytes,
+    cu: Weak<CompileUnit>,
+    default_is_stmt: bool,
+    line_base: i8,
+    line_range: u8,
+    opcode_base: u8,
+    include_directories: Vec<PathBuf>,
+    file_names: RefCell<Vec<LineTableFile>>,
+}
+
+impl LineTable {
+    pub fn new(
+        data: Bytes,
+        cu: &Rc<CompileUnit>,
+        default_is_stmt: bool,
+        line_base: i8,
+        line_range: u8,
+        opcode_base: u8,
+        include_directories: Vec<PathBuf>,
+        file_names: Vec<LineTableFile>,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            data,
+            cu: Rc::downgrade(cu),
+            default_is_stmt,
+            line_base,
+            line_range,
+            opcode_base,
+            include_directories,
+            file_names: RefCell::new(file_names),
+        })
+    }
+
+    pub fn cu(&self) -> Rc<CompileUnit> {
+        self.cu.upgrade().unwrap()
+    }
+
+    pub fn file_names(&self) -> Ref<Vec<LineTableFile>> {
+        self.file_names.borrow()
+    }
+}
 
 #[derive(Debug)]
 pub struct Die {
@@ -392,6 +444,105 @@ pub struct CompileUnit {
     parent: Weak<Dwarf>,
     data: Bytes,
     abbrev_offset: usize,
+    line_table: Option<Rc<LineTable>>,
+}
+
+fn parse_line_table_file(
+    cur: &mut Cursor,
+    compilation_dir: &Path,
+    include_directories: &[PathBuf],
+) -> LineTableFile {
+    let file = PathBuf::from(cur.string());
+    let dir_index = cur.uleb128();
+    let modification_time = cur.uleb128();
+    let file_length = cur.uleb128();
+    let mut path = file.clone();
+    if !file.as_os_str().to_str().unwrap().starts_with('/') {
+        if dir_index == 0 {
+            path = compilation_dir.join(file);
+        } else {
+            path = include_directories[dir_index as usize - 1].join(file);
+        }
+    }
+    LineTableFile {
+        path,
+        modification_time,
+        file_length,
+    }
+}
+
+fn parse_line_table(cu: &Rc<CompileUnit>) -> Result<Option<Rc<LineTable>>, SdbError> {
+    let section = cu
+        .dwarf_info()
+        .elf_file()
+        .get_section_contents(".debug_line");
+    if !cu.root().contains(DW_AT_stmt_list.0 as u64) {
+        return Ok(None);
+    }
+    let offset = cu
+        .root()
+        .index(DW_AT_stmt_list.0 as u64)?
+        .as_section_offset()? as usize;
+    let mut cursor = Cursor::new(&section.slice(offset..));
+    let size = cursor.u32();
+    let end = cursor.position().as_ptr() as usize + size as usize;
+    let version = cursor.u16();
+    if version != 4 {
+        return SdbError::err("Only DWARF 4 is supported");
+    }
+    let _header_length = cursor.u32();
+    let minimum_instruction_length = cursor.u8();
+    if minimum_instruction_length != 1 {
+        return SdbError::err("Invalid minimum instruction length");
+    }
+    let maximum_operations_per_instruction = cursor.u8();
+    if maximum_operations_per_instruction != 1 {
+        return SdbError::err("Invalid maximum operations per instruction");
+    }
+    let default_is_stmt = cursor.u8();
+    let line_base = cursor.s8();
+    let line_range = cursor.u8();
+    let opcode_base = cursor.u8();
+    let expected_opcode_lengths = [0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1];
+    for i in 0..opcode_base - 1 {
+        if cursor.u8() != expected_opcode_lengths[i as usize] {
+            return SdbError::err("Unexpected opcode length");
+        }
+    }
+    let mut include_directories: Vec<PathBuf> = vec![];
+    let compilation_dir = PathBuf::from(cu.root().index(DW_AT_comp_dir.0 as u64)?.as_string()?);
+    let mut dir = cursor.string();
+    while !dir.is_empty() {
+        if dir.starts_with('/') {
+            include_directories.push(PathBuf::from(dir));
+        } else {
+            include_directories.push(compilation_dir.clone().join(dir));
+        }
+        dir = cursor.string();
+    }
+    let mut file_names: Vec<LineTableFile> = vec![];
+    while cursor.position()[0] != 0 {
+        file_names.push(parse_line_table_file(
+            &mut cursor,
+            &compilation_dir,
+            &include_directories,
+        ));
+    }
+    cursor += 1;
+    // Use ptr arithmetics
+    let data = cursor
+        .position()
+        .slice(0..(end - cursor.position().as_ptr() as usize));
+    Ok(Some(LineTable::new(
+        data,
+        cu,
+        default_is_stmt != 0,
+        line_base,
+        line_range,
+        opcode_base,
+        include_directories,
+        file_names,
+    )))
 }
 
 impl CompileUnit {
@@ -400,7 +551,9 @@ impl CompileUnit {
             parent: Rc::downgrade(parent),
             data,
             abbrev_offset,
+            line_table: None,
         })
+        // TODO parse line table
     }
 
     pub fn dwarf_info(&self) -> Rc<Dwarf> {
@@ -416,6 +569,10 @@ impl CompileUnit {
             .upgrade()
             .unwrap()
             .get_abbrev_table(self.abbrev_offset)
+    }
+
+    pub fn lines(&self) -> Rc<LineTable> {
+        self.line_table.clone().unwrap()
     }
 }
 
