@@ -54,10 +54,7 @@ impl FileAddress {
     }
 
     pub fn null() -> Self {
-        Self {
-            addr: 0,
-            elf: Weak::new(),
-        }
+        FileAddress::default()
     }
 
     pub fn addr(&self) -> u64 {

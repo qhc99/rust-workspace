@@ -1,5 +1,6 @@
 use std::cell::{Ref, RefCell};
 use std::ffi::CStr;
+use std::ops::Index;
 use std::path::{Path, PathBuf};
 use std::rc::Weak;
 use std::{collections::HashMap, ops::AddAssign, rc::Rc};
@@ -16,6 +17,7 @@ use gimli::{
     DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm,
 };
 use multimap::MultiMap;
+use typed_builder::TypedBuilder;
 
 use super::bit::from_bytes;
 use super::elf::Elf;
@@ -24,7 +26,124 @@ use super::types::FileAddress;
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, TypedBuilder)]
+pub struct LineTableEntry {
+    #[builder(default = FileAddress::null())]
+    address: FileAddress,
+    #[builder(default = 1)]
+    file_index: u64,
+    #[builder(default = 1)]
+    line: u64,
+    #[builder(default = 0)]
+    column: u64,
+    #[builder(default = false)]
+    is_stmt: bool,
+    #[builder(default = false)]
+    basic_block_start: bool,
+    #[builder(default = false)]
+    end_sequence: bool,
+    #[builder(default = false)]
+    prologue_end: bool,
+    #[builder(default = false)]
+    epilogue_begin: bool,
+    #[builder(default = 0)]
+    discriminator: u64,
+    #[builder(default = None)]
+    file_entry: Option<Rc<LineTableFile>>,
+}
+
+impl LineTableEntry {
+    pub fn new(
+        address: FileAddress,
+        file_index: u64,
+        line: u64,
+        column: u64,
+        is_stmt: bool,
+        basic_block_start: bool,
+        end_sequence: bool,
+        prologue_end: bool,
+        epilogue_begin: bool,
+        discriminator: u64,
+        file_entry: Option<Rc<LineTableFile>>,
+    ) -> Self {
+        Self {
+            address,
+            file_index,
+            line,
+            column,
+            is_stmt,
+            basic_block_start,
+            end_sequence,
+            prologue_end,
+            epilogue_begin,
+            discriminator,
+            file_entry,
+        }
+    }
+}
+
+impl PartialEq for LineTableEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.address == other.address
+            && self.file_index == other.file_index
+            && self.line == other.line
+            && self.column == other.column
+            && self.discriminator == other.discriminator
+    }
+}
+
+impl Eq for LineTableEntry {}
+
+#[derive(Debug, Clone)]
+pub struct LineTableIter {
+    table: Rc<LineTable>,
+    current: LineTableEntry,
+    registers: LineTableEntry,
+    pos: Bytes,
+}
+
+impl LineTableIter {
+    pub fn new(table: &Rc<LineTable>) -> Self {
+        let registers = LineTableEntry::builder()
+            .is_stmt(table.default_is_stmt)
+            .build();
+        let mut ret = Self {
+            table: table.clone(),
+            current: registers.clone(),
+            registers,
+            pos: table.data.clone(),
+        };
+        ret.step();
+        ret
+    }
+
+    pub fn step(&mut self) {
+        if self.pos.is_empty() {
+            self.pos = Bytes::new();
+            return;
+        }
+        let mut emitted = false;
+        loop {
+            emitted = self.execute_instruction();
+            if emitted {
+                break;
+            }
+        }
+        self.current.file_entry = Some(Rc::new(
+            self.table.file_names()[self.current.file_index as usize - 1].clone(),
+        ));
+    }
+
+    pub fn current(&self) -> &LineTableEntry {
+        &self.current
+    }
+
+    pub fn execute_instruction(&mut self) -> bool {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LineTableFile {
     pub path: PathBuf,
     pub modification_time: u64,
