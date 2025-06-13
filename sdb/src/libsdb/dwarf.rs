@@ -13,7 +13,10 @@ use gimli::{
     DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
     DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
     DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
-    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm,
+    DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy,
+    DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column,
+    DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end,
+    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLns,
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -51,7 +54,6 @@ pub struct LineTableEntry {
     file_entry: Option<Rc<LineTableFile>>,
 }
 
-
 impl PartialEq for LineTableEntry {
     fn eq(&self, other: &Self) -> bool {
         self.address == other.address
@@ -73,7 +75,7 @@ pub struct LineTableIter {
 }
 
 impl LineTableIter {
-    pub fn new(table: &Rc<LineTable>) -> Self {
+    pub fn new(table: &Rc<LineTable>) -> Result<Self, SdbError> {
         let registers = LineTableEntry::builder()
             .is_stmt(table.default_is_stmt)
             .build();
@@ -83,18 +85,18 @@ impl LineTableIter {
             registers,
             pos: table.data.clone(),
         };
-        ret.step();
-        ret
+        ret.step()?;
+        Ok(ret)
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> Result<(), SdbError> {
         if self.pos.is_empty() {
             self.pos = Bytes::new();
-            return;
+            return Ok(());
         }
         let mut emitted;
         loop {
-            emitted = self.execute_instruction();
+            emitted = self.execute_instruction()?;
             if emitted {
                 break;
             }
@@ -102,14 +104,130 @@ impl LineTableIter {
         self.current.as_mut().unwrap().file_entry = Some(Rc::new(
             self.table.file_names()[self.current.as_ref().unwrap().file_index as usize - 1].clone(),
         ));
+        Ok(())
     }
 
     pub fn extract(&mut self) -> LineTableEntry {
         self.current.take().unwrap()
     }
 
-    pub fn execute_instruction(&mut self) -> bool {
-        todo!()
+    /*
+    bool sdb::line_table::iterator::execute_instruction() {
+        auto elf = table_->cu_->dwarf_info()->elf_file();
+        cursor cur({ pos_, table_->data_.end() });
+        auto opcode = cur.u8();
+        bool emitted = false;
+        if (opcode > 0 and opcode < table_->opcode_base_) {
+            switch (opcode) {
+            case DW_LNS_copy:
+                current_ = registers_;
+                registers_.basic_block_start = false;
+                registers_.prologue_end = false;
+                registers_.epilogue_begin = false;
+                registers_.discriminator = 0;
+                emitted = true;
+                break;
+            case DW_LNS_advance_pc:
+                registers_.address += cur.uleb128();
+                break;
+            case DW_LNS_advance_line:
+                registers_.line += cur.sleb128();
+                break;
+            case DW_LNS_set_file:
+                registers_.file_index = cur.uleb128();
+                break;
+            case DW_LNS_set_column:
+                registers_.column = cur.uleb128();
+                break;
+            case DW_LNS_negate_stmt:
+                registers_.is_stmt = !registers_.is_stmt;
+                break;
+            case DW_LNS_set_basic_block:
+                registers_.basic_block_start = true;
+                break;
+            case DW_LNS_const_add_pc:
+                registers_.address +=
+                (255 - table_->opcode_base_) / table_->line_range_;
+                break;
+            case DW_LNS_fixed_advance_pc:
+                registers_.address += cur.u16();
+                break;
+            case DW_LNS_set_prologue_end:
+                registers_.prologue_end = true;
+                break;
+            case DW_LNS_set_epilogue_begin:
+                registers_.epilogue_begin = true;
+                break;
+            case DW_LNS_set_isa:
+                break;
+            default:
+                error::send("Unexpected standard opcode");
+        }
+        pos_ = cur.position();
+        return emitted;
+    }
+     */
+    pub fn execute_instruction(&mut self) -> Result<bool, SdbError> {
+        let elf = self.table.cu().dwarf_info().elf_file();
+        let mut cursor = Cursor::new(&self.pos.slice(
+            ..(self.table.data.as_ptr() as usize + self.table.data.len()
+                - self.pos.as_ptr() as usize),
+        ));
+        let opcode = cursor.u8();
+        let mut emitted = false;
+        #[allow(non_upper_case_globals)]
+        if opcode > 0 && opcode < self.table.opcode_base {
+            match DwLns(opcode) {
+                DW_LNS_copy => {
+                    self.current = Some(self.registers.clone());
+                    self.registers.basic_block_start = false;
+                    self.registers.prologue_end = false;
+                    self.registers.epilogue_begin = false;
+                    self.registers.discriminator = 0;
+                    emitted = true;
+                }
+                DW_LNS_advance_pc => {
+                    self.registers.address += cursor.uleb128() as i64;
+                }
+                DW_LNS_advance_line => {
+                    self.registers.line += cursor.sleb128() as u64;
+                }
+                DW_LNS_set_file => {
+                    self.registers.file_index = cursor.uleb128();
+                }
+                DW_LNS_set_column => {
+                    self.registers.column = cursor.uleb128();
+                }
+                DW_LNS_negate_stmt => {
+                    self.registers.is_stmt = !self.registers.is_stmt;
+                }
+                DW_LNS_set_basic_block => {
+                    self.registers.basic_block_start = true;
+                }
+                DW_LNS_const_add_pc => {
+                    self.registers.address +=
+                        ((255 - self.table.opcode_base) / self.table.line_range) as i64;
+                }
+                DW_LNS_fixed_advance_pc => {
+                    self.registers.address += cursor.u16() as i64;
+                }
+                DW_LNS_set_prologue_end => {
+                    self.registers.prologue_end = true;
+                }
+                DW_LNS_set_epilogue_begin => {
+                    self.registers.epilogue_begin = true;
+                }
+                DW_LNS_set_isa => {
+                    // Do nothing
+                }
+                _ => {
+                    return SdbError::err("Unexpected standard opcode");
+                }
+            }
+        }
+        todo!();
+        self.pos = cursor.position();
+        Ok(emitted)
     }
 }
 
