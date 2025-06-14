@@ -13,10 +13,11 @@ use gimli::{
     DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
     DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
     DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
+    DW_LNE_define_file, DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator,
     DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy,
     DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column,
     DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end,
-    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLns,
+    DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLne, DwLns,
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -163,10 +164,53 @@ impl LineTableIter {
             default:
                 error::send("Unexpected standard opcode");
         }
+        else if (opcode == 0) {
+            auto length = cur.uleb128();
+            auto extended_opcode = cur.u8();
+            switch (extended_opcode) {
+                case DW_LNE_end_sequence:
+                    registers_.end_sequence = true;
+                    current_ = registers_;
+                    registers_ = entry{};
+                    registers_.is_stmt = table_->default_is_stmt_;
+                    emitted = true;
+                    break;
+                case DW_LNE_set_address:
+                    registers_.address = file_addr(
+                    *elf, cur.u64());
+                    break;
+                case DW_LNE_define_file: {
+                    auto compilation_dir =
+                    table_->cu_->root()[DW_AT_comp_dir].as_string();
+                    auto file = parse_line_table_file(
+                    cur, std::string(compilation_dir), table_->include_directories_);
+                    table_->file_names_.push_back(file);
+                    break;
+                }
+                case DW_LNE_set_discriminator: º
+                    registers_.discriminator = cur.uleb128();
+                    break;
+                default:
+                    error::send("Unexpected extended opcode");
+            }
+        }
+        else {
+            auto adjusted_opcode = opcode - table_->opcode_base_;
+            registers_.address += adjusted_opcode / table_->line_range_;
+            registers_.line +=
+            table_->line_base_ + (adjusted_opcode % table_->line_range_);
+            current_ = registers_;
+            registers_.basic_block_start = false;
+            registers_.prologue_end = false;
+            registers_.epilogue_begin = false;
+            registers_.discriminator = 0;
+            emitted = true;
+        }
         pos_ = cur.position();
         return emitted;
     }
      */
+    #[allow(non_upper_case_globals)]
     pub fn execute_instruction(&mut self) -> Result<bool, SdbError> {
         let elf = self.table.cu().dwarf_info().elf_file();
         let mut cursor = Cursor::new(&self.pos.slice(
@@ -175,7 +219,6 @@ impl LineTableIter {
         ));
         let opcode = cursor.u8();
         let mut emitted = false;
-        #[allow(non_upper_case_globals)]
         if opcode > 0 && opcode < self.table.opcode_base {
             match DwLns(opcode) {
                 DW_LNS_copy => {
@@ -224,8 +267,55 @@ impl LineTableIter {
                     return SdbError::err("Unexpected standard opcode");
                 }
             }
+        } else if opcode == 0 {
+            let _length = cursor.uleb128();
+            let extended_opcode = cursor.u8();
+            match DwLne(extended_opcode) {
+                DW_LNE_end_sequence => {
+                    self.registers.end_sequence = true;
+                    self.current = Some(self.registers.clone());
+                    self.registers = LineTableEntry::builder()
+                        .is_stmt(self.table.default_is_stmt)
+                        .build();
+                    emitted = true;
+                }
+                DW_LNE_set_address => {
+                    self.registers.address = FileAddress::new(&elf, cursor.u64());
+                }
+                DW_LNE_define_file => {
+                    let compilation_dir = self
+                        .table
+                        .cu()
+                        .root()
+                        .index(DW_AT_comp_dir.0 as u64)?
+                        .as_string()?;
+                    let file = parse_line_table_file(
+                        &mut cursor,
+                        &compilation_dir,
+                        &self.table.include_directories,
+                    );
+                    self.table.file_names.borrow_mut().push(file);
+                }
+                DW_LNE_set_discriminator => {
+                    self.registers.discriminator = cursor.uleb128();
+                }
+                _ => {
+                    return SdbError::err("Unexpected extended opcode");
+                }
+            }
+        } else {
+            let adjusted_opcode = opcode - self.table.opcode_base;
+            self.registers.address += (adjusted_opcode / self.table.line_range) as i64;
+            self.registers.line += (self.table.line_base as i16
+                + (adjusted_opcode % self.table.line_range) as i16)
+                as u64;
+            self.current = Some(self.registers.clone());
+            self.registers.basic_block_start = false;
+            self.registers.prologue_end = false;
+            self.registers.epilogue_begin = false;
+            self.registers.discriminator = 0;
+            emitted = true;
         }
-        todo!();
         self.pos = cursor.position();
         Ok(emitted)
     }
@@ -655,9 +745,9 @@ pub struct CompileUnit {
     line_table: Option<Rc<LineTable>>,
 }
 
-fn parse_line_table_file(
+fn parse_line_table_file<T: AsRef<Path>>(
     cur: &mut Cursor,
-    compilation_dir: &Path,
+    compilation_dir: &T,
     include_directories: &[PathBuf],
 ) -> LineTableFile {
     let file = PathBuf::from(cur.string());
@@ -667,7 +757,7 @@ fn parse_line_table_file(
     let mut path = file.clone();
     if !file.as_os_str().to_str().unwrap().starts_with('/') {
         if dir_index == 0 {
-            path = compilation_dir.join(file);
+            path = compilation_dir.as_ref().join(file);
         } else {
             path = include_directories[dir_index as usize - 1].join(file);
         }
