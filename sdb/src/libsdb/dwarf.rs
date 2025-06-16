@@ -29,7 +29,7 @@ use super::types::FileAddress;
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
 
-#[derive(Debug, Clone, TypedBuilder)]
+#[derive(Debug, Clone, TypedBuilder, Default)]
 pub struct LineTableEntry {
     #[builder(default = FileAddress::null())]
     address: FileAddress,
@@ -67,7 +67,7 @@ impl PartialEq for LineTableEntry {
 
 impl Eq for LineTableEntry {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LineTableIter {
     table: Rc<LineTable>,
     current: Option<LineTableEntry>,
@@ -108,108 +108,6 @@ impl LineTableIter {
         Ok(())
     }
 
-    pub fn extract(&mut self) -> LineTableEntry {
-        self.current.take().unwrap()
-    }
-
-    /*
-    bool sdb::line_table::iterator::execute_instruction() {
-        auto elf = table_->cu_->dwarf_info()->elf_file();
-        cursor cur({ pos_, table_->data_.end() });
-        auto opcode = cur.u8();
-        bool emitted = false;
-        if (opcode > 0 and opcode < table_->opcode_base_) {
-            switch (opcode) {
-            case DW_LNS_copy:
-                current_ = registers_;
-                registers_.basic_block_start = false;
-                registers_.prologue_end = false;
-                registers_.epilogue_begin = false;
-                registers_.discriminator = 0;
-                emitted = true;
-                break;
-            case DW_LNS_advance_pc:
-                registers_.address += cur.uleb128();
-                break;
-            case DW_LNS_advance_line:
-                registers_.line += cur.sleb128();
-                break;
-            case DW_LNS_set_file:
-                registers_.file_index = cur.uleb128();
-                break;
-            case DW_LNS_set_column:
-                registers_.column = cur.uleb128();
-                break;
-            case DW_LNS_negate_stmt:
-                registers_.is_stmt = !registers_.is_stmt;
-                break;
-            case DW_LNS_set_basic_block:
-                registers_.basic_block_start = true;
-                break;
-            case DW_LNS_const_add_pc:
-                registers_.address +=
-                (255 - table_->opcode_base_) / table_->line_range_;
-                break;
-            case DW_LNS_fixed_advance_pc:
-                registers_.address += cur.u16();
-                break;
-            case DW_LNS_set_prologue_end:
-                registers_.prologue_end = true;
-                break;
-            case DW_LNS_set_epilogue_begin:
-                registers_.epilogue_begin = true;
-                break;
-            case DW_LNS_set_isa:
-                break;
-            default:
-                error::send("Unexpected standard opcode");
-        }
-        else if (opcode == 0) {
-            auto length = cur.uleb128();
-            auto extended_opcode = cur.u8();
-            switch (extended_opcode) {
-                case DW_LNE_end_sequence:
-                    registers_.end_sequence = true;
-                    current_ = registers_;
-                    registers_ = entry{};
-                    registers_.is_stmt = table_->default_is_stmt_;
-                    emitted = true;
-                    break;
-                case DW_LNE_set_address:
-                    registers_.address = file_addr(
-                    *elf, cur.u64());
-                    break;
-                case DW_LNE_define_file: {
-                    auto compilation_dir =
-                    table_->cu_->root()[DW_AT_comp_dir].as_string();
-                    auto file = parse_line_table_file(
-                    cur, std::string(compilation_dir), table_->include_directories_);
-                    table_->file_names_.push_back(file);
-                    break;
-                }
-                case DW_LNE_set_discriminator: º
-                    registers_.discriminator = cur.uleb128();
-                    break;
-                default:
-                    error::send("Unexpected extended opcode");
-            }
-        }
-        else {
-            auto adjusted_opcode = opcode - table_->opcode_base_;
-            registers_.address += adjusted_opcode / table_->line_range_;
-            registers_.line +=
-            table_->line_base_ + (adjusted_opcode % table_->line_range_);
-            current_ = registers_;
-            registers_.basic_block_start = false;
-            registers_.prologue_end = false;
-            registers_.epilogue_begin = false;
-            registers_.discriminator = 0;
-            emitted = true;
-        }
-        pos_ = cur.position();
-        return emitted;
-    }
-     */
     #[allow(non_upper_case_globals)]
     pub fn execute_instruction(&mut self) -> Result<bool, SdbError> {
         let elf = self.table.cu().dwarf_info().elf_file();
@@ -321,6 +219,20 @@ impl LineTableIter {
     }
 }
 
+impl Iterator for LineTableIter {
+    type Item = LineTableEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current.is_some() {
+            let ret = self.current.as_ref().unwrap().clone();
+            self.step().unwrap();
+            Some(ret)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LineTableFile {
     pub path: PathBuf,
@@ -328,7 +240,7 @@ pub struct LineTableFile {
     pub file_length: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LineTable {
     data: Bytes,
     cu: Weak<CompileUnit>,
@@ -370,6 +282,38 @@ impl LineTable {
 
     pub fn file_names(&self) -> Ref<Vec<LineTableFile>> {
         self.file_names.borrow()
+    }
+}
+
+pub trait LineTableExt {
+    fn get_entry_by_address(&self, address: FileAddress) -> Result<LineTableIter, SdbError>;
+
+    fn get_entries_by_line(&self, path: &Path, line: u64) -> Vec<LineTableIter>;
+}
+
+impl LineTableExt for Rc<LineTable> {
+    fn get_entry_by_address(&self, address: FileAddress) -> Result<LineTableIter, SdbError> {
+        let mut prev = LineTableIter::new(&self)?;
+        if prev.current.is_none() {
+            return Ok(LineTableIter::default());
+        }
+        let mut it = prev.clone();
+        it.step()?;
+        while it.current.is_some() {
+            if prev.current.as_ref().unwrap().address <= address
+                && it.current.as_ref().unwrap().address > address
+                && !prev.current.as_ref().unwrap().end_sequence
+            {
+                return Ok(prev);
+            }
+            prev = it.clone();
+            it.step()?;
+        }
+        Ok(LineTableIter::default())
+    }
+
+    fn get_entries_by_line(&self, path: &Path, line: u64) -> Vec<LineTableIter> {
+        todo!()
     }
 }
 
