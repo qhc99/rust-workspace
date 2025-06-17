@@ -7,6 +7,7 @@ use super::register_info::register_info_by_id;
 use super::registers::Registers;
 use super::sdb_error::SdbError;
 use super::stoppoint_collection::StoppointCollection;
+use super::target::Target;
 use super::traits::StoppointTrait;
 use super::types::StoppointMode;
 use super::types::VirtualAddress;
@@ -56,6 +57,7 @@ use std::ffi::c_long;
 use std::fs::File;
 use std::io::IoSliceMut;
 use std::os::fd::AsRawFd;
+use std::rc::Weak;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ProcessState {
@@ -162,6 +164,7 @@ pub struct Process {
     watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
     syscall_catch_policy: RefCell<SyscallCatchPolicy>,
     expecting_syscall_exit: RefCell<bool>,
+    target: RefCell<Option<Weak<Target>>>,
 }
 
 impl Process {
@@ -180,6 +183,7 @@ impl Process {
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
             syscall_catch_policy: RefCell::new(SyscallCatchPolicy::default()),
             expecting_syscall_exit: RefCell::new(false),
+            target: RefCell::new(None),
         };
 
         let res = Rc::new(res);
@@ -253,6 +257,11 @@ impl Process {
                             }
                         } else if reason.trap_reason == Some(TrapType::Syscall) {
                             reason = self.maybe_resume_from_syscall(&reason)?;
+                        }
+                    }
+                    if let Some(target) = self.target.borrow().as_ref() {
+                        if let Some(target) = target.upgrade() {
+                            target.notify_stop(&reason);
                         }
                     }
                 }
@@ -747,6 +756,10 @@ impl Process {
             auxv.insert(id as i32, value);
         }
         auxv
+    }
+
+    pub fn set_target(&self, target: &Rc<Target>) {
+        *self.target.borrow_mut() = Some(Rc::downgrade(target));
     }
 }
 

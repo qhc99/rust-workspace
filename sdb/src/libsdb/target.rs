@@ -6,6 +6,7 @@ use nix::unistd::Pid;
 
 use super::elf::Elf;
 use super::process::Process;
+use super::process::StopReason;
 use super::sdb_error::SdbError;
 use super::types::VirtualAddress;
 
@@ -25,14 +26,18 @@ impl Target {
     pub fn launch(path: &Path, stdout_replacement: Option<i32>) -> Result<Rc<Self>, SdbError> {
         let proc = Process::launch(path, true, stdout_replacement)?;
         let obj = create_loaded_elf(&proc, path)?;
-        Ok(Rc::new(Target::new(proc, obj)))
+        let tgt = Rc::new(Target::new(proc, obj));
+        tgt.process.set_target(&tgt);
+        Ok(tgt)
     }
 
     pub fn attach(pid: Pid) -> Result<Rc<Self>, SdbError> {
         let elf_path = PathBuf::from("/proc").join(pid.to_string()).join("exe");
         let proc = Process::attach(pid)?;
         let obj = create_loaded_elf(&proc, &elf_path)?;
-        Ok(Rc::new(Target::new(proc, obj)))
+        let tgt = Rc::new(Target::new(proc, obj));
+        tgt.process.set_target(&tgt);
+        Ok(tgt)
     }
 
     pub fn get_process(&self) -> Rc<Process> {
@@ -41,6 +46,10 @@ impl Target {
 
     pub fn get_elf(&self) -> Rc<Elf> {
         self.elf.clone()
+    }
+
+    pub fn notify_stop(&self, reason: &StopReason) {
+        todo!()
     }
 }
 
