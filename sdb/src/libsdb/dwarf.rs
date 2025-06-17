@@ -7,7 +7,18 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_abstract_origin, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_decl_file, DW_AT_decl_line, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_LNE_define_file, DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator, DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy, DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column, DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLne, DwLns
+    DW_AT_abstract_origin, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_decl_file,
+    DW_AT_decl_line, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling,
+    DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block, DW_FORM_block1,
+    DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8,
+    DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr,
+    DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata,
+    DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_LNE_define_file,
+    DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator, DW_LNS_advance_line,
+    DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy, DW_LNS_fixed_advance_pc,
+    DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column, DW_LNS_set_epilogue_begin,
+    DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_TAG_inlined_subroutine,
+    DW_TAG_subprogram, DwForm, DwLne, DwLns,
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -297,7 +308,7 @@ pub trait LineTableExt {
 
 impl LineTableExt for Rc<LineTable> {
     fn get_entry_by_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError> {
-        let mut prev = LineTableIter::new(&self)?;
+        let mut prev = LineTableIter::new(self)?;
         if prev.current.is_none() {
             return Ok(LineTableIter::default());
         }
@@ -318,9 +329,10 @@ impl LineTableExt for Rc<LineTable> {
 
     fn get_entries_by_line(&self, path: &Path, line: u64) -> Result<Vec<LineTableIter>, SdbError> {
         let mut entries = Vec::new();
-        let mut it = LineTableIter::new(&self)?;
+        let mut it = LineTableIter::new(self)?;
         while !it.is_end() {
             let entry_path = &it.get_current().file_entry.as_ref().unwrap().path;
+            #[allow(clippy::collapsible_if)]
             if it.get_current().line == line {
                 if (path.is_absolute() && entry_path == path)
                     || (path.is_relative() && entry_path.ends_with(path))
@@ -498,13 +510,14 @@ impl Die {
     }
 
     pub fn file(&self) -> Result<Rc<LineTableFile>, SdbError> {
-        let idx: u64;
-        if self.abbrev_entry().tag as u16 == DW_TAG_inlined_subroutine.0 {
-            idx = self.index(DW_AT_call_file.0 as u64)?.as_int()?;
+        let idx = if self.abbrev_entry().tag as u16 == DW_TAG_inlined_subroutine.0 {
+            self.index(DW_AT_call_file.0 as u64)?.as_int()?
         } else {
-            idx = self.index(DW_AT_decl_file.0 as u64)?.as_int()?;
-        }
-        Ok(Rc::new(self.cu().lines().file_names()[idx as usize - 1].clone()))
+            self.index(DW_AT_decl_file.0 as u64)?.as_int()?
+        };
+        Ok(Rc::new(
+            self.cu().lines().file_names()[idx as usize - 1].clone(),
+        ))
     }
 
     pub fn line(&self) -> Result<u64, SdbError> {
@@ -1093,19 +1106,19 @@ impl Dwarf {
         Ok(())
     }
     /*
-    public:
---snip--
-line_table::iterator line_entry_at_address(file_addr address) const {
-    auto cu = compile_unit_containing_address(address);
-    if (!cu) return {};
-    return cu->lines().get_entry_by_address(address);
-}
---snip--
-     */
+        public:
+    --snip--
+    line_table::iterator line_entry_at_address(file_addr address) const {
+        auto cu = compile_unit_containing_address(address);
+        if (!cu) return {};
+        return cu->lines().get_entry_by_address(address);
+    }
+    --snip--
+         */
     pub fn line_entry_at_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError> {
         let cu = self.compile_unit_containing_address(address)?;
         if let Some(cu) = cu {
-            return Ok(cu.lines().get_entry_by_address(address)?);
+            return cu.lines().get_entry_by_address(address);
         }
         Ok(LineTableIter::default())
     }
