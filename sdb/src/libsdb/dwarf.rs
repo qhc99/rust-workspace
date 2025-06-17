@@ -1116,22 +1116,34 @@ impl Dwarf {
         }
         Ok(())
     }
-    /*
-        public:
-    --snip--
-    line_table::iterator line_entry_at_address(file_addr address) const {
-        auto cu = compile_unit_containing_address(address);
-        if (!cu) return {};
-        return cu->lines().get_entry_by_address(address);
-    }
-    --snip--
-         */
+
     pub fn line_entry_at_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError> {
         let cu = self.compile_unit_containing_address(address)?;
         if let Some(cu) = cu {
             return cu.lines().get_entry_by_address(address);
         }
         Ok(LineTableIter::default())
+    }
+
+    pub fn inline_stack_at_address(&self, address: &FileAddress) -> Result<Vec<Rc<Die>>, SdbError> {
+        let func = self.function_containing_address(address)?;
+        let mut stack: Vec<Rc<Die>> = Vec::new();
+        if let Some(func) = func {
+            stack.push(func);
+            loop {
+                let mut children = stack.last().unwrap().children();
+                let found = children.find(|child| {
+                    child.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64
+                        && child.contains_address(address).unwrap_or(false)
+                });
+                if found.is_none() {
+                    break;
+                } else {
+                    stack.push(found.unwrap());
+                }
+            }
+        }
+        Ok(stack)
     }
 }
 
