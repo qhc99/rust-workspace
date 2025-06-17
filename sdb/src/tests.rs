@@ -10,7 +10,6 @@ use std::{
 use super::test_utils::BinBuilder;
 use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
-use libsdb::types::VirtualAddress;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
     bit::{to_byte64, to_byte128},
@@ -23,6 +22,7 @@ use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::CompileUnitRangeList, types::StoppointMode};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
 use libsdb::{dwarf::Dwarf, syscalls::syscall_name_to_id};
+use libsdb::{dwarf::LineTableExt, types::VirtualAddress};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
@@ -728,4 +728,35 @@ fn range_list() {
     assert!(list.contains(&FileAddress::new(&elf, 0x12341266)));
     assert!(list.contains(&FileAddress::new(&elf, 0x12341267)));
     assert!(!list.contains(&FileAddress::new(&elf, 0x12341268)));
+}
+
+#[test]
+fn line_table() {
+    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
+    let path = bin.target_path();
+    let elf = Elf::new(path).unwrap();
+    let dwarf = Dwarf::new(&elf).unwrap();
+    let compile_units = dwarf.compile_units();
+    assert_eq!(1, compile_units.len());
+    let cu = &compile_units[0];
+    let mut it = cu.lines().iter().unwrap();
+    assert_eq!(it.get_current().line, 2);
+    assert_eq!(
+        it.get_current()
+            .file_entry
+            .as_ref()
+            .unwrap()
+            .path
+            .file_name()
+            .unwrap(),
+        "hello_sdb.cpp"
+    );
+    it.step().unwrap();
+    assert_eq!(it.get_current().line, 3);
+    it.step().unwrap();
+    assert_eq!(it.get_current().line, 4);
+    it.step().unwrap();
+    assert!(it.get_current().end_sequence);
+    it.step().unwrap();
+    assert!(it.is_end());
 }

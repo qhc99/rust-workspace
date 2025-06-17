@@ -39,27 +39,27 @@ pub struct SourceLocation {
 #[derive(Debug, Clone, TypedBuilder, Default)]
 pub struct LineTableEntry {
     #[builder(default = FileAddress::null())]
-    address: FileAddress,
+    pub address: FileAddress,
     #[builder(default = 1)]
-    file_index: u64,
+    pub file_index: u64,
     #[builder(default = 1)]
-    line: u64,
+    pub line: u64,
     #[builder(default = 0)]
-    column: u64,
+    pub column: u64,
     #[builder(default = false)]
-    is_stmt: bool,
+    pub is_stmt: bool,
     #[builder(default = false)]
-    basic_block_start: bool,
+    pub basic_block_start: bool,
     #[builder(default = false)]
-    end_sequence: bool,
+    pub end_sequence: bool,
     #[builder(default = false)]
-    prologue_end: bool,
+    pub prologue_end: bool,
     #[builder(default = false)]
-    epilogue_begin: bool,
+    pub epilogue_begin: bool,
     #[builder(default = 0)]
-    discriminator: u64,
+    pub discriminator: u64,
     #[builder(default = None)]
-    file_entry: Option<Rc<LineTableFile>>,
+    pub file_entry: Option<Rc<LineTableFile>>,
 }
 
 impl PartialEq for LineTableEntry {
@@ -304,6 +304,8 @@ pub trait LineTableExt {
     fn get_entry_by_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError>;
 
     fn get_entries_by_line(&self, path: &Path, line: u64) -> Result<Vec<LineTableIter>, SdbError>;
+
+    fn iter(&self) -> Result<LineTableIter, SdbError>;
 }
 
 impl LineTableExt for Rc<LineTable> {
@@ -343,6 +345,10 @@ impl LineTableExt for Rc<LineTable> {
             it.step()?;
         }
         Ok(entries)
+    }
+
+    fn iter(&self) -> Result<LineTableIter, SdbError> {
+        LineTableIter::new(self)
     }
 }
 
@@ -740,7 +746,7 @@ pub struct CompileUnit {
     parent: Weak<Dwarf>,
     data: Bytes,
     abbrev_offset: usize,
-    line_table: Option<Rc<LineTable>>,
+    line_table: RefCell<Option<Rc<LineTable>>>,
 }
 
 fn parse_line_table_file<T: AsRef<Path>>(
@@ -842,14 +848,19 @@ fn parse_line_table(cu: &Rc<CompileUnit>) -> Result<Option<Rc<LineTable>>, SdbEr
 }
 
 impl CompileUnit {
-    pub fn new(parent: &Rc<Dwarf>, data: Bytes, abbrev_offset: usize) -> Rc<Self> {
-        Rc::new(Self {
+    pub fn new(
+        parent: &Rc<Dwarf>,
+        data: Bytes,
+        abbrev_offset: usize,
+    ) -> Result<Rc<Self>, SdbError> {
+        let ret = Rc::new(Self {
             parent: Rc::downgrade(parent),
             data,
             abbrev_offset,
-            line_table: None,
-        })
-        // TODO parse line table
+            line_table: RefCell::new(None),
+        });
+        *ret.line_table.borrow_mut() = parse_line_table(&ret)?;
+        Ok(ret)
     }
 
     pub fn dwarf_info(&self) -> Rc<Dwarf> {
@@ -868,7 +879,7 @@ impl CompileUnit {
     }
 
     pub fn lines(&self) -> Rc<LineTable> {
-        self.line_table.clone().unwrap()
+        self.line_table.borrow().clone().unwrap()
     }
 }
 
@@ -1168,7 +1179,7 @@ fn parse_compile_unit(
     }
     size += size_of::<u32>() as u32;
     let data = start.slice(..size as usize);
-    Ok(CompileUnit::new(dwarf, data, abbrev as usize))
+    CompileUnit::new(dwarf, data, abbrev as usize)
 }
 
 fn parse_abbrev_table(obj: &Elf, offset: usize) -> AbbrevTable {
