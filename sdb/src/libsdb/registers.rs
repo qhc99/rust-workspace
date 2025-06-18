@@ -14,7 +14,6 @@ use extended::Extended;
 use nix::libc::user;
 use std::fmt::Display;
 use std::fmt::Write;
-use std::rc::Rc;
 use std::rc::Weak;
 
 #[repr(transparent)]
@@ -173,10 +172,10 @@ macro_rules! write_cases {
 }
 
 impl Registers {
-    pub fn new(proc: &Rc<Process>) -> Self {
+    pub fn new(proc: &Weak<Process>) -> Self {
         Self {
             data: User::zeroed(),
-            process: Rc::downgrade(proc),
+            process: proc.clone(),
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {

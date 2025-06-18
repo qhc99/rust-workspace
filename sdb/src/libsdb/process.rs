@@ -159,7 +159,7 @@ pub struct Process {
     // Use RefCell to avoid self mut borrow runtime error
     state: RefCell<ProcessState>, // Default Stopped
     is_attached: bool,            // Default true
-    registers: Rc<RefCell<Option<Registers>>>,
+    registers: Rc<RefCell<Registers>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
     watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
     syscall_catch_policy: RefCell<SyscallCatchPolicy>,
@@ -173,22 +173,18 @@ impl Process {
     }
 
     fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<Self> {
-        let res = Self {
+        Rc::new_cyclic(|weak_self| Self {
             pid,
             terminate_on_end,
             state: RefCell::new(ProcessState::Stopped),
             is_attached,
-            registers: Rc::new(RefCell::new(None)),
+            registers: Rc::new(RefCell::new(Registers::new(&weak_self))),
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
             syscall_catch_policy: RefCell::new(SyscallCatchPolicy::default()),
             expecting_syscall_exit: RefCell::new(false),
             target: RefCell::new(None),
-        };
-
-        let res = Rc::new(res);
-        *res.registers.borrow_mut() = Some(Registers::new(&res));
-        res
+        })
     }
 
     pub fn pid(&self) -> Pid {
@@ -360,7 +356,7 @@ impl Process {
         }
     }
 
-    pub fn get_registers(&self) -> Rc<RefCell<Option<Registers>>> {
+    pub fn get_registers(&self) -> Rc<RefCell<Registers>> {
         self.registers.clone()
     }
 
@@ -368,7 +364,7 @@ impl Process {
         let regs = getregs(self.pid);
         match regs {
             Ok(data) => {
-                self.registers.borrow_mut().as_mut().unwrap().data.0.regs = data;
+                self.registers.borrow_mut().data.0.regs = data;
                 Ok(())
             }
             Err(errno) => SdbError::errno("Could not read GPR registers", errno),
@@ -379,7 +375,7 @@ impl Process {
                 PTRACE_GETFPREGS,
                 self.pid,
                 std::ptr::null_mut::<c_void>(),
-                &mut self.registers.borrow_mut().as_mut().unwrap().data.0.i387 as *mut _
+                &mut self.registers.borrow_mut().data.0.i387 as *mut _
                     as *mut c_void,
             ) < 0
             {
@@ -394,8 +390,6 @@ impl Process {
                 Ok(data) => {
                     self.registers
                         .borrow_mut()
-                        .as_mut()
-                        .unwrap()
                         .data
                         .0
                         .u_debugreg[i as usize] = data as u64;
@@ -440,8 +434,6 @@ impl Process {
     pub fn get_pc(&self) -> VirtualAddress {
         self.get_registers()
             .borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<u64>(RegisterId::rip)
             .unwrap()
             .into()
@@ -454,8 +446,6 @@ impl Process {
     pub fn set_pc(&self, address: VirtualAddress) -> Result<(), SdbError> {
         self.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::rip, address.get_addr())?;
         Ok(())
     }
@@ -567,7 +557,6 @@ impl Process {
     ) -> Result<i32, SdbError> {
         let owned_regs = self.get_registers();
         let mut regs = owned_regs.borrow_mut();
-        let regs = regs.as_mut().unwrap();
         let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
 
         let free_space = Process::find_free_stoppoint_register(control)?;
@@ -592,19 +581,16 @@ impl Process {
         let owned_registers = self.get_registers();
         {
             let mut regs = owned_registers.borrow_mut();
-            let regs = regs.as_mut().unwrap();
             regs.write_by_id(id, 0)?;
         }
         let masked: u64;
         {
             let regs = owned_registers.borrow();
-            let regs = regs.as_ref().unwrap();
             let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
             let clear_mask = (0b11 << (index * 2)) | (0b1111 << (index * 4 + 16));
             masked = control & !clear_mask;
         }
         let mut regs = owned_registers.borrow_mut();
-        let regs = regs.as_mut().unwrap();
         regs.write_by_id(RegisterId::dr7, masked)?;
         Ok(())
     }
@@ -658,7 +644,6 @@ impl Process {
         if reason.trap_reason == Some(TrapType::Syscall) {
             let regs = self.get_registers();
             let regs = regs.borrow();
-            let regs = regs.as_ref().unwrap();
             let expecting_syscall_exit = *self.expecting_syscall_exit.borrow();
             if expecting_syscall_exit {
                 reason.syscall_info = Some(SyscallInfo {
@@ -722,7 +707,6 @@ impl Process {
     pub fn get_current_hardware_stoppoint(&self) -> Result<StoppointId, SdbError> {
         let regs = self.get_registers();
         let regs = regs.borrow();
-        let regs = regs.as_ref().unwrap();
         let status: u64 = regs.read_by_id_as(RegisterId::dr6)?;
         let index = status.trailing_zeros();
 

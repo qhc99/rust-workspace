@@ -1008,14 +1008,14 @@ fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Rc<Die> {
 
 #[derive(Debug)]
 pub struct Dwarf {
-    elf: Rc<Elf>,
+    elf: Weak<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: RefCell<Vec<Rc<CompileUnit>>>,
     function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
 }
 
 impl Dwarf {
-    pub fn new(parent: &Rc<Elf>) -> Result<Rc<Self>, SdbError> {
+    pub fn new(parent: &Weak<Elf>) -> Result<Rc<Self>, SdbError> {
         let ret = Self {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
@@ -1023,19 +1023,19 @@ impl Dwarf {
             function_index: RefCell::new(MultiMap::default()),
         };
         let ret = Rc::new(ret);
-        *ret.compile_units.borrow_mut() = parse_compile_units(&ret, parent)?;
+        *ret.compile_units.borrow_mut() = parse_compile_units(&ret, &ret.elf_file())?;
         Ok(ret)
     }
 
     pub fn elf_file(&self) -> Rc<Elf> {
-        self.elf.clone()
+        self.elf.upgrade().unwrap()
     }
 
     pub fn get_abbrev_table(&self, offset: usize) -> Rc<AbbrevTable> {
         if !self.abbrev_tables.borrow().contains_key(&offset) {
             self.abbrev_tables
                 .borrow_mut()
-                .insert(offset, Rc::new(parse_abbrev_table(&self.elf, offset)));
+                .insert(offset, Rc::new(parse_abbrev_table(&self.elf_file(), offset)));
         }
         self.abbrev_tables.borrow()[&offset].clone()
     }

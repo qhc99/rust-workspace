@@ -21,7 +21,7 @@ use libsdb::{
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::CompileUnitRangeList, types::StoppointMode};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
-use libsdb::{dwarf::Dwarf, syscalls::syscall_name_to_id};
+use libsdb::{syscalls::syscall_name_to_id};
 use libsdb::{dwarf::LineTableExt, types::VirtualAddress};
 use libsdb::{
     elf::Elf,
@@ -102,8 +102,6 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
             .unwrap();
 
@@ -118,8 +116,6 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
             .unwrap();
 
@@ -134,8 +130,6 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::xmm0, 42.24)
             .unwrap();
 
@@ -150,20 +144,14 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::st0, F80::new(42.24))
             .unwrap();
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::fsw, 0b0011100000000000_u16)
             .unwrap();
         proc.get_registers()
             .borrow_mut()
-            .as_mut()
-            .unwrap()
             .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
             .unwrap();
 
@@ -189,8 +177,6 @@ fn read_registers() {
     proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<u64>(RegisterId::r13)
             .unwrap()
             == 0xcafecafe_u64
@@ -200,8 +186,6 @@ fn read_registers() {
     proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<u8>(RegisterId::r13b)
             .unwrap()
             == 42
@@ -211,8 +195,6 @@ fn read_registers() {
     proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<Byte64>(RegisterId::mm0)
             .unwrap()
             == to_byte64(0xba5eba11_u64)
@@ -222,8 +204,6 @@ fn read_registers() {
     proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<Byte128>(RegisterId::xmm0)
             .unwrap()
             == to_byte128(64.125)
@@ -233,8 +213,6 @@ fn read_registers() {
     proc.wait_on_signal().unwrap();
     assert!(
         regs.borrow()
-            .as_ref()
-            .unwrap()
             .read_by_id_as::<F80>(RegisterId::st0)
             .unwrap()
             == F80::new(64.125)
@@ -679,7 +657,7 @@ fn find_main() {
     let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
-    let dwarf = Dwarf::new(&elf).unwrap();
+    let dwarf = elf.get_dwarf();
     let found = dwarf.compile_units().iter().any(|cu| {
         cu.root().children().any(|d| {
             let die = d.as_ref();
@@ -696,7 +674,7 @@ fn range_list() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
-    let dwarf = Dwarf::new(&elf).unwrap();
+    let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
     assert_eq!(1, compile_units.len());
     let cu = &compile_units[0];
@@ -735,7 +713,7 @@ fn line_table() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
     let elf = Elf::new(path).unwrap();
-    let dwarf = Dwarf::new(&elf).unwrap();
+    let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
     assert_eq!(1, compile_units.len());
     let cu = &compile_units[0];

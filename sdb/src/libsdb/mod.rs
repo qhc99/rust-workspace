@@ -32,10 +32,10 @@ mod breakpoint_site;
 mod disassembler;
 mod ffi;
 mod parse;
+mod stack;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
-mod stack;
 
 pub mod dwarf;
 pub mod elf;
@@ -523,24 +523,14 @@ fn handle_register_read(process: &Process, args: &[&str]) {
             if !should_print {
                 continue;
             }
-            let value = process
-                .get_registers()
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .read(info);
+            let value = process.get_registers().borrow().read(info);
             println!("{}:\t{}", info.name, value.unwrap());
         }
     } else if args.len() == 3 {
         let info_res = register_info_by_name(args[2]);
         match info_res {
             Ok(info) => {
-                let value = process
-                    .get_registers()
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .read(&info);
+                let value = process.get_registers().borrow().read(&info);
                 println!("{}:\t{}", info.name, value.unwrap());
             }
             Err(_) => {
@@ -560,12 +550,7 @@ fn handle_register_write(process: &Process, args: &[&str]) {
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
-        process
-            .get_registers()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .write(&info, value)?;
+        process.get_registers().borrow_mut().write(&info, value)?;
         Ok(())
     })() {
         eprintln!("{e}");

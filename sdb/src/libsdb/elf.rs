@@ -15,7 +15,7 @@ use nix::{
         stat::{Mode, fstat},
     },
 };
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::{
@@ -68,7 +68,7 @@ pub struct Elf {
     symbol_table: Vec<Rc<SdbElf64Sym>>,
     symbol_name_map: RefCell<MultiMap<String, Rc<SdbElf64Sym>>>,
     symbol_addr_map: RefCell<BTreeMap<FileAddressRange, Rc<SdbElf64Sym>>>,
-    dwarf: RefCell<Option<Rc<Dwarf>>>,
+    dwarf: OnceCell<Rc<Dwarf>>,
 }
 
 impl Elf {
@@ -114,14 +114,14 @@ impl Elf {
             symbol_table: Vec::default(),
             symbol_name_map: RefCell::new(MultiMap::default()),
             symbol_addr_map: RefCell::new(BTreeMap::default()),
-            dwarf: RefCell::new(None),
+            dwarf: OnceCell::new(),
         };
         obj.parse_section_headers();
         obj.build_section_map();
         obj.parse_symbol_table();
         let ret = Rc::new(obj);
         ret.build_symbol_maps();
-        *ret.dwarf.borrow_mut() = Some(Dwarf::new(&ret)?);
+        ret.dwarf.set(Dwarf::new(&Rc::downgrade(&ret))?).unwrap();
         Ok(ret)
     }
 
@@ -292,7 +292,7 @@ impl Elf {
     }
 
     pub fn get_dwarf(&self) -> Rc<Dwarf> {
-        self.dwarf.borrow().clone().unwrap()
+        self.dwarf.get().unwrap().clone()
     }
 }
 
