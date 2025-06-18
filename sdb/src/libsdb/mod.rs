@@ -35,6 +35,7 @@ mod parse;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
+mod stack;
 
 pub mod dwarf;
 pub mod elf;

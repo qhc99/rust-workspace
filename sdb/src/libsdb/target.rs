@@ -4,6 +4,8 @@ use std::rc::Rc;
 use nix::libc::AT_ENTRY;
 use nix::unistd::Pid;
 
+use super::types::FileAddress;
+
 use super::elf::Elf;
 use super::process::Process;
 use super::process::StopReason;
@@ -50,6 +52,10 @@ impl Target {
 
     pub fn notify_stop(&self, reason: &StopReason) {
         todo!()
+    }
+
+    pub fn get_pc_file_address(&self) -> FileAddress {
+        self.process.get_pc().to_file_addr(&self.elf)
     }
 }
 

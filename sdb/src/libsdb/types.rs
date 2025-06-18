@@ -65,6 +65,10 @@ impl FileAddress {
         self.elf.upgrade().unwrap()
     }
 
+    pub fn has_elf(&self) -> bool {
+        self.elf.upgrade().is_some()
+    }
+
     pub fn to_virtual_address(&self) -> VirtualAddress {
         let elf = self.elf.upgrade();
         assert!(elf.is_some());
