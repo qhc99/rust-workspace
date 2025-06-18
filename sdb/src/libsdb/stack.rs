@@ -9,9 +9,9 @@ pub struct Stack {
 }
 
 impl Stack {
-    pub fn new(target: &Rc<Target>) -> Self {
+    pub fn new(target: &Weak<Target>) -> Self {
         Self {
-            target: Rc::downgrade(target),
+            target: target.clone(),
             inline_height: 0,
         }
     }

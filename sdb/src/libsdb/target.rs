@@ -1,8 +1,11 @@
+use std::cell::{Ref, RefCell, RefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nix::libc::AT_ENTRY;
 use nix::unistd::Pid;
+
+use super::stack::Stack;
 
 use super::types::FileAddress;
 
@@ -15,20 +18,32 @@ use super::types::VirtualAddress;
 pub struct Target {
     process: Rc<Process>,
     elf: Rc<Elf>,
+    stack: RefCell<Stack>,
 }
 
 impl Target {
-    fn new(process: Rc<Process>, elf: Rc<Elf>) -> Self {
-        Self {
-            process: process.clone(),
-            elf: elf.clone(),
-        }
+    fn new(process: Rc<Process>, elf: Rc<Elf>) -> Rc<Self> {
+        Rc::new_cyclic(|weak_self| {
+            Self {
+                process: process.clone(),
+                elf:     elf.clone(),
+                stack:   RefCell::new(Stack::new(&weak_self)),
+            }
+        })
+    }
+
+    pub fn get_stack(&self) -> Ref<Stack> {
+        self.stack.borrow()
+    }
+
+    pub fn get_stack_mut(&self) -> RefMut<Stack> {
+        self.stack.borrow_mut()
     }
 
     pub fn launch(path: &Path, stdout_replacement: Option<i32>) -> Result<Rc<Self>, SdbError> {
         let proc = Process::launch(path, true, stdout_replacement)?;
         let obj = create_loaded_elf(&proc, path)?;
-        let tgt = Rc::new(Target::new(proc, obj));
+        let tgt = Target::new(proc, obj);
         tgt.process.set_target(&tgt);
         Ok(tgt)
     }
@@ -37,7 +52,7 @@ impl Target {
         let elf_path = PathBuf::from("/proc").join(pid.to_string()).join("exe");
         let proc = Process::attach(pid)?;
         let obj = create_loaded_elf(&proc, &elf_path)?;
-        let tgt = Rc::new(Target::new(proc, obj));
+        let tgt = Target::new(proc, obj);
         tgt.process.set_target(&tgt);
         Ok(tgt)
     }
