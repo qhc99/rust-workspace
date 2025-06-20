@@ -13,6 +13,7 @@ use super::process::Process;
 use super::process::ProcessExt;
 use super::process::StopReason;
 use super::process::{ProcessState, TrapType};
+use super::register_info::RegisterId;
 use super::sdb_error::SdbError;
 use super::stack::Stack;
 use super::traits::StoppointTrait;
@@ -119,45 +120,28 @@ impl Target {
             .build())
     }
 
-    pub fn step_out(&self) -> StopReason {
-        todo!()
+    pub fn step_out(&self) -> Result<StopReason, SdbError> {
+        let stack = self.get_stack();
+        let inline_stack = stack.inline_stack_at_pc()?;
+        let has_inline_frames = inline_stack.len() > 1;
+        let at_inline_frame = (stack.inline_height() as usize) < (inline_stack.len() - 1);
+        if has_inline_frames && at_inline_frame {
+            let current_frame =
+                &inline_stack[inline_stack.len() - stack.inline_height() as usize - 1];
+            let return_address = current_frame.high_pc()?.to_virtual_address();
+            return self.run_until_address(return_address);
+        }
+        let frame_pointer = self
+            .process
+            .get_registers()
+            .borrow()
+            .read_by_id_as::<u64>(RegisterId::rbp)?;
+        let return_address = self
+            .process
+            .read_memory_as::<u64>((frame_pointer + 8).into())?;
+        self.run_until_address(return_address.into())
     }
 
-    /*
-    sdb::stop_reason sdb::target::step_over() {
-        auto orig_line = line_entry_at_pc();
-        disassembler disas(*process_);
-        sdb::stop_reason reason;
-        auto& stack = get_stack();
-        do {
-            auto inline_stack = stack.inline_stack_at_pc();
-            auto at_start_of_inline_frame = stack.inline_height() > 0;
-            if (at_start_of_inline_frame) {
-                auto frame_to_skip = inline_stack[inline_stack.size() - stack.inline_height()];
-                auto return_address = frame_to_skip.high_pc().to_virt_addr();
-                reason = run_until_address(return_address);
-                if (!reason.is_step()
-                        or process_->get_pc() != return_address) {
-                    return reason;
-                }
-            }
-            else if (auto instructions = disas.disassemble(2, process_->get_pc());
-                    instructions[0].text.rfind("call") == 0) {
-                reason = run_until_address(instructions[1].address);
-                if (!reason.is_step()
-                        or process_->get_pc() != instructions[1].address) {
-                    return reason;
-                }
-            }
-            else {
-                reason = process_->step_instruction();
-                if (!reason.is_step()) return reason;
-            }
-        } while ((line_entry_at_pc() == orig_line or line_entry_at_pc()->end_sequence)
-                and line_entry_at_pc() != line_table::iterator{});
-        return reason;
-    }
-     */
     pub fn step_over(&self) -> Result<StopReason, SdbError> {
         let orig_line = self.get_line_entry_at_pc()?;
         let disas = Disassembler::new(&self.process);
