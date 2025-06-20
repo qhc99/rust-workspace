@@ -266,7 +266,7 @@ fn find_breakpoint_sites() {
         .borrow()
         .get_by_address(44.into())
         .unwrap();
-    assert!(proc.breakpoint_sites().borrow().contain_address(44.into()));
+    assert!(proc.breakpoint_sites().borrow().contains_address(44.into()));
     assert!(s1.borrow().address() == 44.into());
 
     let s2 = proc

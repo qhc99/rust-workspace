@@ -5,13 +5,16 @@ use std::rc::Rc;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 
+use super::dwarf::LineTableExt;
 use super::dwarf::LineTableIter;
 use super::elf::Elf;
 use super::process::Process;
+use super::process::ProcessExt;
 use super::process::StopReason;
 use super::process::{ProcessState, TrapType};
 use super::sdb_error::SdbError;
 use super::stack::Stack;
+use super::traits::StoppointTrait;
 use super::types::FileAddress;
 use super::types::VirtualAddress;
 
@@ -81,15 +84,15 @@ impl Target {
                 .trap_reason(Some(TrapType::SingleStep))
                 .build());
         }
-        let orig_line = self.get_line_entry_at_pc();
+        let orig_line = self.get_line_entry_at_pc()?;
         loop {
             let reason = self.process.step_instruction()?;
             if !reason.is_step() {
                 return Ok(reason);
             }
-            if !((self.get_line_entry_at_pc() == orig_line
-                || self.get_line_entry_at_pc().get_current().end_sequence)
-                && !self.get_line_entry_at_pc().is_end())
+            if !((self.get_line_entry_at_pc()? == orig_line
+                || self.get_line_entry_at_pc()?.get_current().end_sequence)
+                && !self.get_line_entry_at_pc()?.is_end())
             {
                 break;
             }
@@ -99,11 +102,11 @@ impl Target {
             let dwarf = pc.elf_file().get_dwarf();
             let func = dwarf.function_containing_address(&pc)?;
             if func.is_some() && func.as_ref().unwrap().low_pc()? == pc {
-                let mut line = self.get_line_entry_at_pc();
+                let mut line = self.get_line_entry_at_pc()?;
                 if !line.is_end() {
                     line.step()?;
                     return Ok(
-                        self.run_until_address(line.get_current().address.to_virtual_address())
+                        self.run_until_address(line.get_current().address.to_virtual_address())?
                     );
                 }
             }
@@ -121,12 +124,46 @@ impl Target {
         todo!()
     }
 
-    fn get_line_entry_at_pc(&self) -> LineTableIter {
-        todo!()
+    fn get_line_entry_at_pc(&self) -> Result<LineTableIter, SdbError> {
+        let pc = self.get_pc_file_address();
+        if !pc.has_elf() {
+            return Ok(LineTableIter::default());
+        }
+        let dwarf = pc.elf_file().get_dwarf();
+        let cu = dwarf.compile_unit_containing_address(&pc)?;
+        if cu.is_none() {
+            return Ok(LineTableIter::default());
+        }
+        cu.unwrap().lines().get_entry_by_address(&pc)
     }
 
-    fn run_until_address(&self, address: VirtualAddress) -> StopReason {
-        todo!()
+    fn run_until_address(&self, address: VirtualAddress) -> Result<StopReason, SdbError> {
+        let mut breakpoint_to_remove = None;
+        if !self
+            .process
+            .breakpoint_sites()
+            .borrow()
+            .contains_address(address)
+        {
+            breakpoint_to_remove = Some(self.process.create_breakpoint_site(address, false, true)?);
+            breakpoint_to_remove
+                .as_ref()
+                .unwrap()
+                .borrow_mut()
+                .enable()?;
+        }
+        self.process.resume()?;
+        let mut reason = self.process.wait_on_signal()?;
+        if reason.is_breakpoint() && self.process.get_pc() == address {
+            reason.trap_reason = Some(TrapType::SingleStep);
+        }
+        if breakpoint_to_remove.is_some() {
+            self.process
+                .breakpoint_sites()
+                .borrow_mut()
+                .remove_by_address(breakpoint_to_remove.unwrap().borrow().address())?;
+        }
+        Ok(reason)
     }
 }
 

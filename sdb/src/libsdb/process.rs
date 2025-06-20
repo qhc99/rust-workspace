@@ -252,7 +252,7 @@ impl Process {
                     if reason.info == Signal::SIGTRAP as i32 {
                         let breakpoint_sites = self.breakpoint_sites.borrow();
                         if reason.trap_reason == Some(TrapType::SoftwareBreak)
-                            && breakpoint_sites.contain_address(instr_begin)
+                            && breakpoint_sites.contains_address(instr_begin)
                             && breakpoint_sites
                                 .get_by_address(instr_begin)?
                                 .borrow()
@@ -730,7 +730,7 @@ impl Process {
         let id = RegisterId::try_from(RegisterId::dr0 as i32 + index as i32).unwrap();
         let addr = VirtualAddress::from(regs.read_by_id_as::<u64>(id)?);
         let breapoint_sites = self.breakpoint_sites.borrow();
-        if breapoint_sites.contain_address(addr) {
+        if breapoint_sites.contains_address(addr) {
             let site_id = breapoint_sites.get_by_address(addr)?.borrow().id();
             Ok(StoppointId::BreakpointSite(site_id))
         } else {
@@ -792,7 +792,7 @@ impl ProcessExt for Rc<Process> {
         hardware: bool, // false
         internal: bool, // false
     ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
-        if self.breakpoint_sites.borrow().contain_address(address) {
+        if self.breakpoint_sites.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
                 address.get_addr()
@@ -810,7 +810,7 @@ impl ProcessExt for Rc<Process> {
         mode: StoppointMode,
         size: usize,
     ) -> Result<Rc<RefCell<WatchPoint>>, SdbError> {
-        if self.watchpoints.borrow().contain_address(address) {
+        if self.watchpoints.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Watchpoint already created at address {}",
                 address.get_addr()

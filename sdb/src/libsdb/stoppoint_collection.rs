@@ -20,14 +20,14 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         self.stoppoints.iter().any(|t| t.borrow().id() == id)
     }
 
-    pub fn contain_address(&self, address: VirtualAddress) -> bool {
+    pub fn contains_address(&self, address: VirtualAddress) -> bool {
         self.stoppoints
             .iter()
             .any(|t| t.borrow().at_address(address))
     }
 
     pub fn enabled_breakpoint_at_address(&self, address: VirtualAddress) -> bool {
-        self.contain_address(address)
+        self.contains_address(address)
             && self
                 .get_by_address(address)
                 .unwrap()
