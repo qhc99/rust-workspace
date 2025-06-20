@@ -191,8 +191,7 @@ pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
         handle_watchpoint_command(process, &args)?;
     } else if cmd == "catchpoint" {
         handle_catchpoint_command(process, &args)?;
-    }
-    else if cmd == "next" {
+    } else if cmd == "next" {
         let reason = target.step_over()?;
         handle_stop(target, reason)?;
     } else if cmd == "finish" {
