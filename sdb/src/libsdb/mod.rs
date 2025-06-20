@@ -166,7 +166,6 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
     return Ok("".to_string());
 }
 
-//TODO 388
 pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let process = &target.get_process();
@@ -192,6 +191,19 @@ pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
         handle_watchpoint_command(process, &args)?;
     } else if cmd == "catchpoint" {
         handle_catchpoint_command(process, &args)?;
+    }
+    else if cmd == "next" {
+        let reason = target.step_over()?;
+        handle_stop(target, reason)?;
+    } else if cmd == "finish" {
+        let reason = target.step_out()?;
+        handle_stop(target, reason)?;
+    } else if cmd == "step" {
+        let reason = target.step_in()?;
+        handle_stop(target, reason)?;
+    } else if cmd == "stepi" {
+        let reason = process.step_instruction()?;
+        handle_stop(target, reason)?;
     } else {
         eprintln!("Unknown command");
     }
@@ -563,13 +575,16 @@ fn print_help(args: &[&str]) {
         eprintln!(indoc! {"
             Available commands:
             breakpoint - Commands for operating on breakpoints
+            catchpoint - Commands for operating on catchpoints
             continue - Resume the process
             disassemble - Disassemble machine code to assembly
+            finish - Step-out
             memory - Commands for operating on memory
+            next - Step-over
             register - Commands for operating on registers
-            step - Step over a single instruction
+            step - Step-in
+            stepi - Single instruction step
             watchpoint - Commands for operating on watchpoints
-            catchpoint - Commands for operating on catchpoints
         "
         });
     } else if args[1] == "register" {
