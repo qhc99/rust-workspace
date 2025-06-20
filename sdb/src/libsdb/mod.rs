@@ -166,6 +166,7 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
     return Ok("".to_string());
 }
 
+//TODO 388
 pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let process = &target.get_process();
