@@ -51,6 +51,7 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use typed_builder::TypedBuilder;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::ffi::c_long;
@@ -59,19 +60,22 @@ use std::io::IoSliceMut;
 use std::os::fd::AsRawFd;
 use std::rc::Weak;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ProcessState {
+    #[default]
     Stopped,
     Running,
     Exited,
     Terminated,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, TypedBuilder, Default)]
 pub struct StopReason {
     pub reason: ProcessState,
     pub info: i32,
+    #[builder(default)]
     pub trap_reason: Option<TrapType>,
+    #[builder(default)]
     pub syscall_info: Option<SyscallInfo>,
 }
 
@@ -85,7 +89,7 @@ pub enum TrapType {
 }
 
 impl StopReason {
-    fn new(status: WaitStatus) -> Result<Self, SdbError> {
+    pub fn new(status: WaitStatus) -> Result<Self, SdbError> {
         if let WaitStatus::Exited(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Exited,
@@ -124,6 +128,19 @@ impl StopReason {
         }
 
         SdbError::err(&format!("Unhandled wait status {status:?}"))
+    }
+
+    pub fn is_step(&self) -> bool {
+        self.reason == ProcessState::Stopped
+            && self.info == SIGTRAP as i32
+            && self.trap_reason == Some(TrapType::SingleStep)
+    }
+
+    pub fn is_breakpoint(&self) -> bool {
+        self.reason == ProcessState::Stopped
+            && self.info == SIGTRAP as i32
+            && (self.trap_reason == Some(TrapType::SoftwareBreak)
+                || self.trap_reason == Some(TrapType::HardwareBreak))
     }
 }
 
@@ -257,7 +274,7 @@ impl Process {
                     }
                     if let Some(target) = self.target.borrow().as_ref() {
                         if let Some(target) = target.upgrade() {
-                            target.notify_stop(&reason);
+                            target.notify_stop(&reason)?;
                         }
                     }
                 }

@@ -45,4 +45,8 @@ impl Stack {
     pub fn get_target(&self) -> Rc<Target> {
         self.target.upgrade().unwrap()
     }
+
+    pub fn simulate_inlined_step_in(&self) {
+        todo!()
+    }
 }

@@ -82,6 +82,13 @@ pub struct LineTableIter {
     pos: Bytes,
 }
 
+impl PartialEq for LineTableIter {
+    fn eq(&self, other: &Self) -> bool {
+        self.current == other.current && self.pos == other.pos
+    }
+}
+
+
 impl LineTableIter {
     pub fn new(table: &Rc<LineTable>) -> Result<Self, SdbError> {
         let registers = LineTableEntry::builder()
