@@ -10,6 +10,7 @@ use std::{
 use super::test_utils::BinBuilder;
 use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
+use libsdb::syscalls::syscall_name_to_id;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
     bit::{to_byte64, to_byte128},
@@ -21,7 +22,6 @@ use libsdb::{
 use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::CompileUnitRangeList, types::StoppointMode};
 use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
-use libsdb::{syscalls::syscall_name_to_id};
 use libsdb::{dwarf::LineTableExt, types::VirtualAddress};
 use libsdb::{
     elf::Elf,
@@ -175,21 +175,11 @@ fn read_registers() {
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(
-        regs.borrow()
-            .read_by_id_as::<u64>(RegisterId::r13)
-            .unwrap()
-            == 0xcafecafe_u64
-    );
+    assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(
-        regs.borrow()
-            .read_by_id_as::<u8>(RegisterId::r13b)
-            .unwrap()
-            == 42
-    );
+    assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
@@ -211,12 +201,7 @@ fn read_registers() {
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
-    assert!(
-        regs.borrow()
-            .read_by_id_as::<F80>(RegisterId::st0)
-            .unwrap()
-            == F80::new(64.125)
-    );
+    assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }
 
 #[test]

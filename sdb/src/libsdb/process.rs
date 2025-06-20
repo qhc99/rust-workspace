@@ -51,7 +51,6 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
-use typed_builder::TypedBuilder;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::ffi::c_long;
@@ -60,6 +59,7 @@ use std::io::IoSliceMut;
 use std::os::fd::AsRawFd;
 use std::rc::Weak;
 use std::{cell::RefCell, ffi::CString, os::raw::c_void, path::Path, process::exit, rc::Rc};
+use typed_builder::TypedBuilder;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ProcessState {
     #[default]
@@ -195,7 +195,7 @@ impl Process {
             terminate_on_end,
             state: RefCell::new(ProcessState::Stopped),
             is_attached,
-            registers: Rc::new(RefCell::new(Registers::new(&weak_self))),
+            registers: Rc::new(RefCell::new(Registers::new(weak_self))),
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
             syscall_catch_policy: RefCell::new(SyscallCatchPolicy::default()),
@@ -392,8 +392,7 @@ impl Process {
                 PTRACE_GETFPREGS,
                 self.pid,
                 std::ptr::null_mut::<c_void>(),
-                &mut self.registers.borrow_mut().data.0.i387 as *mut _
-                    as *mut c_void,
+                &mut self.registers.borrow_mut().data.0.i387 as *mut _ as *mut c_void,
             ) < 0
             {
                 return SdbError::errno("Could not read FPR registers", Errno::last());
@@ -405,11 +404,7 @@ impl Process {
 
             match read_user(self.pid, info.offset as *mut c_void) {
                 Ok(data) => {
-                    self.registers
-                        .borrow_mut()
-                        .data
-                        .0
-                        .u_debugreg[i as usize] = data as u64;
+                    self.registers.borrow_mut().data.0.u_debugreg[i as usize] = data as u64;
                 }
                 Err(errno) => SdbError::errno("Could not read debug register", errno)?,
             };

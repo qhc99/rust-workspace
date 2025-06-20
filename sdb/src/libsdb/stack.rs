@@ -5,7 +5,7 @@ use super::target::Target;
 
 pub struct Stack {
     target: Weak<Target>,
-    inline_height: u32,   // 0
+    inline_height: u32, // 0
 }
 
 impl Stack {

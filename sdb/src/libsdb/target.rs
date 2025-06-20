@@ -31,7 +31,7 @@ impl Target {
         Rc::new_cyclic(|weak_self| Self {
             process: process.clone(),
             elf: elf.clone(),
-            stack: RefCell::new(Stack::new(&weak_self)),
+            stack: RefCell::new(Stack::new(weak_self)),
         })
     }
 
@@ -107,9 +107,7 @@ impl Target {
                 let mut line = self.get_line_entry_at_pc()?;
                 if !line.is_end() {
                     line.step()?;
-                    return Ok(
-                        self.run_until_address(line.get_current().address.to_virtual_address())?
-                    );
+                    return self.run_until_address(line.get_current().address.to_virtual_address());
                 }
             }
         }
@@ -145,7 +143,7 @@ impl Target {
     pub fn step_over(&self) -> Result<StopReason, SdbError> {
         let orig_line = self.get_line_entry_at_pc()?;
         let disas = Disassembler::new(&self.process);
-        let mut reason = StopReason::default();
+        let mut reason;
         let stack = self.get_stack();
         loop {
             let inline_stack = stack.inline_stack_at_pc()?;

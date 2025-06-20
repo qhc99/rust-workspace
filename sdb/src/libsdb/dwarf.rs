@@ -88,7 +88,6 @@ impl PartialEq for LineTableIter {
     }
 }
 
-
 impl LineTableIter {
     pub fn new(table: &Rc<LineTable>) -> Result<Self, SdbError> {
         let registers = LineTableEntry::builder()
@@ -1040,9 +1039,10 @@ impl Dwarf {
 
     pub fn get_abbrev_table(&self, offset: usize) -> Rc<AbbrevTable> {
         if !self.abbrev_tables.borrow().contains_key(&offset) {
-            self.abbrev_tables
-                .borrow_mut()
-                .insert(offset, Rc::new(parse_abbrev_table(&self.elf_file(), offset)));
+            self.abbrev_tables.borrow_mut().insert(
+                offset,
+                Rc::new(parse_abbrev_table(&self.elf_file(), offset)),
+            );
         }
         self.abbrev_tables.borrow()[&offset].clone()
     }
@@ -1143,10 +1143,10 @@ impl Dwarf {
                     child.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64
                         && child.contains_address(address).unwrap_or(false)
                 });
-                if found.is_none() {
-                    break;
+                if let Some(found) = found {
+                    stack.push(found);
                 } else {
-                    stack.push(found.unwrap());
+                    break;
                 }
             }
         }
