@@ -5,6 +5,7 @@ use std::rc::Rc;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 
+use super::disassembler::Disassembler;
 use super::dwarf::LineTableExt;
 use super::dwarf::LineTableIter;
 use super::elf::Elf;
@@ -117,11 +118,85 @@ impl Target {
             .trap_reason(Some(TrapType::SingleStep))
             .build())
     }
+
     pub fn step_out(&self) -> StopReason {
         todo!()
     }
-    pub fn step_over(&self) -> StopReason {
-        todo!()
+
+    /*
+    sdb::stop_reason sdb::target::step_over() {
+        auto orig_line = line_entry_at_pc();
+        disassembler disas(*process_);
+        sdb::stop_reason reason;
+        auto& stack = get_stack();
+        do {
+            auto inline_stack = stack.inline_stack_at_pc();
+            auto at_start_of_inline_frame = stack.inline_height() > 0;
+            if (at_start_of_inline_frame) {
+                auto frame_to_skip = inline_stack[inline_stack.size() - stack.inline_height()];
+                auto return_address = frame_to_skip.high_pc().to_virt_addr();
+                reason = run_until_address(return_address);
+                if (!reason.is_step()
+                        or process_->get_pc() != return_address) {
+                    return reason;
+                }
+            }
+            else if (auto instructions = disas.disassemble(2, process_->get_pc());
+                    instructions[0].text.rfind("call") == 0) {
+                reason = run_until_address(instructions[1].address);
+                if (!reason.is_step()
+                        or process_->get_pc() != instructions[1].address) {
+                    return reason;
+                }
+            }
+            else {
+                reason = process_->step_instruction();
+                if (!reason.is_step()) return reason;
+            }
+        } while ((line_entry_at_pc() == orig_line or line_entry_at_pc()->end_sequence)
+                and line_entry_at_pc() != line_table::iterator{});
+        return reason;
+    }
+     */
+    pub fn step_over(&self) -> Result<StopReason, SdbError> {
+        let orig_line = self.get_line_entry_at_pc()?;
+        let disas = Disassembler::new(&self.process);
+        let mut reason = StopReason::default();
+        let stack = self.get_stack();
+        loop {
+            let inline_stack = stack.inline_stack_at_pc()?;
+            let at_start_of_inline_frame = stack.inline_height() > 0;
+            if at_start_of_inline_frame {
+                let frame_to_skip =
+                    &inline_stack[inline_stack.len() - stack.inline_height() as usize];
+                let return_address = frame_to_skip.high_pc()?.to_virtual_address();
+                reason = self.run_until_address(return_address)?;
+                if !reason.is_step() || self.process.get_pc() != return_address {
+                    return Ok(reason);
+                }
+            } else {
+                let instructions = disas.disassemble(2, Some(self.process.get_pc()))?;
+                if instructions[0].text.rfind("call") == Some(0) {
+                    reason = self.run_until_address(instructions[1].address)?;
+                    if !reason.is_step() || self.process.get_pc() != instructions[1].address {
+                        return Ok(reason);
+                    }
+                } else {
+                    reason = self.process.step_instruction()?;
+                    if !reason.is_step() {
+                        return Ok(reason);
+                    }
+                }
+            }
+
+            if !((self.get_line_entry_at_pc()? == orig_line
+                || self.get_line_entry_at_pc()?.get_current().end_sequence)
+                && !self.get_line_entry_at_pc()?.is_end())
+            {
+                break;
+            }
+        }
+        Ok(reason)
     }
 
     fn get_line_entry_at_pc(&self) -> Result<LineTableIter, SdbError> {
