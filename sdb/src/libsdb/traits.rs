@@ -24,7 +24,7 @@ pub trait FromLowerHexStr: Sized {
 }
 
 macro_rules! impl_from_lower_hex {
-    ($($Ty:ty );+ $(;)?) => {
+    ($($Ty:ty);+ $(;)?) => {
         $(
             impl FromLowerHexStr for $Ty {
                 fn from_integral_lower_hex_radix(text: &str, radix: u32) -> Result<$Ty, SdbError>{

@@ -1,8 +1,11 @@
+use super::breakpoint::Breakpoint;
+
 use super::process::Process;
 use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
+use typed_builder::TypedBuilder;
 use std::{
     rc::{Rc, Weak},
     sync::atomic::AtomicI32,
@@ -18,16 +21,23 @@ fn get_next_id() -> IdType {
 
 pub type IdType = i32;
 
-#[derive(Debug)]
+#[derive(Debug, TypedBuilder)]
 pub struct BreakpointSite {
     process: Weak<Process>,
     address: VirtualAddress,
+    #[builder(default = false)]
     is_enabled: bool,
+    #[builder(default = 0)]
     saved_data: u8,
     id: IdType,
+    #[builder(default = false)]
     is_hardware: bool,
+    #[builder(default = false)]
     is_internal: bool,
+    #[builder(default = -1)]
     hardware_register_index: i32,
+    #[builder(default = Weak::new())]
+    parent: Weak<Breakpoint>,
 }
 
 impl StoppointTrait for BreakpointSite {
@@ -122,6 +132,27 @@ impl BreakpointSite {
             is_hardware,
             is_internal,
             hardware_register_index: -1,
+            parent: Weak::new(),
+        }
+    }
+    pub fn from_breakpoint(
+        parent: &Rc<Breakpoint>,
+        id: IdType,
+        process: &Rc<Process>,
+        addr: VirtualAddress,
+        is_hardware: bool, // false
+        is_internal: bool, // false
+    ) -> Self {
+        Self {
+            process: Rc::downgrade(process),
+            address: addr,
+            is_enabled: false,
+            saved_data: 0,
+            id,
+            is_hardware,
+            is_internal,
+            hardware_register_index: -1,
+            parent: Rc::downgrade(parent),
         }
     }
 

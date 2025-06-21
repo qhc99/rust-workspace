@@ -36,6 +36,7 @@ mod stack;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
+mod breakpoint;
 
 pub mod dwarf;
 pub mod elf;

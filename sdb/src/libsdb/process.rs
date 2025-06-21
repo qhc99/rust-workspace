@@ -1,3 +1,5 @@
+use super::breakpoint::Breakpoint;
+
 use super::bit::from_bytes;
 use super::breakpoint_site::BreakpointSite;
 use super::breakpoint_site::IdType;
@@ -778,6 +780,21 @@ pub trait ProcessExt {
         mode: StoppointMode,
         size: usize,
     ) -> Result<Rc<RefCell<WatchPoint>>, SdbError>;
+
+    /*
+    sdb::breakpoint_site&
+    sdb::process::create_breakpoint_site(
+            breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+            bool hardware, bool internal)
+    */
+    fn create_breakpoint_site_from_breakpoint(
+        &self,
+        parent: &Rc<Breakpoint>,
+        id: IdType,
+        address: VirtualAddress,
+        hardware: bool,
+        internal: bool,
+    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
 }
 
 impl ProcessExt for Rc<Process> {
@@ -797,6 +814,42 @@ impl ProcessExt for Rc<Process> {
             .breakpoint_sites
             .borrow_mut()
             .push(BreakpointSite::new(self, address, hardware, internal)))
+    }
+
+    /*
+    sdb::breakpoint_site&
+    sdb::process::create_breakpoint_site(
+            breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+            bool hardware, bool internal) {
+        if (breakpoint_sites_.contains_address(address)) {
+            error::send("Breakpoint site already created at address " +
+            std::to_string(address.addr()));
+        }
+        return breakpoint_sites_.push(
+            std::unique_ptr<breakpoint_site>(
+            new breakpoint_site(
+            parent, id, *this, address, hardware, internal)));
+    }
+     */
+
+    fn create_breakpoint_site_from_breakpoint(
+        &self,
+        parent: &Rc<Breakpoint>,
+        id: IdType,
+        address: VirtualAddress,
+        hardware: bool,
+        internal: bool,
+    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
+        if self.breakpoint_sites.borrow().contains_address(address) {
+            return SdbError::err(&format!(
+                "Breakpoint site already created at address {}",
+                address.get_addr()
+            ));
+        }
+        Ok(self
+            .breakpoint_sites
+            .borrow_mut()
+            .push(BreakpointSite::from_breakpoint(parent, id, self, address, hardware, internal)))
     }
 
     fn create_watchpoint(
