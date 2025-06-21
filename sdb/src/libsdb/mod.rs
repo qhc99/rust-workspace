@@ -28,6 +28,7 @@ use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::{StoppointMode, VirtualAddress};
 
+mod breakpoint;
 mod breakpoint_site;
 mod disassembler;
 mod ffi;
@@ -36,7 +37,6 @@ mod stack;
 mod stoppoint_collection;
 mod utils;
 mod watchpoint;
-mod breakpoint;
 
 pub mod dwarf;
 pub mod elf;

@@ -5,11 +5,11 @@ use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
-use typed_builder::TypedBuilder;
 use std::{
     rc::{Rc, Weak},
     sync::atomic::AtomicI32,
 };
+use typed_builder::TypedBuilder;
 
 use std::sync::atomic::Ordering;
 

@@ -849,7 +849,9 @@ impl ProcessExt for Rc<Process> {
         Ok(self
             .breakpoint_sites
             .borrow_mut()
-            .push(BreakpointSite::from_breakpoint(parent, id, self, address, hardware, internal)))
+            .push(BreakpointSite::from_breakpoint(
+                parent, id, self, address, hardware, internal,
+            )))
     }
 
     fn create_watchpoint(

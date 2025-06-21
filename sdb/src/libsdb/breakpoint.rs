@@ -24,7 +24,8 @@ pub struct Breakpoint {
 }
 
 impl Breakpoint {
-    fn breakpoint_site() /* TODO return type */ {
+    fn breakpoint_site() /* TODO return type */
+    {
         todo!()
     }
 }
