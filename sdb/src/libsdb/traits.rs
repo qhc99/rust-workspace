@@ -15,6 +15,12 @@ pub trait StoppointTrait {
     fn is_enabled(&self) -> bool;
 
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool;
+
+    fn is_hardware(&self) -> bool;
+
+    fn is_internal(&self) -> bool;
+
+    fn breakpoint_sites(&self) ;
 }
 
 pub trait FromLowerHexStr: Sized {

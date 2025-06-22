@@ -23,13 +23,6 @@ pub struct Breakpoint {
     next_site_id: IdType,
 }
 
-impl Breakpoint {
-    fn breakpoint_site() /* TODO return type */
-    {
-        todo!()
-    }
-}
-
 impl StoppointTrait for Breakpoint {
     fn id(&self) -> IdType {
         self.id
@@ -57,5 +50,18 @@ impl StoppointTrait for Breakpoint {
 
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
         unimplemented!()
+    }
+
+    fn is_hardware(&self) -> bool {
+        self.is_hardware
+    }
+
+    fn is_internal(&self) -> bool {
+        self.is_internal
+    }
+
+    fn breakpoint_sites(&self) /* TODO return type */
+    {
+        todo!()
     }
 }

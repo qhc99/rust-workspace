@@ -113,6 +113,19 @@ impl StoppointTrait for BreakpointSite {
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
         low <= self.address && high > self.address
     }
+
+    fn is_hardware(&self) -> bool {
+        self.is_hardware
+    }
+
+    fn is_internal(&self) -> bool {
+        self.is_internal
+    }
+
+    fn breakpoint_sites(&self) /* TODO return type */
+    {
+        todo!()
+    }
 }
 
 impl BreakpointSite {
@@ -158,11 +171,5 @@ impl BreakpointSite {
 
     pub fn saved_data(&self) -> u8 {
         self.saved_data
-    }
-    pub fn is_hardware(&self) -> bool {
-        self.is_hardware
-    }
-    pub fn is_internal(&self) -> bool {
-        self.is_internal
     }
 }

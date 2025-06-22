@@ -75,6 +75,19 @@ impl StoppointTrait for WatchPoint {
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
         self.address >= low && self.address < high
     }
+
+    fn is_hardware(&self) -> bool {
+        true
+    }
+
+    fn is_internal(&self) -> bool {
+        false
+    }
+
+    fn breakpoint_sites(&self) /* TODO return type */
+    {
+        todo!()
+    }
 }
 
 impl WatchPoint {
