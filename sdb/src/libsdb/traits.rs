@@ -20,7 +20,7 @@ pub trait StoppointTrait {
 
     fn is_internal(&self) -> bool;
 
-    fn breakpoint_sites(&self) ;
+    fn breakpoint_sites(&self);
 }
 
 pub trait FromLowerHexStr: Sized {
