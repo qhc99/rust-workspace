@@ -69,7 +69,7 @@ impl FileAddress {
         self.elf.upgrade().is_some()
     }
 
-    pub fn to_virtual_address(&self) -> VirtualAddress {
+    pub fn to_virt_addr(&self) -> VirtualAddress {
         let elf = self.elf.upgrade();
         assert!(elf.is_some());
         let elf = elf.unwrap();

@@ -4,7 +4,12 @@ use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicI32, Ordering};
 
+use gimli::{DW_AT_low_pc, DW_AT_ranges, DW_TAG_inlined_subroutine};
 use typed_builder::TypedBuilder;
+
+use super::dwarf::LineTableExt;
+
+use super::types::FileAddress;
 
 use super::process::ProcessExt;
 
@@ -117,7 +122,7 @@ impl StoppointTrait for Breakpoint {
 }
 
 pub struct FunctionBreakpoint {
-    breakpoint: Breakpoint,
+    breakpoint: Rc<RefCell<Breakpoint>>,
     function_name: String,
 }
 
@@ -129,15 +134,130 @@ impl FunctionBreakpoint {
         is_internal: bool, // false
     ) -> Self {
         let mut ret = Self {
-            breakpoint: Breakpoint::new(target, is_hardware, is_internal),
+            breakpoint: Rc::new(RefCell::new(Breakpoint::new(
+                target,
+                is_hardware,
+                is_internal,
+            ))),
             function_name: function_name.to_string(),
         };
         ret.resolve();
         ret
     }
 
-    pub fn resolve(&mut self) {
-        todo!()
+    /*
+        void sdb::function_breakpoint::resolve() {
+        auto found_functions = target_->find_functions(function_name_);
+        for (auto die : found_functions.dwarf_functions) {
+            if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {
+                file_addr addr;
+                if (die.abbrev_entry()->tag == DW_TAG_inlined_subroutine) {
+                    addr = die.low_pc();
+                }
+                else {
+                    auto function_line = die.cu()->lines()
+                    .get_entry_by_address(die.low_pc());
+                    ++function_line;
+                    addr = function_line->address;
+                }
+                auto load_address = addr.to_virt_addr();
+                if (!breakpoint_sites_.contains_address(load_address)) {
+                    auto& new_site = target_->get_process()
+                        .create_breakpoint_site(
+                            this, next_site_id_++, load_address, is_hardware_, is_internal_);
+                    breakpoint_sites_.push(&new_site);
+                    if (is_enabled_) new_site.enable();
+                }
+            }
+        }
+        for (auto sym : found_functions.elf_functions) {
+            auto file_address = file_addr{ *sym.first, sym.second->st_value };
+            auto load_address = file_address.to_virt_addr();
+            if (!breakpoint_sites_.contains_address(load_address)) {
+                auto& new_site = target_->get_process().create_breakpoint_site(
+                    this, next_site_id_++, load_address, is_hardware_, is_internal_);
+                breakpoint_sites_.push(&new_site);
+                if (is_enabled_) new_site.enable();
+            }
+        }
+    }
+         */
+    pub fn resolve(&mut self) -> Result<(), SdbError> {
+        let target = self.breakpoint.borrow().target.upgrade().unwrap();
+        let found_functions = target.find_functions(&self.function_name)?;
+        for die in &found_functions.dwarf_functions {
+            if die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64) {
+                let addr: FileAddress;
+                if die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64 {
+                    addr = die.low_pc()?;
+                } else {
+                    let mut function_line =
+                        die.cu().lines().get_entry_by_address(&die.low_pc()?)?;
+                    function_line.step()?;
+                    addr = function_line.get_current().address.clone();
+                }
+                let load_address = addr.to_virt_addr();
+                if !self
+                    .breakpoint
+                    .borrow()
+                    .breakpoint_sites
+                    .contains_address(load_address)
+                {
+                    let new_site = target
+                        .get_process()
+                        .create_breakpoint_site_from_breakpoint(
+                            &self.breakpoint,
+                            {
+                                let ret = self.breakpoint.borrow_mut().next_site_id;
+                                self.breakpoint.borrow_mut().next_site_id += 1;
+                                ret
+                            },
+                            load_address,
+                            self.breakpoint.borrow().is_hardware,
+                            self.breakpoint.borrow().is_internal,
+                        )?;
+                    self.breakpoint
+                        .borrow_mut()
+                        .breakpoint_sites
+                        .push_strong(new_site.clone());
+                    if self.breakpoint.borrow().is_enabled {
+                        new_site.borrow_mut().enable()?;
+                    }
+                }
+            }
+        }
+        for sym in &found_functions.elf_functions {
+            let file_address = FileAddress::new(&sym.0, sym.1.0.st_value);
+            let load_address = file_address.to_virt_addr();
+            if !self
+                .breakpoint
+                .borrow()
+                .breakpoint_sites
+                .contains_address(load_address)
+            {
+                let new_site = target
+                    .get_process()
+                    .create_breakpoint_site_from_breakpoint(
+                        &self.breakpoint,
+                        {
+                            let ret = self.breakpoint.borrow_mut().next_site_id;
+                            self.breakpoint.borrow_mut().next_site_id += 1;
+                            ret
+                        },
+                        load_address,
+                        self.breakpoint.borrow().is_hardware,
+                        self.breakpoint.borrow().is_internal,
+                    )?;
+                self.breakpoint
+                    .borrow_mut()
+                    .breakpoint_sites
+                    .push_strong(new_site.clone());
+                if self.breakpoint.borrow().is_enabled {
+                    new_site.borrow_mut().enable()?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn function_name(&self) -> &str {
@@ -159,43 +279,43 @@ impl StoppointTrait for FunctionBreakpoint {
     }
 
     fn id(&self) -> IdType {
-        self.breakpoint.id
+        self.breakpoint.borrow().id
     }
 
     fn at_address(&self, addr: VirtualAddress) -> bool {
-        self.breakpoint.at_address(addr)
+        self.breakpoint.borrow().at_address(addr)
     }
 
     fn disable(&mut self) -> Result<(), SdbError> {
-        self.breakpoint.disable()
+        self.breakpoint.borrow_mut().disable()
     }
 
     fn address(&self) -> VirtualAddress {
-        self.breakpoint.address()
+        self.breakpoint.borrow().address()
     }
 
     fn enable(&mut self) -> Result<(), SdbError> {
-        self.breakpoint.enable()
+        self.breakpoint.borrow_mut().enable()
     }
 
     fn is_enabled(&self) -> bool {
-        self.breakpoint.is_enabled()
+        self.breakpoint.borrow().is_enabled()
     }
 
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
-        self.breakpoint.in_range(low, high)
+        self.breakpoint.borrow().in_range(low, high)
     }
 
     fn is_hardware(&self) -> bool {
-        self.breakpoint.is_hardware()
+        self.breakpoint.borrow().is_hardware()
     }
 
     fn is_internal(&self) -> bool {
-        self.breakpoint.is_internal()
+        self.breakpoint.borrow().is_internal()
     }
 
     fn breakpoint_sites(&self) -> StoppointCollection {
-        self.breakpoint.breakpoint_sites()
+        self.breakpoint.borrow().breakpoint_sites()
     }
 }
 
@@ -223,7 +343,7 @@ impl LineBreakpoint {
     }
 
     pub fn resolve(&mut self) {
-        todo!()
+        todo!() // todo p400
     }
 
     fn file(&self) -> &Path {
@@ -325,8 +445,9 @@ impl AddressBreakpoint {
                 .create_breakpoint_site_from_breakpoint(
                     &self.breakpoint,
                     {
+                        let ret = self.breakpoint.borrow_mut().next_site_id;
                         self.breakpoint.borrow_mut().next_site_id += 1;
-                        self.breakpoint.borrow().next_site_id
+                        ret
                     },
                     self.address,
                     self.breakpoint.borrow().is_hardware,

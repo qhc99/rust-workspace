@@ -5,6 +5,9 @@ use std::rc::Rc;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 
+use super::dwarf::Die;
+use super::elf::SdbElf64Sym;
+
 use super::disassembler::Disassembler;
 use super::dwarf::LineTableExt;
 use super::dwarf::LineTableIter;
@@ -107,7 +110,7 @@ impl Target {
                 let mut line = self.get_line_entry_at_pc()?;
                 if !line.is_end() {
                     line.step()?;
-                    return self.run_until_address(line.get_current().address.to_virtual_address());
+                    return self.run_until_address(line.get_current().address.to_virt_addr());
                 }
             }
         }
@@ -126,7 +129,7 @@ impl Target {
         if has_inline_frames && at_inline_frame {
             let current_frame =
                 &inline_stack[inline_stack.len() - stack.inline_height() as usize - 1];
-            let return_address = current_frame.high_pc()?.to_virtual_address();
+            let return_address = current_frame.high_pc()?.to_virt_addr();
             return self.run_until_address(return_address);
         }
         let frame_pointer = self
@@ -151,7 +154,7 @@ impl Target {
             if at_start_of_inline_frame {
                 let frame_to_skip =
                     &inline_stack[inline_stack.len() - stack.inline_height() as usize];
-                let return_address = frame_to_skip.high_pc()?.to_virtual_address();
+                let return_address = frame_to_skip.high_pc()?.to_virt_addr();
                 reason = self.run_until_address(return_address)?;
                 if !reason.is_step() || self.process.get_pc() != return_address {
                     return Ok(reason);
@@ -222,6 +225,28 @@ impl Target {
         }
         Ok(reason)
     }
+
+    pub fn find_functions(&self, name: &str) -> Result<FindFunctionsResult, SdbError> {
+        let mut result = FindFunctionsResult {
+            dwarf_functions: Vec::new(),
+            elf_functions: Vec::new(),
+        };
+        let dwarf_found = self.elf.get_dwarf().find_functions(name)?;
+        if dwarf_found.is_empty() {
+            let elf_found = self.elf.get_symbols_by_name(name);
+            for sym in &elf_found {
+                result.elf_functions.push((self.elf.clone(), sym.clone()));
+            }
+        } else {
+            result.dwarf_functions.extend(dwarf_found);
+        }
+        Ok(result)
+    }
+}
+
+pub struct FindFunctionsResult {
+    pub dwarf_functions: Vec<Rc<Die>>,
+    pub elf_functions: Vec<(Rc<Elf>, Rc<SdbElf64Sym>)>,
 }
 
 fn create_loaded_elf(proc: &Process, path: &Path) -> Result<Rc<Elf>, SdbError> {
