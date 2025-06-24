@@ -13,7 +13,7 @@ use super::target::Target;
 
 pub type IdType = i32;
 
-#[derive(Debug, TypedBuilder)]
+#[derive(TypedBuilder)]
 pub struct Breakpoint {
     id: IdType,
     target: Weak<Target>,
@@ -23,7 +23,7 @@ pub struct Breakpoint {
     is_hardware: bool,
     #[builder(default = false)]
     is_internal: bool,
-    // breakpoint_sites: Vec<Rc<BreakpointSite>>,
+    breakpoint_sites: StoppointCollection,
     #[builder(default = 1)]
     next_site_id: IdType,
 }
@@ -39,7 +39,7 @@ impl StoppointTrait for Breakpoint {
     }
 
     fn breakpoint_type(&self) -> BreakpointType {
-        todo!()
+       BreakpointType::BreakPoint
     }
 
     fn id(&self) -> IdType {
@@ -47,7 +47,7 @@ impl StoppointTrait for Breakpoint {
     }
 
     fn at_address(&self, addr: VirtualAddress) -> bool {
-        unimplemented!()
+        self.breakpoint_sites.contains_address(addr)
     }
 
     fn disable(&mut self) -> Result<(), SdbError> {
@@ -67,7 +67,7 @@ impl StoppointTrait for Breakpoint {
     }
 
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
-        unimplemented!()
+        !self.breakpoint_sites.get_in_region(low, high).is_empty()
     }
 
     fn is_hardware(&self) -> bool {
@@ -79,6 +79,6 @@ impl StoppointTrait for Breakpoint {
     }
 
     fn breakpoint_sites(&self) -> StoppointCollection {
-        todo!()
+        self.breakpoint_sites.clone()
     }
 }

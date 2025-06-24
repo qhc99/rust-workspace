@@ -34,7 +34,7 @@ pub struct WatchPoint {
 
 impl StoppointTrait for WatchPoint {
     fn breakpoint_type(&self) -> BreakpointType {
-        todo!()
+        BreakpointType::WatchPoint
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -100,7 +100,7 @@ impl StoppointTrait for WatchPoint {
     }
 
     fn breakpoint_sites(&self) -> StoppointCollection {
-        todo!()
+        unimplemented!()
     }
 }
 

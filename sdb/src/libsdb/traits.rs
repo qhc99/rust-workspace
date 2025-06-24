@@ -37,7 +37,8 @@ pub trait StoppointTrait : Any {
 
 pub enum BreakpointType{
     BreakpointSite,
-    WatchPoint
+    WatchPoint,
+    BreakPoint
 }
 
 pub trait MaybeRc {

@@ -54,7 +54,7 @@ impl StoppointTrait for BreakpointSite {
     }
 
     fn breakpoint_type(&self) -> BreakpointType{
-        todo!()
+        BreakpointType::BreakpointSite
     }
 
     fn id(&self) -> IdType {
@@ -139,7 +139,7 @@ impl StoppointTrait for BreakpointSite {
     }
 
     fn breakpoint_sites(&self) -> StoppointCollection {
-        todo!()
+        unimplemented!()
     }
 }
 

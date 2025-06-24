@@ -6,19 +6,19 @@ use super::types::VirtualAddress;
 use std::{cell::RefCell, rc::Rc};
 
 // TODO p392 - 422
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StoppointCollection {
-    stoppoints: Vec<Box<dyn MaybeRc>>,
+    stoppoints: Vec<Rc<dyn MaybeRc>>,
 }
 
 impl StoppointCollection {
     pub fn push<T>(&mut self, bs: Rc<RefCell<T>>) -> Rc<RefCell<T>>
     where
-        T: StoppointTrait + 'static + ?Sized,
+        T: StoppointTrait + ?Sized,
         Rc<RefCell<T>>: MaybeRc,
     {
         let res = bs.clone();
-        self.stoppoints.push(Box::new(bs));
+        self.stoppoints.push(Rc::new(bs));
         res
     }
 
