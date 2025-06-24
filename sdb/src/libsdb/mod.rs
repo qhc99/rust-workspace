@@ -184,9 +184,6 @@ pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
         handle_breakpoint_command(process, &args)?;
-    } else if cmd == "step" {
-        let reason = process.step_instruction()?;
-        handle_stop(target, reason)?;
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {

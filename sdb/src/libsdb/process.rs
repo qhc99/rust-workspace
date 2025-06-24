@@ -266,7 +266,10 @@ impl Process {
                                 self.watchpoints
                                     .borrow()
                                     .get_by_id(id)?
-                                    .borrow_mut().as_any_mut().downcast_mut::<WatchPoint>().unwrap()
+                                    .borrow_mut()
+                                    .as_any_mut()
+                                    .downcast_mut::<WatchPoint>()
+                                    .unwrap()
                                     .update_data()?;
                             }
                         } else if reason.trap_reason == Some(TrapType::Syscall) {
@@ -804,11 +807,10 @@ impl ProcessExt for Rc<Process> {
                 address.get_addr()
             ));
         }
-        let bs = Rc::new(RefCell::new(BreakpointSite::new(self, address, hardware, internal)));
-        self
-            .breakpoint_sites
-            .borrow_mut()
-            .push(bs.clone());
+        let bs = Rc::new(RefCell::new(BreakpointSite::new(
+            self, address, hardware, internal,
+        )));
+        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
         Ok(bs)
     }
 
@@ -829,10 +831,7 @@ impl ProcessExt for Rc<Process> {
         let bs = Rc::new(RefCell::new(BreakpointSite::from_breakpoint(
             parent, id, self, address, hardware, internal,
         )));
-        self
-            .breakpoint_sites
-            .borrow_mut()
-            .push(bs.clone());
+        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
         Ok(bs)
     }
 
@@ -849,7 +848,7 @@ impl ProcessExt for Rc<Process> {
             ));
         }
         let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
-        self.watchpoints.borrow_mut().push(wp.clone());
+        self.watchpoints.borrow_mut().push_strong(wp.clone());
         Ok(wp)
     }
 }

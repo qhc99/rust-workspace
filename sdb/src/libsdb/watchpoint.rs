@@ -1,10 +1,10 @@
 use bytemuck::bytes_of_mut;
 
-use super::stoppoint_collection::StoppointCollection;
-use super::traits::BreakpointType;
 use super::breakpoint_site::IdType;
 use super::process::Process;
 use super::sdb_error::SdbError;
+use super::stoppoint_collection::StoppointCollection;
+use super::traits::BreakpointType;
 use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
 use std::any::Any;

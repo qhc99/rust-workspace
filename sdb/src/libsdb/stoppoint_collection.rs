@@ -3,6 +3,7 @@ use super::sdb_error::SdbError;
 use super::traits::MaybeRc;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
+use std::rc::Weak;
 use std::{cell::RefCell, rc::Rc};
 
 // TODO p392 - 422
@@ -12,12 +13,22 @@ pub struct StoppointCollection {
 }
 
 impl StoppointCollection {
-    pub fn push<T>(&mut self, bs: Rc<RefCell<T>>) -> Rc<RefCell<T>>
+    pub fn push_strong<T>(&mut self, bs: Rc<RefCell<T>>) -> Rc<RefCell<T>>
     where
         T: StoppointTrait + ?Sized,
         Rc<RefCell<T>>: MaybeRc,
     {
         let res = bs.clone();
+        self.stoppoints.push(Rc::new(bs));
+        res
+    }
+
+    pub fn push_weak<T>(&mut self, bs: Weak<RefCell<T>>) -> Rc<RefCell<T>>
+    where
+        T: StoppointTrait + ?Sized,
+        Weak<RefCell<T>>: MaybeRc,
+    {
+        let res = bs.upgrade().unwrap();
         self.stoppoints.push(Rc::new(bs));
         res
     }
@@ -123,5 +134,9 @@ impl StoppointCollection {
             }
         }
         ret
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Rc<RefCell<dyn StoppointTrait>>> {
+        self.stoppoints.iter().map(|s| s.get_rc())
     }
 }

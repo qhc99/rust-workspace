@@ -7,7 +7,7 @@ use super::stoppoint_collection::StoppointCollection;
 use super::sdb_error::SdbError;
 use super::{breakpoint_site::IdType, types::VirtualAddress};
 
-pub trait StoppointTrait : Any {
+pub trait StoppointTrait: Any {
     fn id(&self) -> IdType;
 
     fn at_address(&self, addr: VirtualAddress) -> bool;
@@ -26,7 +26,7 @@ pub trait StoppointTrait : Any {
 
     fn is_internal(&self) -> bool;
 
-    fn breakpoint_type(&self)->BreakpointType;
+    fn breakpoint_type(&self) -> BreakpointType;
 
     fn breakpoint_sites(&self) -> StoppointCollection;
 
@@ -35,10 +35,10 @@ pub trait StoppointTrait : Any {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-pub enum BreakpointType{
+pub enum BreakpointType {
     BreakpointSite,
     WatchPoint,
-    BreakPoint
+    BreakPoint,
 }
 
 pub trait MaybeRc {

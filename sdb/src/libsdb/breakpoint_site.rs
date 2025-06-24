@@ -44,7 +44,6 @@ pub struct BreakpointSite {
 }
 
 impl StoppointTrait for BreakpointSite {
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -53,7 +52,7 @@ impl StoppointTrait for BreakpointSite {
         self
     }
 
-    fn breakpoint_type(&self) -> BreakpointType{
+    fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::BreakpointSite
     }
 
