@@ -1,8 +1,12 @@
 use std::any::Any;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use typed_builder::TypedBuilder;
+
+use super::process::ProcessExt;
 
 use super::traits::BreakpointType;
 
@@ -113,7 +117,7 @@ impl StoppointTrait for Breakpoint {
 }
 
 pub struct FunctionBreakpoint {
-    pub breakpoint: Breakpoint,
+    breakpoint: Breakpoint,
     function_name: String,
 }
 
@@ -141,41 +145,259 @@ impl FunctionBreakpoint {
     }
 }
 
-// TODO p397
-/*
-namespace sdb {
-class line_breakpoint : public breakpoint {
-    public:
-        void resolve() override;
-        const std::filesystem::path file() const { return file_; }
-        std::size_t line() const { return line_; }
-    private:
-        friend target;
-        line_breakpoint(target& tgt,
-                std::filesystem::path file,
-                std::size_t line,
-                bool is_hardware = false,
-                bool is_internal = false)
-                : breakpoint(tgt, is_hardware, is_internal), file_(std::move(file)), line_(line) {
-            resolve();
-        }
-        std::filesystem::path file_;
-        std::size_t line_;
-    };
+impl StoppointTrait for FunctionBreakpoint {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-class address_breakpoint : public breakpoint {
-    public:
-        void resolve() override;
-        virt_addr address() const { return address_; }
-    private:
-        friend target;
-        address_breakpoint(
-                target& tgt, virt_addr address,
-                bool is_hardware = false, bool is_internal = false)
-                : breakpoint(tgt, is_hardware, is_internal), address_(address) {
-            resolve();
-        }
-        virt_addr address_;
-    };
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn breakpoint_type(&self) -> BreakpointType {
+        BreakpointType::FunctionBreakPoint
+    }
+
+    fn id(&self) -> IdType {
+        self.breakpoint.id
+    }
+
+    fn at_address(&self, addr: VirtualAddress) -> bool {
+        self.breakpoint.at_address(addr)
+    }
+
+    fn disable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.disable()
+    }
+
+    fn address(&self) -> VirtualAddress {
+        self.breakpoint.address()
+    }
+
+    fn enable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.enable()
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.breakpoint.is_enabled()
+    }
+
+    fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
+        self.breakpoint.in_range(low, high)
+    }
+
+    fn is_hardware(&self) -> bool {
+        self.breakpoint.is_hardware()
+    }
+
+    fn is_internal(&self) -> bool {
+        self.breakpoint.is_internal()
+    }
+
+    fn breakpoint_sites(&self) -> StoppointCollection {
+        self.breakpoint.breakpoint_sites()
+    }
 }
-*/
+
+pub struct LineBreakpoint {
+    breakpoint: Breakpoint,
+    file: PathBuf,
+    line: u32,
+}
+
+impl LineBreakpoint {
+    pub fn new(
+        target: &Rc<Target>,
+        file: &Path,
+        line: u32,
+        is_hardware: bool, // false
+        is_internal: bool, // false
+    ) -> Self {
+        let mut ret = Self {
+            breakpoint: Breakpoint::new(target, is_hardware, is_internal),
+            file: file.to_path_buf(),
+            line,
+        };
+        ret.resolve();
+        ret
+    }
+
+    pub fn resolve(&mut self) {
+        todo!()
+    }
+
+    fn file(&self) -> &Path {
+        &self.file
+    }
+
+    fn line(&self) -> u32 {
+        self.line
+    }
+}
+
+impl StoppointTrait for LineBreakpoint {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn breakpoint_type(&self) -> BreakpointType {
+        BreakpointType::LineBreakPoint
+    }
+
+    fn id(&self) -> IdType {
+        self.breakpoint.id
+    }
+
+    fn at_address(&self, addr: VirtualAddress) -> bool {
+        self.breakpoint.at_address(addr)
+    }
+
+    fn disable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.disable()
+    }
+
+    fn address(&self) -> VirtualAddress {
+        self.breakpoint.address()
+    }
+
+    fn enable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.enable()
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.breakpoint.is_enabled()
+    }
+
+    fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
+        self.breakpoint.in_range(low, high)
+    }
+
+    fn is_hardware(&self) -> bool {
+        self.breakpoint.is_hardware()
+    }
+
+    fn is_internal(&self) -> bool {
+        self.breakpoint.is_internal()
+    }
+
+    fn breakpoint_sites(&self) -> StoppointCollection {
+        self.breakpoint.breakpoint_sites()
+    }
+}
+
+pub struct AddressBreakpoint {
+    breakpoint: Rc<RefCell<Breakpoint>>,
+    address: VirtualAddress,
+}
+
+impl AddressBreakpoint {
+    pub fn new(
+        target: &Rc<Target>,
+        address: VirtualAddress,
+        is_hardware: bool, // false
+        is_internal: bool, // false
+    ) -> Result<Self, SdbError> {
+        let mut ret = Self {
+            breakpoint: Rc::new(RefCell::new(Breakpoint::new(
+                target,
+                is_hardware,
+                is_internal,
+            ))),
+            address,
+        };
+        ret.resolve()?;
+        Ok(ret)
+    }
+
+    pub fn resolve(&mut self) -> Result<(), SdbError> {
+        if self.breakpoint.borrow().breakpoint_sites.empty() {
+            let new_site = self
+                .breakpoint
+                .borrow()
+                .target
+                .upgrade()
+                .unwrap()
+                .get_process()
+                .create_breakpoint_site_from_breakpoint(
+                    &self.breakpoint,
+                    {
+                        self.breakpoint.borrow_mut().next_site_id += 1;
+                        self.breakpoint.borrow().next_site_id
+                    },
+                    self.address,
+                    self.breakpoint.borrow().is_hardware,
+                    self.breakpoint.borrow().is_internal,
+                )?;
+            self.breakpoint
+                .borrow_mut()
+                .breakpoint_sites
+                .push_strong(new_site.clone());
+            if self.breakpoint.borrow().is_enabled {
+                new_site.borrow_mut().enable()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn address(&self) -> VirtualAddress {
+        self.address
+    }
+}
+
+impl StoppointTrait for AddressBreakpoint {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn breakpoint_type(&self) -> BreakpointType {
+        BreakpointType::AddressBreakPoint
+    }
+
+    fn id(&self) -> IdType {
+        self.breakpoint.borrow().id
+    }
+
+    fn at_address(&self, addr: VirtualAddress) -> bool {
+        self.breakpoint.borrow().at_address(addr)
+    }
+
+    fn disable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.borrow_mut().disable()
+    }
+
+    fn address(&self) -> VirtualAddress {
+        self.breakpoint.borrow().address()
+    }
+
+    fn enable(&mut self) -> Result<(), SdbError> {
+        self.breakpoint.borrow_mut().enable()
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.breakpoint.borrow().is_enabled()
+    }
+
+    fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
+        self.breakpoint.borrow().in_range(low, high)
+    }
+
+    fn is_hardware(&self) -> bool {
+        self.breakpoint.borrow().is_hardware()
+    }
+
+    fn is_internal(&self) -> bool {
+        self.breakpoint.borrow().is_internal()
+    }
+
+    fn breakpoint_sites(&self) -> StoppointCollection {
+        self.breakpoint.borrow().breakpoint_sites()
+    }
+}

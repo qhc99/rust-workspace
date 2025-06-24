@@ -8,6 +8,7 @@ use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
 use std::any::Any;
+use std::cell::RefCell;
 use std::{
     rc::{Rc, Weak},
     sync::atomic::AtomicI32,
@@ -40,7 +41,7 @@ pub struct BreakpointSite {
     #[builder(default = -1)]
     hardware_register_index: i32,
     #[builder(default = Weak::new())]
-    parent: Weak<Breakpoint>,
+    parent: Weak<RefCell<Breakpoint>>,
 }
 
 impl StoppointTrait for BreakpointSite {
@@ -163,7 +164,7 @@ impl BreakpointSite {
         }
     }
     pub fn from_breakpoint(
-        parent: &Rc<Breakpoint>,
+        parent: &Rc<RefCell<Breakpoint>>,
         id: IdType,
         process: &Rc<Process>,
         addr: VirtualAddress,

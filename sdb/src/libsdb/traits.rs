@@ -39,6 +39,9 @@ pub enum BreakpointType {
     BreakpointSite,
     WatchPoint,
     BreakPoint,
+    FunctionBreakPoint,
+    LineBreakPoint,
+    AddressBreakPoint,
 }
 
 pub trait MaybeRc {

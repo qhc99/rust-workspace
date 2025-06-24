@@ -786,7 +786,7 @@ pub trait ProcessExt {
 
     fn create_breakpoint_site_from_breakpoint(
         &self,
-        parent: &Rc<Breakpoint>,
+        parent: &Rc<RefCell<Breakpoint>>,
         id: IdType,
         address: VirtualAddress,
         hardware: bool,
@@ -816,7 +816,7 @@ impl ProcessExt for Rc<Process> {
 
     fn create_breakpoint_site_from_breakpoint(
         &self,
-        parent: &Rc<Breakpoint>,
+        parent: &Rc<RefCell<Breakpoint>>,
         id: IdType,
         address: VirtualAddress,
         hardware: bool,
