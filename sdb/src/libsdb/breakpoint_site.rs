@@ -1,3 +1,5 @@
+use super::{stoppoint_collection::StoppointCollection, traits::BreakpointType};
+
 use super::breakpoint::Breakpoint;
 
 use super::process::Process;
@@ -5,6 +7,7 @@ use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
+use std::any::Any;
 use std::{
     rc::{Rc, Weak},
     sync::atomic::AtomicI32,
@@ -41,6 +44,19 @@ pub struct BreakpointSite {
 }
 
 impl StoppointTrait for BreakpointSite {
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn breakpoint_type(&self) -> BreakpointType{
+        todo!()
+    }
+
     fn id(&self) -> IdType {
         self.id
     }
@@ -122,8 +138,7 @@ impl StoppointTrait for BreakpointSite {
         self.is_internal
     }
 
-    fn breakpoint_sites(&self) /* TODO return type */
-    {
+    fn breakpoint_sites(&self) -> StoppointCollection {
         todo!()
     }
 }

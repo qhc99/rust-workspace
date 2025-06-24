@@ -1,6 +1,11 @@
+use std::any::Any;
 use std::rc::Weak;
 
 use typed_builder::TypedBuilder;
+
+use super::traits::BreakpointType;
+
+use super::stoppoint_collection::StoppointCollection;
 
 use super::{sdb_error::SdbError, traits::StoppointTrait, types::VirtualAddress};
 
@@ -24,6 +29,19 @@ pub struct Breakpoint {
 }
 
 impl StoppointTrait for Breakpoint {
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn breakpoint_type(&self) -> BreakpointType {
+        todo!()
+    }
+
     fn id(&self) -> IdType {
         self.id
     }
@@ -60,8 +78,7 @@ impl StoppointTrait for Breakpoint {
         self.is_internal
     }
 
-    fn breakpoint_sites(&self) /* TODO return type */
-    {
+    fn breakpoint_sites(&self) -> StoppointCollection {
         todo!()
     }
 }

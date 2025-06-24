@@ -1,7 +1,13 @@
+use std::any::Any;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
+
+use super::stoppoint_collection::StoppointCollection;
+
 use super::sdb_error::SdbError;
 use super::{breakpoint_site::IdType, types::VirtualAddress};
 
-pub trait StoppointTrait {
+pub trait StoppointTrait : Any {
     fn id(&self) -> IdType;
 
     fn at_address(&self, addr: VirtualAddress) -> bool;
@@ -20,7 +26,34 @@ pub trait StoppointTrait {
 
     fn is_internal(&self) -> bool;
 
-    fn breakpoint_sites(&self);
+    fn breakpoint_type(&self)->BreakpointType;
+
+    fn breakpoint_sites(&self) -> StoppointCollection;
+
+    fn as_any(&self) -> &dyn Any;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+pub enum BreakpointType{
+    BreakpointSite,
+    WatchPoint
+}
+
+pub trait MaybeRc {
+    fn get_rc(&self) -> Rc<RefCell<dyn StoppointTrait>>;
+}
+
+impl MaybeRc for Rc<RefCell<dyn StoppointTrait>> {
+    fn get_rc(&self) -> Rc<RefCell<dyn StoppointTrait>> {
+        self.clone()
+    }
+}
+
+impl MaybeRc for Weak<RefCell<dyn StoppointTrait>> {
+    fn get_rc(&self) -> Rc<RefCell<dyn StoppointTrait>> {
+        self.upgrade().unwrap()
+    }
 }
 
 pub trait FromLowerHexStr: Sized {

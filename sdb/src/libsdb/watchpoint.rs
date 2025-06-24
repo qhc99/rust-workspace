@@ -1,10 +1,13 @@
 use bytemuck::bytes_of_mut;
 
+use super::stoppoint_collection::StoppointCollection;
+use super::traits::BreakpointType;
 use super::breakpoint_site::IdType;
 use super::process::Process;
 use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
+use std::any::Any;
 use std::mem::swap;
 use std::rc::Rc;
 use std::rc::Weak;
@@ -30,6 +33,18 @@ pub struct WatchPoint {
 }
 
 impl StoppointTrait for WatchPoint {
+    fn breakpoint_type(&self) -> BreakpointType {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
     fn id(&self) -> IdType {
         self.id
     }
@@ -84,8 +99,7 @@ impl StoppointTrait for WatchPoint {
         false
     }
 
-    fn breakpoint_sites(&self) /* TODO return type */
-    {
+    fn breakpoint_sites(&self) -> StoppointCollection {
         todo!()
     }
 }

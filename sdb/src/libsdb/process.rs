@@ -171,7 +171,6 @@ pub enum SyscallData {
     Ret(i64),
 }
 
-#[derive(Debug)]
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool, // Default true
@@ -179,8 +178,8 @@ pub struct Process {
     state: RefCell<ProcessState>, // Default Stopped
     is_attached: bool,            // Default true
     registers: Rc<RefCell<Registers>>,
-    breakpoint_sites: Rc<RefCell<StoppointCollection<BreakpointSite>>>,
-    watchpoints: Rc<RefCell<StoppointCollection<WatchPoint>>>,
+    breakpoint_sites: Rc<RefCell<StoppointCollection>>,
+    watchpoints: Rc<RefCell<StoppointCollection>>,
     syscall_catch_policy: RefCell<SyscallCatchPolicy>,
     expecting_syscall_exit: RefCell<bool>,
     target: RefCell<Option<Weak<Target>>>,
@@ -267,7 +266,7 @@ impl Process {
                                 self.watchpoints
                                     .borrow()
                                     .get_by_id(id)?
-                                    .borrow_mut()
+                                    .borrow_mut().as_any_mut().downcast_mut::<WatchPoint>().unwrap()
                                     .update_data()?;
                             }
                         } else if reason.trap_reason == Some(TrapType::Syscall) {
@@ -453,7 +452,7 @@ impl Process {
             .into()
     }
 
-    pub fn breakpoint_sites(&self) -> Rc<RefCell<StoppointCollection<BreakpointSite>>> {
+    pub fn breakpoint_sites(&self) -> Rc<RefCell<StoppointCollection>> {
         self.breakpoint_sites.clone()
     }
 
@@ -546,6 +545,7 @@ impl Process {
             .get_in_region(address, address + amount as i64);
         for site in sites.iter() {
             let site = site.borrow();
+            let site = site.as_any().downcast_ref::<BreakpointSite>().unwrap();
             if !site.is_enabled() || site.is_hardware() {
                 continue;
             }
@@ -646,7 +646,7 @@ impl Process {
         return self._set_hardware_breakpoint(address, mode, size);
     }
 
-    pub fn watchpoints(&self) -> Rc<RefCell<StoppointCollection<WatchPoint>>> {
+    pub fn watchpoints(&self) -> Rc<RefCell<StoppointCollection>> {
         self.watchpoints.clone()
     }
 
@@ -781,12 +781,6 @@ pub trait ProcessExt {
         size: usize,
     ) -> Result<Rc<RefCell<WatchPoint>>, SdbError>;
 
-    /*
-    sdb::breakpoint_site&
-    sdb::process::create_breakpoint_site(
-            breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
-            bool hardware, bool internal)
-    */
     fn create_breakpoint_site_from_breakpoint(
         &self,
         parent: &Rc<Breakpoint>,
@@ -810,27 +804,13 @@ impl ProcessExt for Rc<Process> {
                 address.get_addr()
             ));
         }
-        Ok(self
+        let bs = Rc::new(RefCell::new(BreakpointSite::new(self, address, hardware, internal)));
+        self
             .breakpoint_sites
             .borrow_mut()
-            .push(BreakpointSite::new(self, address, hardware, internal)))
+            .push(bs.clone());
+        Ok(bs)
     }
-
-    /*
-    sdb::breakpoint_site&
-    sdb::process::create_breakpoint_site(
-            breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
-            bool hardware, bool internal) {
-        if (breakpoint_sites_.contains_address(address)) {
-            error::send("Breakpoint site already created at address " +
-            std::to_string(address.addr()));
-        }
-        return breakpoint_sites_.push(
-            std::unique_ptr<breakpoint_site>(
-            new breakpoint_site(
-            parent, id, *this, address, hardware, internal)));
-    }
-     */
 
     fn create_breakpoint_site_from_breakpoint(
         &self,
@@ -846,12 +826,14 @@ impl ProcessExt for Rc<Process> {
                 address.get_addr()
             ));
         }
-        Ok(self
+        let bs = Rc::new(RefCell::new(BreakpointSite::from_breakpoint(
+            parent, id, self, address, hardware, internal,
+        )));
+        self
             .breakpoint_sites
             .borrow_mut()
-            .push(BreakpointSite::from_breakpoint(
-                parent, id, self, address, hardware, internal,
-            )))
+            .push(bs.clone());
+        Ok(bs)
     }
 
     fn create_watchpoint(
@@ -866,10 +848,9 @@ impl ProcessExt for Rc<Process> {
                 address.get_addr()
             ));
         }
-        Ok(self
-            .watchpoints
-            .borrow_mut()
-            .push(WatchPoint::new(self, address, mode, size)?))
+        let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
+        self.watchpoints.borrow_mut().push(wp.clone());
+        Ok(wp)
     }
 }
 

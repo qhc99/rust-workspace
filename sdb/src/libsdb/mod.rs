@@ -44,6 +44,8 @@ pub mod syscalls;
 pub mod target;
 pub mod traits;
 pub use utils::ResultLogExt;
+
+use watchpoint::WatchPoint;
 pub mod bit;
 pub mod pipe;
 pub mod process;
@@ -130,6 +132,7 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
                 let point = process.watchpoints().borrow().get_by_id(id)?;
                 let point = point.borrow();
                 let mut msg = format!(" (watchpoint {})", point.id());
+                let point = point.as_any().downcast_ref::<WatchPoint>().unwrap();
                 if point.data() == point.previous_data() {
                     msg += &format!("\nValue: {:#x}", point.data());
                 } else {
@@ -301,6 +304,7 @@ fn handle_watchpoint_list(process: &Process) -> Result<(), SdbError> {
         println!("Current watchpoints:");
         watchpoints.for_each(|w| {
             let w = w.borrow();
+            let w = w.as_any().downcast_ref::<WatchPoint>().unwrap();
             println!(
                 "{}: address = {:#x}, mode = {}, size = {}, {}",
                 w.id(),

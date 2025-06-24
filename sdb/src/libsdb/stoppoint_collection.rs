@@ -1,30 +1,37 @@
 use super::breakpoint_site::IdType;
 use super::sdb_error::SdbError;
+use super::traits::MaybeRc;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use std::{cell::RefCell, rc::Rc};
 
 // TODO p392 - 422
-#[derive(Debug)]
-pub struct StoppointCollection<T: StoppointTrait> {
-    stoppoints: Vec<Rc<RefCell<T>>>,
+#[derive(Default)]
+pub struct StoppointCollection {
+    stoppoints: Vec<Box<dyn MaybeRc>>,
 }
 
-impl<T: StoppointTrait> StoppointCollection<T> {
-    pub fn push(&mut self, bs: T) -> Rc<RefCell<T>> {
-        let res = Rc::new(RefCell::new(bs));
-        self.stoppoints.push(res.clone());
+impl StoppointCollection {
+    pub fn push<T>(&mut self, bs: Rc<RefCell<T>>) -> Rc<RefCell<T>>
+    where
+        T: StoppointTrait + 'static + ?Sized,
+        Rc<RefCell<T>>: MaybeRc,
+    {
+        let res = bs.clone();
+        self.stoppoints.push(Box::new(bs));
         res
     }
 
     pub fn contain_id(&self, id: IdType) -> bool {
-        self.stoppoints.iter().any(|t| t.borrow().id() == id)
+        self.stoppoints
+            .iter()
+            .any(|t| t.get_rc().borrow().id() == id)
     }
 
     pub fn contains_address(&self, address: VirtualAddress) -> bool {
         self.stoppoints
             .iter()
-            .any(|t| t.borrow().at_address(address))
+            .any(|t| t.get_rc().borrow().at_address(address))
     }
 
     pub fn enabled_breakpoint_at_address(&self, address: VirtualAddress) -> bool {
@@ -36,33 +43,38 @@ impl<T: StoppointTrait> StoppointCollection<T> {
                 .at_address(address)
     }
 
-    pub fn get_by_id(&self, id: IdType) -> Result<Rc<RefCell<T>>, SdbError> {
+    pub fn get_by_id(&self, id: IdType) -> Result<Rc<RefCell<dyn StoppointTrait>>, SdbError> {
         match self
             .stoppoints
             .iter()
-            .find(|t| t.borrow().id() == id)
-            .cloned()
+            .find(|t| t.get_rc().borrow().id() == id)
         {
-            Some(v) => Ok(v),
+            Some(v) => Ok(v.get_rc()),
             None => SdbError::err("Invalid stoppoint id"),
         }
     }
 
-    pub fn get_by_address(&self, address: VirtualAddress) -> Result<Rc<RefCell<T>>, SdbError> {
+    pub fn get_by_address(
+        &self,
+        address: VirtualAddress,
+    ) -> Result<Rc<RefCell<dyn StoppointTrait>>, SdbError> {
         match self
             .stoppoints
             .iter()
-            .find(|t| t.borrow().at_address(address))
-            .cloned()
+            .find(|t| t.get_rc().borrow().at_address(address))
         {
-            Some(v) => Ok(v),
+            Some(v) => Ok(v.get_rc()),
             None => SdbError::err("Invalid stoppoint id"),
         }
     }
 
     pub fn remove_by_id(&mut self, id: IdType) -> Result<(), SdbError> {
-        if let Some(pos) = self.stoppoints.iter().position(|s| s.borrow().id() == id) {
-            self.stoppoints[pos].borrow_mut().disable()?;
+        if let Some(pos) = self
+            .stoppoints
+            .iter()
+            .position(|s| s.get_rc().borrow().id() == id)
+        {
+            self.stoppoints[pos].get_rc().borrow_mut().disable()?;
             self.stoppoints.remove(pos);
         }
         Ok(())
@@ -72,20 +84,23 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         if let Some(pos) = self
             .stoppoints
             .iter()
-            .position(|s| s.borrow().at_address(address))
+            .position(|s| s.get_rc().borrow().at_address(address))
         {
-            self.stoppoints[pos].borrow_mut().disable()?;
+            self.stoppoints[pos].get_rc().borrow_mut().disable()?;
             self.stoppoints.remove(pos);
         }
         Ok(())
     }
 
-    pub fn for_each_mut(&mut self, mut f: impl FnMut(&Rc<RefCell<T>>)) {
-        self.stoppoints.iter_mut().for_each(|s| f(s));
+    pub fn for_each_mut(&mut self, mut f: impl FnMut(&Rc<RefCell<dyn StoppointTrait>>)) {
+        self.stoppoints.iter_mut().for_each(|s| f(&s.get_rc()));
     }
 
-    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<T>>)) {
-        self.stoppoints.iter().for_each(f);
+    pub fn for_each(&self, f: impl Fn(&Rc<RefCell<dyn StoppointTrait>>)) {
+        self.stoppoints
+            .iter()
+            .map(|s| s.get_rc())
+            .for_each(|s| f(&s));
     }
 
     pub fn size(&self) -> usize {
@@ -96,21 +111,17 @@ impl<T: StoppointTrait> StoppointCollection<T> {
         self.stoppoints.is_empty()
     }
 
-    pub fn get_in_region(&self, low: VirtualAddress, high: VirtualAddress) -> Vec<Rc<RefCell<T>>> {
-        let mut ret: Vec<Rc<RefCell<T>>> = vec![];
+    pub fn get_in_region(
+        &self,
+        low: VirtualAddress,
+        high: VirtualAddress,
+    ) -> Vec<Rc<RefCell<dyn StoppointTrait>>> {
+        let mut ret: Vec<Rc<RefCell<dyn StoppointTrait>>> = vec![];
         for site in self.stoppoints.iter() {
-            if site.borrow().in_range(low, high) {
-                ret.push(site.clone());
+            if site.get_rc().borrow().in_range(low, high) {
+                ret.push(site.get_rc());
             }
         }
         ret
-    }
-}
-
-impl<T: StoppointTrait> Default for StoppointCollection<T> {
-    fn default() -> Self {
-        Self {
-            stoppoints: Default::default(),
-        }
     }
 }
