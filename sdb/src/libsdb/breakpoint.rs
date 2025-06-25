@@ -227,7 +227,7 @@ impl FunctionBreakpoint {
         Ok(())
     }
 
-    fn function_name(&self) -> &str {
+    pub fn function_name(&self) -> &str {
         &self.function_name
     }
 }
@@ -377,11 +377,11 @@ impl LineBreakpoint {
         Ok(())
     }
 
-    fn file(&self) -> &Path {
+    pub fn file(&self) -> &Path {
         &self.file
     }
 
-    fn line(&self) -> usize {
+    pub fn line(&self) -> usize {
         self.line
     }
 }

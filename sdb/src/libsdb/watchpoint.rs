@@ -111,7 +111,7 @@ impl WatchPoint {
         mode: StoppointMode,
         size: usize,
     ) -> Result<Self, SdbError> {
-        if (address.get_addr() as usize & (size - 1)) != 0 {
+        if (address.addr() as usize & (size - 1)) != 0 {
             return SdbError::err("Watchpoint must be aligned to size");
         }
         let mut ret = Self {

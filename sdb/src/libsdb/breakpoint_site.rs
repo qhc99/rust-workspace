@@ -81,7 +81,7 @@ impl StoppointTrait for BreakpointSite {
                 .set_hardware_breakpoint(self.id, self.address)?;
         } else {
             let pid = self.process.upgrade().unwrap().pid();
-            let address = self.address.get_addr() as AddressType;
+            let address = self.address.addr() as AddressType;
             let data = read(pid, address).map_err(|errno| {
                 SdbError::errno::<()>("Enabling breakpoint site failed", errno).unwrap_err()
             })? as u64;
@@ -108,7 +108,7 @@ impl StoppointTrait for BreakpointSite {
             self.hardware_register_index = -1;
         } else {
             let pid = self.process.upgrade().unwrap().pid();
-            let address = self.address.get_addr() as AddressType;
+            let address = self.address.addr() as AddressType;
             let data = read(pid, address).map_err(|errno| {
                 SdbError::errno::<()>("Disabling breakpoint site failed", errno).unwrap_err()
             })? as u64;

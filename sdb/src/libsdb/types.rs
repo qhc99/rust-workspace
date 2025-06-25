@@ -170,7 +170,7 @@ impl From<u64> for VirtualAddress {
 }
 
 impl VirtualAddress {
-    pub fn get_addr(&self) -> u64 {
+    pub fn addr(&self) -> u64 {
         self.addr
     }
 }

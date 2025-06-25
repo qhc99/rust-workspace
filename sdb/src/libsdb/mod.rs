@@ -24,10 +24,10 @@ use std::path::Path;
 use std::rc::Rc;
 use syscalls::{syscall_id_to_name, syscall_name_to_id};
 use target::Target;
+use target::TargetExt;
 use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::{StoppointMode, VirtualAddress};
-
 mod breakpoint;
 mod breakpoint_site;
 mod disassembler;
@@ -46,6 +46,12 @@ pub mod traits;
 pub use utils::ResultLogExt;
 
 use watchpoint::WatchPoint;
+
+use breakpoint::AddressBreakpoint;
+use breakpoint::FunctionBreakpoint;
+use breakpoint::LineBreakpoint;
+
+use traits::BreakpointType;
 pub mod bit;
 pub mod pipe;
 pub mod process;
@@ -96,7 +102,7 @@ fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String,
     let mut msg = format!(
         "stopped with signal {} at {:#x}",
         sig_abbrev(reason.info),
-        process.get_pc().get_addr()
+        process.get_pc().addr()
     );
     let func = target
         .get_elf()
@@ -170,7 +176,7 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
     return Ok("".to_string());
 }
 
-pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
+pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     let args: Vec<&str> = line.split(" ").filter(|s| !s.is_empty()).collect();
     let process = &target.get_process();
     let cmd = args[0];
@@ -183,7 +189,7 @@ pub fn handle_command(target: &Target, line: &str) -> Result<(), SdbError> {
     } else if cmd == "register" {
         handle_register_command(process, &args);
     } else if cmd == "breakpoint" {
-        handle_breakpoint_command(process, &args)?;
+        handle_breakpoint_command(target, &args)?;
     } else if cmd == "memory" {
         handle_memory_command(process, &args)?;
     } else if cmd == "disassemble" {
@@ -305,7 +311,7 @@ fn handle_watchpoint_list(process: &Process) -> Result<(), SdbError> {
             println!(
                 "{}: address = {:#x}, mode = {}, size = {}, {}",
                 w.id(),
-                w.address().get_addr(),
+                w.address().addr(),
                 w.mode(),
                 w.size(),
                 if w.is_enabled() {
@@ -434,35 +440,14 @@ fn handle_memory_write_command(process: &Process, args: &[&str]) -> Result<(), S
     Ok(())
 }
 
-fn handle_breakpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(), SdbError> {
+fn handle_breakpoint_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "register"]);
         return Ok(());
     }
     let command = args[1];
     if command == "list" {
-        let owned_breakpoint_sites = process.breakpoint_sites();
-        let breakpoint_sites = &owned_breakpoint_sites.borrow();
-        if breakpoint_sites.empty() {
-            println!("No breakpoints set");
-        } else {
-            println!("Current breakpoints:");
-            breakpoint_sites.for_each(|s| {
-                let s = &s.borrow();
-                if s.is_internal() {
-                    return;
-                }
-                let id = s.id();
-                let address = s.address().get_addr();
-                let status = if s.is_enabled() {
-                    "enabled"
-                } else {
-                    "disabled"
-                };
-                let msg = format!("{id}: address={address:#x}, {status}");
-                println!("{msg}");
-            });
-        }
+        handle_breakpoint_list_command(target)?;
         return Ok(());
     }
 
@@ -472,48 +457,147 @@ fn handle_breakpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(),
     }
 
     if command == "set" {
-        let address = u64::from_integral_lower_hex_radix(args[2], 16);
-        if address.is_err() {
-            eprintln!("Breakpoint command expects address in hexadecimal, prefixed with '0x'");
-            return Ok(());
-        }
-        let mut hardware = false;
-        if args.len() == 4 {
-            if args[3] == "-h" {
-                hardware = true;
-            } else {
-                return SdbError::err("Invalid breakpoint command argument");
-            }
-        }
-        let bs = process.create_breakpoint_site(
-            VirtualAddress::from(address.unwrap()),
-            hardware,
-            false,
-        )?;
-        bs.upgrade().unwrap().borrow_mut().enable()?;
+        handle_breakpoint_set_command(target, args)?;
         return Ok(());
     }
 
-    let id = IdType::from_integral_lower_hex_radix(args[2], 16)
-        .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
-    if command == "enable" {
-        process
-            .breakpoint_sites()
-            .borrow()
-            .get_by_id(id)?
+    handle_breakpoint_toggle(target, args)?;
+    Ok(())
+}
+
+// TODO p406
+fn handle_breakpoint_toggle(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    todo!()
+}
+
+fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
+    let breakpoints = target.breakpoints().borrow();
+    if breakpoints.empty() {
+        println!("No breakpoints set");
+    } else {
+        println!("Current breakpoints:");
+        breakpoints.for_each(|bp| {
+            if bp.borrow().is_internal() {
+                return;
+            }
+            println!("{}: ", bp.borrow().id());
+            match bp.borrow().breakpoint_type() {
+                BreakpointType::AddressBreakPoint => {
+                    println!(
+                        "address = {:#x}",
+                        bp.borrow()
+                            .as_any()
+                            .downcast_ref::<AddressBreakpoint>()
+                            .unwrap()
+                            .address()
+                    );
+                }
+                BreakpointType::FunctionBreakPoint => {
+                    println!(
+                        "function = {}",
+                        bp.borrow()
+                            .as_any()
+                            .downcast_ref::<FunctionBreakpoint>()
+                            .unwrap()
+                            .function_name()
+                    );
+                }
+                BreakpointType::LineBreakPoint => {
+                    println!(
+                        "file = {}, line = {}",
+                        bp.borrow()
+                            .as_any()
+                            .downcast_ref::<LineBreakpoint>()
+                            .unwrap()
+                            .file()
+                            .to_str()
+                            .unwrap(),
+                        bp.borrow()
+                            .as_any()
+                            .downcast_ref::<LineBreakpoint>()
+                            .unwrap()
+                            .line()
+                    );
+                }
+                _ => {}
+            }
+            println!(
+                ", {}",
+                if bp.borrow().is_enabled() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+            bp.borrow().breakpoint_sites().for_each(|site| {
+                println!(
+                    " .{}: address = {:#x}, {}",
+                    site.borrow().id(),
+                    site.borrow().address().addr(),
+                    if site.borrow().is_enabled() {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                );
+            });
+        });
+    }
+    Ok(())
+}
+
+fn handle_breakpoint_set_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    let mut hardware = false;
+    if args.len() == 4 {
+        if args[3] == "-h" {
+            hardware = true;
+        } else {
+            return SdbError::err("Invalid breakpoint command argument");
+        }
+    }
+    if args[2].starts_with("0x") {
+        let address = u64::from_integral_lower_hex_radix(args[2], 16);
+        match address {
+            Ok(address) => {
+                target
+                    .create_address_breakpoint(address.into(), hardware, false)?
+                    .upgrade()
+                    .unwrap()
+                    .borrow_mut()
+                    .enable()?;
+            }
+            Err(_) => {
+                return SdbError::err(
+                    "Breakpoint command expects address in hexadecimal, prefixed with '0x'",
+                );
+            }
+        }
+    } else if args[2].contains(':') {
+        let mut data = args[2].split(':');
+        let path = data.next().unwrap();
+        let line = u64::from_integral(data.next().unwrap());
+        match line {
+            Ok(line) => {
+                target
+                    .create_line_breakpoint(&Path::new(path), line as usize, hardware, false)?
+                    .upgrade()
+                    .unwrap()
+                    .borrow_mut()
+                    .enable()?;
+            }
+            Err(_) => {
+                return SdbError::err("Line number should be an integer");
+            }
+        }
+    } else {
+        target
+            .create_function_breakpoint(args[2], false, false)?
+            .upgrade()
+            .unwrap()
             .borrow_mut()
             .enable()?;
-    } else if command == "disable" {
-        process
-            .breakpoint_sites()
-            .borrow()
-            .get_by_id(id)?
-            .borrow_mut()
-            .disable()?;
-    } else if command == "delete" {
-        process.breakpoint_sites().borrow_mut().remove_by_id(id)?;
     }
-    return Ok(());
+    Ok(())
 }
 
 fn handle_register_command(process: &Process, args: &[&str]) {

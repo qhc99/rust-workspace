@@ -66,7 +66,7 @@ fn main() {
     }
 }
 
-fn main_loop(target: &Target) {
+fn main_loop(target: &Rc<Target>) {
     let mut rl = DefaultEditor::new().unwrap();
     loop {
         let readline = rl.readline(">> ");

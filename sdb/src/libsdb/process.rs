@@ -462,7 +462,7 @@ impl Process {
     pub fn set_pc(&self, address: VirtualAddress) -> Result<(), SdbError> {
         self.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::rip, address.get_addr())?;
+            .write_by_id(RegisterId::rip, address.addr())?;
         Ok(())
     }
 
@@ -493,10 +493,10 @@ impl Process {
         let local_desc = IoSliceMut::new(&mut ret);
         let mut remote_descs = Vec::<RemoteIoVec>::new();
         while amount > 0 {
-            let up_to_next_stage = 0x1000 - (address.get_addr() & 0xfff) as usize;
+            let up_to_next_stage = 0x1000 - (address.addr() & 0xfff) as usize;
             let chunk_size = min(amount, up_to_next_stage);
             remote_descs.push(RemoteIoVec {
-                base: address.get_addr() as usize,
+                base: address.addr() as usize,
                 len: chunk_size,
             });
             amount -= chunk_size;
@@ -522,7 +522,7 @@ impl Process {
             }
             write(
                 self.pid,
-                (address + written as i64).get_addr() as AddressType,
+                (address + written as i64).addr() as AddressType,
                 word as c_long,
             )
             .map_err(|errno| SdbError::new_errno("Failed to write memory", errno))?;
@@ -552,8 +552,8 @@ impl Process {
             if !site.is_enabled() || site.is_hardware() {
                 continue;
             }
-            let offset = site.address() - address.get_addr() as i64;
-            memory[offset.get_addr() as usize] = site.saved_data();
+            let offset = site.address() - address.addr() as i64;
+            memory[offset.addr() as usize] = site.saved_data();
         }
         Ok(memory)
     }
@@ -578,7 +578,7 @@ impl Process {
 
         let free_space = Process::find_free_stoppoint_register(control)?;
         let id = RegisterId::dr0 as i32 + free_space as i32;
-        regs.write_by_id(RegisterId::try_from(id).unwrap(), address.get_addr())?;
+        regs.write_by_id(RegisterId::try_from(id).unwrap(), address.addr())?;
 
         let mode_flag = Process::encode_hardware_stoppoint_mode(mode);
         let size_flag = Process::encode_hardware_stoppoint_size(size)?;
@@ -804,7 +804,7 @@ impl ProcessExt for Rc<Process> {
         if self.breakpoint_sites.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
-                address.get_addr()
+                address.addr()
             ));
         }
         let bs = Rc::new(RefCell::new(BreakpointSite::new(
@@ -825,7 +825,7 @@ impl ProcessExt for Rc<Process> {
         if self.breakpoint_sites.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
-                address.get_addr()
+                address.addr()
             ));
         }
         let bs = Rc::new(RefCell::new(BreakpointSite::from_breakpoint(
@@ -844,7 +844,7 @@ impl ProcessExt for Rc<Process> {
         if self.watchpoints.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Watchpoint already created at address {}",
-                address.get_addr()
+                address.addr()
             ));
         }
         let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
