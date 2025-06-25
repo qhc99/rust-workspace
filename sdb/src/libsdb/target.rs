@@ -1,9 +1,15 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
+
+use super::breakpoint::AddressBreakpoint;
+use super::breakpoint::FunctionBreakpoint;
+use super::breakpoint::LineBreakpoint;
+
+use super::stoppoint_collection::StoppointCollection;
 
 use super::dwarf::Die;
 use super::elf::SdbElf64Sym;
@@ -27,6 +33,7 @@ pub struct Target {
     process: Rc<Process>,
     elf: Rc<Elf>,
     stack: RefCell<Stack>,
+    breakpoints: RefCell<StoppointCollection>,
 }
 
 impl Target {
@@ -35,6 +42,7 @@ impl Target {
             process: process.clone(),
             elf: elf.clone(),
             stack: RefCell::new(Stack::new(weak_self)),
+            breakpoints: RefCell::new(StoppointCollection::default()),
         })
     }
 
@@ -250,6 +258,95 @@ impl Target {
             result.dwarf_functions.extend(dwarf_found);
         }
         Ok(result)
+    }
+
+    pub fn breakpoints(&self) -> &RefCell<StoppointCollection> {
+        &self.breakpoints
+    }
+}
+
+pub trait TargetExt {
+    fn create_address_breakpoint(
+        &self,
+        address: VirtualAddress,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
+
+    fn create_function_breakpoint(
+        &self,
+        function_name: &str,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
+
+    fn create_line_breakpoint(
+        &self,
+        file: &Path,
+        line: usize,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
+}
+
+impl TargetExt for Rc<Target> {
+    fn create_address_breakpoint(
+        &self,
+        address: VirtualAddress,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(AddressBreakpoint::new(
+            self,
+            address,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
+    }
+
+    fn create_function_breakpoint(
+        &self,
+        function_name: &str,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(FunctionBreakpoint::new(
+            self,
+            function_name,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
+    }
+
+    fn create_line_breakpoint(
+        &self,
+        file: &Path,
+        line: usize,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(LineBreakpoint::new(
+            self,
+            file,
+            line,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
     }
 }
 

@@ -289,14 +289,14 @@ impl StoppointTrait for FunctionBreakpoint {
 pub struct LineBreakpoint {
     breakpoint: Rc<RefCell<Breakpoint>>,
     file: PathBuf,
-    line: u32,
+    line: usize,
 }
 
 impl LineBreakpoint {
     pub fn new(
         target: &Rc<Target>,
         file: &Path,
-        line: u32,
+        line: usize,
         is_hardware: bool, // false
         is_internal: bool, // false
     ) -> Result<Self, SdbError> {
@@ -313,33 +313,6 @@ impl LineBreakpoint {
         Ok(ret)
     }
 
-    /*
-    void sdb::line_breakpoint::resolve() {
-        auto& dwarf = target_->get_elf().get_dwarf();
-        for (auto& cu : dwarf.compile_units()) {
-            auto entries = cu->lines().get_entries_by_line(file_, line_);
-            for (auto entry : entries) {
-                auto& dwarf = entry->address.elf_file()->get_dwarf();
-                auto stack = dwarf.inline_stack_at_address(entry->address);
-                auto no_inline_stack = stack.size() == 1;
-                auto should_skip_prologue = no_inline_stack and
-                (stack[0].contains(DW_AT_ranges) or stack[0].contains(DW_AT_low_pc)) and
-                stack[0].low_pc() == entry->address;
-                if (should_skip_prologue) {
-                    ++entry;
-                }
-                auto load_address = entry->address.to_virt_addr();
-                if (!breakpoint_sites_.contains_address(load_address)) {
-                    auto& new_site = target_->get_process()
-                    .create_breakpoint_site(
-                    this, next_site_id_++, load_address, is_hardware_, is_internal_);
-                    breakpoint_sites_.push(&new_site);
-                    if (is_enabled_) new_site.enable();
-                }
-            }
-        }
-    }
-     */
     pub fn resolve(&mut self) -> Result<(), SdbError> {
         let dwarf = self
             .breakpoint
@@ -408,7 +381,7 @@ impl LineBreakpoint {
         &self.file
     }
 
-    fn line(&self) -> u32 {
+    fn line(&self) -> usize {
         self.line
     }
 }

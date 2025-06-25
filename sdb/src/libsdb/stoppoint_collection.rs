@@ -13,24 +13,24 @@ pub struct StoppointCollection {
 }
 
 impl StoppointCollection {
-    pub fn push_strong<T>(&mut self, bs: Rc<RefCell<T>>) -> Rc<RefCell<T>>
+    pub fn push_strong<T>(&mut self, bs: Rc<RefCell<T>>) -> Weak<RefCell<T>>
     where
         T: StoppointTrait + ?Sized,
         Rc<RefCell<T>>: MaybeRc,
     {
         let res = bs.clone();
         self.stoppoints.push(Rc::new(bs));
-        res
+        Rc::downgrade(&res)
     }
 
-    pub fn push_weak<T>(&mut self, bs: Weak<RefCell<T>>) -> Rc<RefCell<T>>
+    pub fn push_weak<T>(&mut self, bs: Weak<RefCell<T>>) -> Weak<RefCell<T>>
     where
         T: StoppointTrait + ?Sized,
         Weak<RefCell<T>>: MaybeRc,
     {
         let res = bs.upgrade().unwrap();
         self.stoppoints.push(Rc::new(bs));
-        res
+        Rc::downgrade(&res)
     }
 
     pub fn contain_id(&self, id: IdType) -> bool {
