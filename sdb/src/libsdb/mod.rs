@@ -339,6 +339,8 @@ fn handle_watchpoint_set(process: &Rc<Process>, args: &[&str]) -> Result<(), Sdb
     };
     process
         .create_watchpoint(address.into(), mode, size)?
+        .upgrade()
+        .unwrap()
         .borrow_mut()
         .enable()?;
     Ok(())
@@ -488,7 +490,7 @@ fn handle_breakpoint_command(process: &Rc<Process>, args: &[&str]) -> Result<(),
             hardware,
             false,
         )?;
-        bs.borrow_mut().enable()?;
+        bs.upgrade().unwrap().borrow_mut().enable()?;
         return Ok(());
     }
 

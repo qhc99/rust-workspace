@@ -775,14 +775,14 @@ pub trait ProcessExt {
         address: VirtualAddress,
         hardware: bool,
         internal: bool,
-    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError>;
 
     fn create_watchpoint(
         &self,
         address: VirtualAddress,
         mode: StoppointMode,
         size: usize,
-    ) -> Result<Rc<RefCell<WatchPoint>>, SdbError>;
+    ) -> Result<Weak<RefCell<WatchPoint>>, SdbError>;
 
     fn create_breakpoint_site_from_breakpoint(
         &self,
@@ -791,7 +791,7 @@ pub trait ProcessExt {
         address: VirtualAddress,
         hardware: bool,
         internal: bool,
-    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError>;
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError>;
 }
 
 impl ProcessExt for Rc<Process> {
@@ -800,7 +800,7 @@ impl ProcessExt for Rc<Process> {
         address: VirtualAddress,
         hardware: bool, // false
         internal: bool, // false
-    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
         if self.breakpoint_sites.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
@@ -811,7 +811,7 @@ impl ProcessExt for Rc<Process> {
             self, address, hardware, internal,
         )));
         self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
-        Ok(bs)
+        Ok(Rc::downgrade(&bs))
     }
 
     fn create_breakpoint_site_from_breakpoint(
@@ -821,7 +821,7 @@ impl ProcessExt for Rc<Process> {
         address: VirtualAddress,
         hardware: bool,
         internal: bool,
-    ) -> Result<Rc<RefCell<BreakpointSite>>, SdbError> {
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
         if self.breakpoint_sites.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Breakpoint site already created at address {}",
@@ -832,7 +832,7 @@ impl ProcessExt for Rc<Process> {
             parent, id, self, address, hardware, internal,
         )));
         self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
-        Ok(bs)
+        Ok(Rc::downgrade(&bs))
     }
 
     fn create_watchpoint(
@@ -840,7 +840,7 @@ impl ProcessExt for Rc<Process> {
         address: VirtualAddress,
         mode: StoppointMode,
         size: usize,
-    ) -> Result<Rc<RefCell<WatchPoint>>, SdbError> {
+    ) -> Result<Weak<RefCell<WatchPoint>>, SdbError> {
         if self.watchpoints.borrow().contains_address(address) {
             return SdbError::err(&format!(
                 "Watchpoint already created at address {}",
@@ -849,7 +849,7 @@ impl ProcessExt for Rc<Process> {
         }
         let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
         self.watchpoints.borrow_mut().push_strong(wp.clone());
-        Ok(wp)
+        Ok(Rc::downgrade(&wp))
     }
 }
 

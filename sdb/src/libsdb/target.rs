@@ -209,6 +209,8 @@ impl Target {
             breakpoint_to_remove
                 .as_ref()
                 .unwrap()
+                .upgrade()
+                .unwrap()
                 .borrow_mut()
                 .enable()?;
         }
@@ -221,7 +223,14 @@ impl Target {
             self.process
                 .breakpoint_sites()
                 .borrow_mut()
-                .remove_by_address(breakpoint_to_remove.unwrap().borrow().address())?;
+                .remove_by_address(
+                    breakpoint_to_remove
+                        .unwrap()
+                        .upgrade()
+                        .unwrap()
+                        .borrow()
+                        .address(),
+                )?;
         }
         Ok(reason)
     }

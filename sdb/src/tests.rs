@@ -209,7 +209,10 @@ fn create_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
     let site = proc.create_breakpoint_site(42.into(), false, false);
-    assert_eq!(VirtualAddress::from(42), site.unwrap().borrow().address());
+    assert_eq!(
+        VirtualAddress::from(42),
+        site.unwrap().upgrade().unwrap().borrow().address()
+    );
 }
 
 #[test]
@@ -219,22 +222,34 @@ fn create_breakpoint_site_id_increase() {
     let site1 = proc
         .create_breakpoint_site(42.into(), false, false)
         .unwrap();
-    assert_eq!(VirtualAddress::from(42), site1.borrow().address());
+    assert_eq!(
+        VirtualAddress::from(42),
+        site1.upgrade().unwrap().borrow().address()
+    );
 
     let site2 = proc
         .create_breakpoint_site(43.into(), false, false)
         .unwrap();
-    assert_eq!(site2.borrow().id(), site1.borrow().id() + 1);
+    assert_eq!(
+        site2.upgrade().unwrap().borrow().id(),
+        site1.upgrade().unwrap().borrow().id() + 1
+    );
 
     let site3 = proc
         .create_breakpoint_site(44.into(), false, false)
         .unwrap();
-    assert_eq!(site3.borrow().id(), site2.borrow().id() + 1);
+    assert_eq!(
+        site3.upgrade().unwrap().borrow().id(),
+        site2.upgrade().unwrap().borrow().id() + 1
+    );
 
     let site4 = proc
         .create_breakpoint_site(45.into(), false, false)
         .unwrap();
-    assert_eq!(site4.borrow().id(), site3.borrow().id() + 1);
+    assert_eq!(
+        site4.upgrade().unwrap().borrow().id(),
+        site3.upgrade().unwrap().borrow().id() + 1
+    );
 }
 
 #[test]
@@ -391,6 +406,8 @@ fn breakpoint_on_address() {
     let load_address = get_load_address(proc.pid(), offset).unwrap();
     proc.create_breakpoint_site(load_address, false, false)
         .unwrap()
+        .upgrade()
+        .unwrap()
         .borrow_mut()
         .enable()
         .unwrap();
@@ -416,7 +433,7 @@ fn remove_breakpoint_sites() {
     let site = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     assert_eq!(2, proc.breakpoint_sites().borrow().size());
-    let id = site.unwrap().borrow().id();
+    let id = site.unwrap().upgrade().unwrap().borrow().id();
     proc.breakpoint_sites()
         .borrow_mut()
         .remove_by_id(id)
@@ -469,7 +486,7 @@ fn hardware_breapoint_evade_memory_checksum() {
 
     let func = VirtualAddress::from(from_bytes::<u64>(&channel.read().unwrap()));
     let soft = proc.create_breakpoint_site(func, false, false).unwrap();
-    soft.borrow_mut().enable().unwrap();
+    soft.upgrade().unwrap().borrow_mut().enable().unwrap();
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
@@ -478,13 +495,13 @@ fn hardware_breapoint_evade_memory_checksum() {
         String::from_utf8(channel.read().unwrap()).unwrap(),
         "Putting pepperoni on pizza...\n"
     );
-    let soft_id = soft.borrow().id();
+    let soft_id = soft.upgrade().unwrap().borrow().id();
     proc.breakpoint_sites()
         .borrow_mut()
         .remove_by_id(soft_id)
         .unwrap();
     let hard = proc.create_breakpoint_site(func, true, false).unwrap();
-    hard.borrow_mut().enable().unwrap();
+    hard.upgrade().unwrap().borrow_mut().enable().unwrap();
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
@@ -515,14 +532,14 @@ fn watchpoint_detect_read() {
     let watch = proc
         .create_watchpoint(func, StoppointMode::ReadWrite, 1)
         .unwrap();
-    watch.borrow_mut().enable().unwrap();
+    watch.upgrade().unwrap().borrow_mut().enable().unwrap();
 
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
 
     proc.step_instruction().unwrap();
     let soft = proc.create_breakpoint_site(func, false, false).unwrap();
-    soft.borrow_mut().enable().unwrap();
+    soft.upgrade().unwrap().borrow_mut().enable().unwrap();
 
     proc.resume().unwrap();
     let reason = proc.wait_on_signal().unwrap();

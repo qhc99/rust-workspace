@@ -132,7 +132,7 @@ impl FunctionBreakpoint {
         function_name: &str,
         is_hardware: bool, // false
         is_internal: bool, // false
-    ) -> Self {
+    ) -> Result<Self, SdbError> {
         let mut ret = Self {
             breakpoint: Rc::new(RefCell::new(Breakpoint::new(
                 target,
@@ -141,61 +141,24 @@ impl FunctionBreakpoint {
             ))),
             function_name: function_name.to_string(),
         };
-        ret.resolve();
-        ret
+        ret.resolve()?;
+        Ok(ret)
     }
 
-    /*
-        void sdb::function_breakpoint::resolve() {
-        auto found_functions = target_->find_functions(function_name_);
-        for (auto die : found_functions.dwarf_functions) {
-            if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {
-                file_addr addr;
-                if (die.abbrev_entry()->tag == DW_TAG_inlined_subroutine) {
-                    addr = die.low_pc();
-                }
-                else {
-                    auto function_line = die.cu()->lines()
-                    .get_entry_by_address(die.low_pc());
-                    ++function_line;
-                    addr = function_line->address;
-                }
-                auto load_address = addr.to_virt_addr();
-                if (!breakpoint_sites_.contains_address(load_address)) {
-                    auto& new_site = target_->get_process()
-                        .create_breakpoint_site(
-                            this, next_site_id_++, load_address, is_hardware_, is_internal_);
-                    breakpoint_sites_.push(&new_site);
-                    if (is_enabled_) new_site.enable();
-                }
-            }
-        }
-        for (auto sym : found_functions.elf_functions) {
-            auto file_address = file_addr{ *sym.first, sym.second->st_value };
-            auto load_address = file_address.to_virt_addr();
-            if (!breakpoint_sites_.contains_address(load_address)) {
-                auto& new_site = target_->get_process().create_breakpoint_site(
-                    this, next_site_id_++, load_address, is_hardware_, is_internal_);
-                breakpoint_sites_.push(&new_site);
-                if (is_enabled_) new_site.enable();
-            }
-        }
-    }
-         */
     pub fn resolve(&mut self) -> Result<(), SdbError> {
         let target = self.breakpoint.borrow().target.upgrade().unwrap();
         let found_functions = target.find_functions(&self.function_name)?;
         for die in &found_functions.dwarf_functions {
             if die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64) {
-                let addr: FileAddress;
-                if die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64 {
-                    addr = die.low_pc()?;
-                } else {
-                    let mut function_line =
-                        die.cu().lines().get_entry_by_address(&die.low_pc()?)?;
-                    function_line.step()?;
-                    addr = function_line.get_current().address.clone();
-                }
+                let addr: FileAddress =
+                    if die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64 {
+                        die.low_pc()?
+                    } else {
+                        let mut function_line =
+                            die.cu().lines().get_entry_by_address(&die.low_pc()?)?;
+                        function_line.step()?;
+                        function_line.get_current().address.clone()
+                    };
                 let load_address = addr.to_virt_addr();
                 if !self
                     .breakpoint
@@ -208,7 +171,7 @@ impl FunctionBreakpoint {
                         .create_breakpoint_site_from_breakpoint(
                             &self.breakpoint,
                             {
-                                let ret = self.breakpoint.borrow_mut().next_site_id;
+                                let ret = self.breakpoint.borrow().next_site_id;
                                 self.breakpoint.borrow_mut().next_site_id += 1;
                                 ret
                             },
@@ -216,10 +179,12 @@ impl FunctionBreakpoint {
                             self.breakpoint.borrow().is_hardware,
                             self.breakpoint.borrow().is_internal,
                         )?;
+                    let new_site_weak = new_site.clone();
+                    let new_site = new_site.upgrade().unwrap();
                     self.breakpoint
                         .borrow_mut()
                         .breakpoint_sites
-                        .push_strong(new_site.clone());
+                        .push_weak(new_site_weak);
                     if self.breakpoint.borrow().is_enabled {
                         new_site.borrow_mut().enable()?;
                     }
@@ -240,7 +205,7 @@ impl FunctionBreakpoint {
                     .create_breakpoint_site_from_breakpoint(
                         &self.breakpoint,
                         {
-                            let ret = self.breakpoint.borrow_mut().next_site_id;
+                            let ret = self.breakpoint.borrow().next_site_id;
                             self.breakpoint.borrow_mut().next_site_id += 1;
                             ret
                         },
@@ -248,10 +213,12 @@ impl FunctionBreakpoint {
                         self.breakpoint.borrow().is_hardware,
                         self.breakpoint.borrow().is_internal,
                     )?;
+                let new_site_weak = new_site.clone();
+                let new_site = new_site.upgrade().unwrap();
                 self.breakpoint
                     .borrow_mut()
                     .breakpoint_sites
-                    .push_strong(new_site.clone());
+                    .push_weak(new_site_weak);
                 if self.breakpoint.borrow().is_enabled {
                     new_site.borrow_mut().enable()?;
                 }
@@ -320,7 +287,7 @@ impl StoppointTrait for FunctionBreakpoint {
 }
 
 pub struct LineBreakpoint {
-    breakpoint: Breakpoint,
+    breakpoint: Rc<RefCell<Breakpoint>>,
     file: PathBuf,
     line: u32,
 }
@@ -332,18 +299,109 @@ impl LineBreakpoint {
         line: u32,
         is_hardware: bool, // false
         is_internal: bool, // false
-    ) -> Self {
+    ) -> Result<Self, SdbError> {
         let mut ret = Self {
-            breakpoint: Breakpoint::new(target, is_hardware, is_internal),
+            breakpoint: Rc::new(RefCell::new(Breakpoint::new(
+                target,
+                is_hardware,
+                is_internal,
+            ))),
             file: file.to_path_buf(),
             line,
         };
-        ret.resolve();
-        ret
+        ret.resolve()?;
+        Ok(ret)
     }
 
-    pub fn resolve(&mut self) {
-        todo!() // todo p400
+    /*
+    void sdb::line_breakpoint::resolve() {
+        auto& dwarf = target_->get_elf().get_dwarf();
+        for (auto& cu : dwarf.compile_units()) {
+            auto entries = cu->lines().get_entries_by_line(file_, line_);
+            for (auto entry : entries) {
+                auto& dwarf = entry->address.elf_file()->get_dwarf();
+                auto stack = dwarf.inline_stack_at_address(entry->address);
+                auto no_inline_stack = stack.size() == 1;
+                auto should_skip_prologue = no_inline_stack and
+                (stack[0].contains(DW_AT_ranges) or stack[0].contains(DW_AT_low_pc)) and
+                stack[0].low_pc() == entry->address;
+                if (should_skip_prologue) {
+                    ++entry;
+                }
+                auto load_address = entry->address.to_virt_addr();
+                if (!breakpoint_sites_.contains_address(load_address)) {
+                    auto& new_site = target_->get_process()
+                    .create_breakpoint_site(
+                    this, next_site_id_++, load_address, is_hardware_, is_internal_);
+                    breakpoint_sites_.push(&new_site);
+                    if (is_enabled_) new_site.enable();
+                }
+            }
+        }
+    }
+     */
+    pub fn resolve(&mut self) -> Result<(), SdbError> {
+        let dwarf = self
+            .breakpoint
+            .borrow()
+            .target
+            .upgrade()
+            .unwrap()
+            .get_elf()
+            .get_dwarf();
+        for cu in dwarf.compile_units().iter() {
+            let entries = cu
+                .lines()
+                .get_entries_by_line(&self.file, self.line as u64)?;
+            for mut entry in entries {
+                let dwarf = entry.get_current().address.elf_file().get_dwarf();
+                let stack = dwarf.inline_stack_at_address(&entry.get_current().address)?;
+                let no_inline_stack = stack.len() == 1;
+                let should_skip_prologue = no_inline_stack
+                    && (stack[0].contains(DW_AT_ranges.0 as u64)
+                        || stack[0].contains(DW_AT_low_pc.0 as u64))
+                    && stack[0].low_pc()? == entry.get_current().address;
+                if should_skip_prologue {
+                    entry.step()?;
+                }
+                let load_address = entry.get_current().address.to_virt_addr();
+                if !self
+                    .breakpoint
+                    .borrow()
+                    .breakpoint_sites
+                    .contains_address(load_address)
+                {
+                    let new_site = self
+                        .breakpoint
+                        .borrow()
+                        .target
+                        .upgrade()
+                        .unwrap()
+                        .get_process()
+                        .create_breakpoint_site_from_breakpoint(
+                            &self.breakpoint,
+                            {
+                                let ret = self.breakpoint.borrow().next_site_id;
+                                self.breakpoint.borrow_mut().next_site_id += 1;
+                                ret
+                            },
+                            load_address,
+                            self.breakpoint.borrow().is_hardware,
+                            self.breakpoint.borrow().is_internal,
+                        )?;
+                    let new_site_weak = new_site.clone();
+                    let new_site = new_site.upgrade().unwrap();
+                    self.breakpoint
+                        .borrow_mut()
+                        .breakpoint_sites
+                        .push_weak(new_site_weak);
+                    if self.breakpoint.borrow().is_enabled {
+                        new_site.borrow_mut().enable()?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn file(&self) -> &Path {
@@ -369,43 +427,43 @@ impl StoppointTrait for LineBreakpoint {
     }
 
     fn id(&self) -> IdType {
-        self.breakpoint.id
+        self.breakpoint.borrow().id
     }
 
     fn at_address(&self, addr: VirtualAddress) -> bool {
-        self.breakpoint.at_address(addr)
+        self.breakpoint.borrow().at_address(addr)
     }
 
     fn disable(&mut self) -> Result<(), SdbError> {
-        self.breakpoint.disable()
+        self.breakpoint.borrow_mut().disable()
     }
 
     fn address(&self) -> VirtualAddress {
-        self.breakpoint.address()
+        self.breakpoint.borrow().address()
     }
 
     fn enable(&mut self) -> Result<(), SdbError> {
-        self.breakpoint.enable()
+        self.breakpoint.borrow_mut().enable()
     }
 
     fn is_enabled(&self) -> bool {
-        self.breakpoint.is_enabled()
+        self.breakpoint.borrow().is_enabled()
     }
 
     fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
-        self.breakpoint.in_range(low, high)
+        self.breakpoint.borrow().in_range(low, high)
     }
 
     fn is_hardware(&self) -> bool {
-        self.breakpoint.is_hardware()
+        self.breakpoint.borrow().is_hardware()
     }
 
     fn is_internal(&self) -> bool {
-        self.breakpoint.is_internal()
+        self.breakpoint.borrow().is_internal()
     }
 
     fn breakpoint_sites(&self) -> StoppointCollection {
-        self.breakpoint.breakpoint_sites()
+        self.breakpoint.borrow().breakpoint_sites()
     }
 }
 
@@ -445,7 +503,7 @@ impl AddressBreakpoint {
                 .create_breakpoint_site_from_breakpoint(
                     &self.breakpoint,
                     {
-                        let ret = self.breakpoint.borrow_mut().next_site_id;
+                        let ret = self.breakpoint.borrow().next_site_id;
                         self.breakpoint.borrow_mut().next_site_id += 1;
                         ret
                     },
@@ -453,10 +511,12 @@ impl AddressBreakpoint {
                     self.breakpoint.borrow().is_hardware,
                     self.breakpoint.borrow().is_internal,
                 )?;
+            let new_site_weak = new_site.clone();
+            let new_site = new_site.upgrade().unwrap();
             self.breakpoint
                 .borrow_mut()
                 .breakpoint_sites
-                .push_strong(new_site.clone());
+                .push_weak(new_site_weak);
             if self.breakpoint.borrow().is_enabled {
                 new_site.borrow_mut().enable()?;
             }
