@@ -97,15 +97,15 @@ impl Target {
                 .trap_reason(Some(TrapType::SingleStep))
                 .build());
         }
-        let orig_line = self.get_line_entry_at_pc()?;
+        let orig_line = self.line_entry_at_pc()?;
         loop {
             let reason = self.process.step_instruction()?;
             if !reason.is_step() {
                 return Ok(reason);
             }
-            if !((self.get_line_entry_at_pc()? == orig_line
-                || self.get_line_entry_at_pc()?.get_current().end_sequence)
-                && !self.get_line_entry_at_pc()?.is_end())
+            if !((self.line_entry_at_pc()? == orig_line
+                || self.line_entry_at_pc()?.get_current().end_sequence)
+                && !self.line_entry_at_pc()?.is_end())
             {
                 break;
             }
@@ -115,7 +115,7 @@ impl Target {
             let dwarf = pc.elf_file().get_dwarf();
             let func = dwarf.function_containing_address(&pc)?;
             if func.is_some() && func.as_ref().unwrap().low_pc()? == pc {
-                let mut line = self.get_line_entry_at_pc()?;
+                let mut line = self.line_entry_at_pc()?;
                 if !line.is_end() {
                     line.step()?;
                     return self.run_until_address(line.get_current().address.to_virt_addr());
@@ -152,7 +152,7 @@ impl Target {
     }
 
     pub fn step_over(&self) -> Result<StopReason, SdbError> {
-        let orig_line = self.get_line_entry_at_pc()?;
+        let orig_line = self.line_entry_at_pc()?;
         let disas = Disassembler::new(&self.process);
         let mut reason;
         let stack = self.get_stack();
@@ -182,9 +182,9 @@ impl Target {
                 }
             }
 
-            if !((self.get_line_entry_at_pc()? == orig_line
-                || self.get_line_entry_at_pc()?.get_current().end_sequence)
-                && !self.get_line_entry_at_pc()?.is_end())
+            if !((self.line_entry_at_pc()? == orig_line
+                || self.line_entry_at_pc()?.get_current().end_sequence)
+                && !self.line_entry_at_pc()?.is_end())
             {
                 break;
             }
@@ -192,7 +192,7 @@ impl Target {
         Ok(reason)
     }
 
-    fn get_line_entry_at_pc(&self) -> Result<LineTableIter, SdbError> {
+    pub fn line_entry_at_pc(&self) -> Result<LineTableIter, SdbError> {
         let pc = self.get_pc_file_address();
         if !pc.has_elf() {
             return Ok(LineTableIter::default());

@@ -20,6 +20,8 @@ use process::{
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cmp::min;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::Path;
 use std::rc::Rc;
 use syscalls::{syscall_id_to_name, syscall_name_to_id};
@@ -382,13 +384,63 @@ fn handle_disassemble_command(process: &Process, args: &[&str]) -> Result<(), Sd
     Ok(())
 }
 
-fn handle_stop(target: &Target, reason: StopReason) -> Result<(), SdbError> {
-    let process = &target.get_process();
+fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
     print_stop_reason(target, reason)?;
     if reason.reason == ProcessState::Stopped {
-        print_disassembly(process, process.get_pc(), 5)?;
+        if target.get_stack().inline_height() > 0 {
+            let stack = target.get_stack().inline_stack_at_pc()?;
+            let frame = &stack[stack.len() - target.get_stack().inline_height() as usize];
+            print_source(&frame.file()?.path, frame.line()?, 3)?;
+        } else {
+            let entry = target.line_entry_at_pc();
+            if entry.is_ok() && !entry.as_ref().unwrap().is_end() {
+                let entry = entry.unwrap();
+                print_source(
+                    &entry.get_current().file_entry.as_ref().unwrap().path,
+                    entry.get_current().line,
+                    3,
+                )?;
+            } else {
+                print_disassembly(&target.get_process(), target.get_process().get_pc(), 5)?;
+            }
+        }
     }
     Ok(())
+}
+
+/*
+void print_source(
+const std::filesystem::path& path, std::uint64_t line,
+std::uint64_t n_lines_context) {
+    std::ifstream file{ path.string() };
+    auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
+    auto end_line = line + n_lines_context + 1;
+    char c{};
+    auto current_line = 1u;
+    while (current_line != start_line && file.get(c)) {
+        if (c == '\n') {
+            ++current_line;
+        }
+    }
+    auto print_line_start = [&](auto current_line) {
+        auto fill_width = static_cast<int>(std::floor(std::log10(end_line))) + 1;
+        auto arrow = current_line == line ? ">" : " ";
+        fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
+    };
+    print_line_start(current_line);
+    while (current_line <= end_line && file.get(c)) {
+        std::cout << c;
+        if (c == '\n') {
+            ++current_line;
+            print_line_start(current_line);
+        }
+    }
+    std::cout << std::endl;
+}
+*/
+
+fn print_source(path: &Path, line: u64, n_lines_context: u64) -> Result<(), SdbError> {
+    todo!()
 }
 
 fn handle_memory_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
@@ -465,9 +517,38 @@ fn handle_breakpoint_command(target: &Rc<Target>, args: &[&str]) -> Result<(), S
     Ok(())
 }
 
-// TODO p406
 fn handle_breakpoint_toggle(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
-    todo!()
+    let command = args[1];
+    let dot_pos = args[2].find('.').unwrap_or(args[2].len());
+    let id_str = &args[2][..dot_pos];
+    let id = IdType::from_integral(id_str)
+        .map_err(|_| SdbError::new_err("Command expects breakpoint id"))?;
+    let bp = target.breakpoints().borrow().get_by_id(id)?;
+    if dot_pos != args[2].len() {
+        let site_id_str = &args[2][dot_pos + 1..];
+        let site_id = IdType::from_integral(site_id_str)
+            .map_err(|_| SdbError::new_err("Command expects breakpoint site id"))?;
+        let site = bp.borrow().breakpoint_sites().get_by_id(site_id)?;
+        if command == "enable" {
+            site.borrow_mut().enable()?;
+        } else if command == "disable" {
+            site.borrow_mut().disable()?;
+        }
+    } else if command == "enable" {
+        bp.borrow_mut().enable()?;
+    } else if command == "disable" {
+        bp.borrow_mut().disable()?;
+    } else if command == "delete" {
+        for site in bp.borrow_mut().breakpoint_sites().iter() {
+            target
+                .get_process()
+                .breakpoint_sites()
+                .borrow_mut()
+                .remove_by_address(site.borrow().address())?;
+        }
+        target.breakpoints().borrow_mut().remove_by_id(id)?;
+    }
+    Ok(())
 }
 
 fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
