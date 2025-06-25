@@ -21,7 +21,7 @@ use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::cmp::min;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::rc::Rc;
 use syscalls::{syscall_id_to_name, syscall_name_to_id};
@@ -408,39 +408,39 @@ fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> 
     Ok(())
 }
 
-/*
-void print_source(
-const std::filesystem::path& path, std::uint64_t line,
-std::uint64_t n_lines_context) {
-    std::ifstream file{ path.string() };
-    auto start_line = line <= n_lines_context ? 1 : line - n_lines_context;
-    auto end_line = line + n_lines_context + 1;
-    char c{};
-    auto current_line = 1u;
-    while (current_line != start_line && file.get(c)) {
-        if (c == '\n') {
-            ++current_line;
-        }
-    }
-    auto print_line_start = [&](auto current_line) {
-        auto fill_width = static_cast<int>(std::floor(std::log10(end_line))) + 1;
-        auto arrow = current_line == line ? ">" : " ";
-        fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
-    };
-    print_line_start(current_line);
-    while (current_line <= end_line && file.get(c)) {
-        std::cout << c;
-        if (c == '\n') {
-            ++current_line;
-            print_line_start(current_line);
-        }
-    }
-    std::cout << std::endl;
-}
-*/
-
 fn print_source(path: &Path, line: u64, n_lines_context: u64) -> Result<(), SdbError> {
-    todo!()
+    let file = File::open(path)
+        .map_err(|e| SdbError::new_err(&format!("Could not open source file, {e}")))?;
+    let reader = BufReader::new(file);
+
+    let start_line = if line <= n_lines_context {
+        1
+    } else {
+        line - n_lines_context
+    };
+    let end_line = line + n_lines_context + 1;
+    let fill_width = ((end_line as f64).log10().floor() as usize) + 1;
+
+    for (idx, line_text) in reader.lines().enumerate() {
+        let current_line = (idx + 1) as u64;
+        if current_line < start_line {
+            continue;
+        }
+        if current_line > end_line {
+            break;
+        }
+        let text = line_text.map_err(|_| SdbError::new_err("Could not read source file"))?;
+        let arrow = if current_line == line { ">" } else { " " };
+        println!(
+            "{} {:>width$} {}",
+            arrow,
+            current_line,
+            text,
+            width = fill_width
+        );
+    }
+
+    Ok(())
 }
 
 fn handle_memory_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
