@@ -1,11 +1,15 @@
 #![cfg(test)]
 
 use std::{
+    cell::RefCell,
     fs::{File, OpenOptions},
     io::{BufRead, BufReader},
     os::fd::AsRawFd,
     path::PathBuf,
+    rc::Rc,
 };
+
+use libsdb::target::{Target, TargetExt};
 
 use super::test_utils::BinBuilder;
 use bytes::Bytes;
@@ -739,4 +743,60 @@ fn line_table() {
     assert!(it.get_current().end_sequence);
     it.step().unwrap();
     assert!(it.is_end());
+}
+
+#[test]
+fn source_level_breakpoint() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let bin = BinBuilder::cpp("resource", &["overloaded.cpp"]);
+    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+    target
+        .create_line_breakpoint(Path::new("overloaded.cpp"), 17, false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+    let entry = target.line_entry_at_pc().unwrap();
+    assert_eq!(
+        entry
+            .get_current()
+            .file_entry
+            .as_ref()
+            .unwrap()
+            .path
+            .file_name()
+            .unwrap(),
+        "overloaded.cpp"
+    );
+    assert_eq!(entry.get_current().line, 17);
+
+    let bkpt = target
+        .create_function_breakpoint("print_type", false, false)
+        .unwrap();
+    let bkpt = bkpt.upgrade().unwrap();
+    bkpt.borrow_mut().enable().unwrap();
+    let mut lowest_bkpt: Option<Rc<RefCell<dyn StoppointTrait>>> = None;
+    for site in bkpt.borrow().breakpoint_sites().iter() {
+        if lowest_bkpt.is_none()
+            || site.borrow().address().addr()
+                < lowest_bkpt.as_ref().unwrap().borrow().address().addr()
+        {
+            lowest_bkpt = Some(site.clone());
+        }
+    }
+    lowest_bkpt.unwrap().borrow_mut().disable().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+    assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 9);
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+    assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 13);
+    proc.resume().unwrap();
+    let reason = proc.wait_on_signal().unwrap();
+    assert_eq!(reason.reason, ProcessState::Exited);
 }
