@@ -152,7 +152,8 @@ impl LineTableIter {
                     self.registers.address += cursor.uleb128() as i64;
                 }
                 DW_LNS_advance_line => {
-                    self.registers.line += cursor.sleb128() as u64;
+                    self.registers.line =
+                        (self.registers.line as i64).wrapping_add(cursor.sleb128()) as u64;
                 }
                 DW_LNS_set_file => {
                     self.registers.file_index = cursor.uleb128();
@@ -225,9 +226,11 @@ impl LineTableIter {
         } else {
             let adjusted_opcode = opcode - self.table.opcode_base;
             self.registers.address += (adjusted_opcode / self.table.line_range) as i64;
-            self.registers.line += (self.table.line_base as i16
-                + (adjusted_opcode % self.table.line_range) as i16)
-                as u64;
+            self.registers.line = self.registers.line.wrapping_add(
+                ((self.table.line_base as i16)
+                    .wrapping_add((adjusted_opcode % self.table.line_range) as i16))
+                    as u64,
+            );
             self.current = Some(self.registers.clone());
             self.registers.basic_block_start = false;
             self.registers.prologue_end = false;
@@ -1333,7 +1336,7 @@ impl Cursor {
                 break;
             }
         }
-        if ((shift as usize) < u64::BITS as usize) && (byte & 0x40) != 0 {
+        if ((shift as usize) < u64::BITS as usize) && ((byte & 0x40) != 0) {
             res |= !0u64 << shift;
         }
         res as i64

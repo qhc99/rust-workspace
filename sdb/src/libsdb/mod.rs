@@ -567,10 +567,10 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
             if bp.borrow().is_internal() {
                 return;
             }
-            println!("{}: ", bp.borrow().id());
+            print!("{}: ", bp.borrow().id());
             match bp.borrow().breakpoint_type() {
                 BreakpointType::AddressBreakPoint => {
-                    println!(
+                    print!(
                         "address = {:#x}",
                         bp.borrow()
                             .as_any()
@@ -580,7 +580,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                     );
                 }
                 BreakpointType::FunctionBreakPoint => {
-                    println!(
+                    print!(
                         "function = {}",
                         bp.borrow()
                             .as_any()
@@ -590,7 +590,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                     );
                 }
                 BreakpointType::LineBreakPoint => {
-                    println!(
+                    print!(
                         "file = {}, line = {}",
                         bp.borrow()
                             .as_any()

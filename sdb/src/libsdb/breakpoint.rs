@@ -170,15 +170,12 @@ impl FunctionBreakpoint {
                         .get_process()
                         .create_breakpoint_site_from_breakpoint(
                             &self.breakpoint,
-                            {
-                                let ret = self.breakpoint.borrow().next_site_id;
-                                self.breakpoint.borrow_mut().next_site_id += 1;
-                                ret
-                            },
+                            self.breakpoint.borrow().next_site_id,
                             load_address,
                             self.breakpoint.borrow().is_hardware,
                             self.breakpoint.borrow().is_internal,
                         )?;
+                    self.breakpoint.borrow_mut().next_site_id += 1;
                     let new_site_weak = new_site.clone();
                     let new_site = new_site.upgrade().unwrap();
                     self.breakpoint
@@ -204,15 +201,12 @@ impl FunctionBreakpoint {
                     .get_process()
                     .create_breakpoint_site_from_breakpoint(
                         &self.breakpoint,
-                        {
-                            let ret = self.breakpoint.borrow().next_site_id;
-                            self.breakpoint.borrow_mut().next_site_id += 1;
-                            ret
-                        },
+                        self.breakpoint.borrow().next_site_id,
                         load_address,
                         self.breakpoint.borrow().is_hardware,
                         self.breakpoint.borrow().is_internal,
                     )?;
+                self.breakpoint.borrow_mut().next_site_id += 1;
                 let new_site_weak = new_site.clone();
                 let new_site = new_site.upgrade().unwrap();
                 self.breakpoint
@@ -353,15 +347,12 @@ impl LineBreakpoint {
                         .get_process()
                         .create_breakpoint_site_from_breakpoint(
                             &self.breakpoint,
-                            {
-                                let ret = self.breakpoint.borrow().next_site_id;
-                                self.breakpoint.borrow_mut().next_site_id += 1;
-                                ret
-                            },
+                            self.breakpoint.borrow().next_site_id,
                             load_address,
                             self.breakpoint.borrow().is_hardware,
                             self.breakpoint.borrow().is_internal,
                         )?;
+                    self.breakpoint.borrow_mut().next_site_id += 1;
                     let new_site_weak = new_site.clone();
                     let new_site = new_site.upgrade().unwrap();
                     self.breakpoint
@@ -475,15 +466,12 @@ impl AddressBreakpoint {
                 .get_process()
                 .create_breakpoint_site_from_breakpoint(
                     &self.breakpoint,
-                    {
-                        let ret = self.breakpoint.borrow().next_site_id;
-                        self.breakpoint.borrow_mut().next_site_id += 1;
-                        ret
-                    },
+                    self.breakpoint.borrow().next_site_id,
                     self.address,
                     self.breakpoint.borrow().is_hardware,
                     self.breakpoint.borrow().is_internal,
                 )?;
+            self.breakpoint.borrow_mut().next_site_id += 1;
             let new_site_weak = new_site.clone();
             let new_site = new_site.upgrade().unwrap();
             self.breakpoint
