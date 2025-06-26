@@ -800,3 +800,48 @@ fn source_level_breakpoint() {
     let reason = proc.wait_on_signal().unwrap();
     assert_eq!(reason.reason, ProcessState::Exited);
 }
+
+#[test]
+fn source_level_stepping() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let bin = BinBuilder::cpp("resource", &["step.cpp"]);
+    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+    let mut pc = proc.get_pc();
+    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+    target.step_over().unwrap();
+    let mut new_pc = proc.get_pc();
+    assert_ne!(new_pc, pc);
+    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+    target.step_in().unwrap();
+    pc = proc.get_pc();
+    assert_eq!(
+        target.function_name_at_address(pc).unwrap(),
+        "find_happiness"
+    );
+    assert_eq!(target.get_stack().inline_height(), 2);
+    target.step_in().unwrap();
+    new_pc = proc.get_pc();
+    assert_eq!(new_pc, pc);
+    assert_eq!(target.get_stack().inline_height(), 1);
+    target.step_out().unwrap();
+    new_pc = proc.get_pc();
+    assert_ne!(new_pc, pc);
+    assert_eq!(
+        target.function_name_at_address(pc).unwrap(),
+        "find_happiness"
+    );
+    target.step_out().unwrap();
+    pc = proc.get_pc();
+    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+}

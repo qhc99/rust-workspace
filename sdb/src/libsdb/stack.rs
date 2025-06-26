@@ -46,7 +46,7 @@ impl Stack {
         self.target.upgrade().unwrap()
     }
 
-    pub fn simulate_inlined_step_in(&self) {
-        todo!()
+    pub fn simulate_inlined_step_in(&mut self) {
+        self.inline_height -= 1;
     }
 }
