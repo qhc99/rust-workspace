@@ -2,8 +2,12 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 
+use elf::abi::STT_FUNC;
+use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
+
+use super::ffi::demangle;
 
 use super::breakpoint::AddressBreakpoint;
 use super::breakpoint::FunctionBreakpoint;
@@ -262,6 +266,26 @@ impl Target {
 
     pub fn breakpoints(&self) -> &RefCell<StoppointCollection> {
         &self.breakpoints
+    }
+
+    pub fn function_name_at_address(&self, address: VirtualAddress) -> Result<String, SdbError> {
+        let file_address = address.to_file_addr(&self.elf);
+        if !file_address.has_elf() {
+            return Ok(String::new());
+        }
+        let obj = file_address.elf_file();
+        let func = obj.get_dwarf().function_containing_address(&file_address)?;
+        if func.is_some() {
+            return Ok(func.unwrap().name()?.unwrap());
+        } else {
+            let elf_func = obj.get_symbol_containing_file_address(file_address);
+            if elf_func.is_some() && st_type(elf_func.as_ref().unwrap().0.st_info) == STT_FUNC {
+                let elf_name = obj.get_string(elf_func.as_ref().unwrap().0.st_name as usize);
+                let demangled = demangle(elf_name).unwrap_or_default();
+                return Ok(demangled);
+            }
+        }
+        Ok(String::new())
     }
 }
 

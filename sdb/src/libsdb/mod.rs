@@ -3,12 +3,9 @@
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("Not x86_64 arch");
 
-use ::elf::abi::STT_FUNC;
 use breakpoint_site::IdType;
 use disassembler::print_disassembly;
-use elf::ElfExt;
 use ffi::sig_abbrev;
-use goblin::elf::sym::st_type;
 use indoc::indoc;
 use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
@@ -99,23 +96,32 @@ fn print_stop_reason(target: &Target, reason: StopReason) -> Result<(), SdbError
     println!("Process {pid} {msg}");
     Ok(())
 }
+
 fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String, SdbError> {
     let process = target.get_process();
+    let pc = process.get_pc();
     let mut msg = format!(
-        "stopped with signal {} at {:#x}",
+        "stopped with signal {} at {:#x}\n",
         sig_abbrev(reason.info),
-        process.get_pc().addr()
+        pc.addr()
     );
-    let func = target
-        .get_elf()
-        .get_symbol_containing_virt_address(process.get_pc());
-    if let Some(func) = func {
-        if st_type(func.0.st_info) == STT_FUNC {
-            msg += &format!(
-                " ({})",
-                target.get_elf().get_string(func.0.st_name as usize)
-            );
-        }
+    let line = target.line_entry_at_pc()?;
+    if !line.is_end() {
+        let file = line
+            .get_current()
+            .file_entry
+            .as_ref()
+            .unwrap()
+            .path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        msg += &format!("    at {}:{}\n", file, line.get_current().line);
+    }
+    let func_name = target.function_name_at_address(pc)?;
+    if !func_name.is_empty() {
+        msg += &format!("    in {}\n", func_name);
     }
     if reason.info == SIGTRAP {
         msg += &get_sigtrap_info(&process, reason)?;
@@ -660,7 +666,7 @@ fn handle_breakpoint_set_command(target: &Rc<Target>, args: &[&str]) -> Result<(
         match line {
             Ok(line) => {
                 target
-                    .create_line_breakpoint(&Path::new(path), line as usize, hardware, false)?
+                    .create_line_breakpoint(Path::new(path), line as usize, hardware, false)?
                     .upgrade()
                     .unwrap()
                     .borrow_mut()
