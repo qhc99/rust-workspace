@@ -421,20 +421,19 @@ impl Die {
     }
 
     pub fn index(&self, attribute: u64) -> Result<DieAttr, SdbError> {
-        if let Some(abbrev) = &self.abbrev {
-            if let Some((i, spec)) = abbrev
+        if let Some(abbrev) = &self.abbrev
+            && let Some((i, spec)) = abbrev
                 .attr_specs
                 .iter()
                 .enumerate()
                 .find(|(_, spec)| spec.attr == attribute)
-            {
-                return Ok(DieAttr::new(
-                    &self.cu(),
-                    spec.attr,
-                    spec.form,
-                    self.attr_locs[i].clone(),
-                ));
-            }
+        {
+            return Ok(DieAttr::new(
+                &self.cu(),
+                spec.attr,
+                spec.form,
+                self.attr_locs[i].clone(),
+            ));
         }
         SdbError::err("Attribute not found")
     }
@@ -702,13 +701,13 @@ pub struct DieChildenIter {
 
 impl DieChildenIter {
     pub fn new(die: &Rc<Die>) -> Self {
-        if let Some(abbrev) = &die.abbrev {
-            if abbrev.has_children {
-                let next_cursor = Cursor::new(&die.next);
-                return Self {
-                    die: Some(parse_die(&die.cu.upgrade().unwrap(), next_cursor)),
-                };
-            }
+        if let Some(abbrev) = &die.abbrev
+            && abbrev.has_children
+        {
+            let next_cursor = Cursor::new(&die.next);
+            return Self {
+                die: Some(parse_die(&die.cu.upgrade().unwrap(), next_cursor)),
+            };
         }
         Self { die: None }
     }
@@ -718,32 +717,31 @@ impl Iterator for DieChildenIter {
     type Item = Rc<Die>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current_die) = self.die.take() {
-            if let Some(abbrev) = &current_die.abbrev {
-                if !abbrev.has_children {
-                    let next_cursor = Cursor::new(&current_die.next);
-                    self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
-                    return Some(current_die);
-                } else if current_die.contains(DW_AT_sibling.0 as u64) {
-                    self.die = Some(
-                        current_die
-                            .index(DW_AT_sibling.0 as u64)
-                            .unwrap()
-                            .as_reference(),
-                    );
-                    return Some(current_die);
-                } else {
-                    let sub_children = DieChildenIter::new(&current_die);
-                    for d in sub_children {
-                        if d.abbrev.is_none() {
-                            let next_cursor = Cursor::new(&d.next);
-                            self.die =
-                                Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
-                            break;
-                        }
+        if let Some(current_die) = self.die.take()
+            && let Some(abbrev) = &current_die.abbrev
+        {
+            if !abbrev.has_children {
+                let next_cursor = Cursor::new(&current_die.next);
+                self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
+                return Some(current_die);
+            } else if current_die.contains(DW_AT_sibling.0 as u64) {
+                self.die = Some(
+                    current_die
+                        .index(DW_AT_sibling.0 as u64)
+                        .unwrap()
+                        .as_reference(),
+                );
+                return Some(current_die);
+            } else {
+                let sub_children = DieChildenIter::new(&current_die);
+                for d in sub_children {
+                    if d.abbrev.is_none() {
+                        let next_cursor = Cursor::new(&d.next);
+                        self.die = Some(parse_die(&current_die.cu.upgrade().unwrap(), next_cursor));
+                        break;
                     }
-                    return Some(current_die);
                 }
+                return Some(current_die);
             }
         }
         None
@@ -1112,14 +1110,15 @@ impl Dwarf {
         let has_range = die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64);
         let is_function = die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
             || die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64;
-        if has_range && is_function {
-            if let Some(name) = die.name()? {
-                let entry = DwarfIndexEntry {
-                    cu: die.cu.upgrade().unwrap(),
-                    pos: die.pos.clone(),
-                };
-                self.function_index.borrow_mut().insert(name, entry);
-            }
+        if has_range
+            && is_function
+            && let Some(name) = die.name()?
+        {
+            let entry = DwarfIndexEntry {
+                cu: die.cu.upgrade().unwrap(),
+                pos: die.pos.clone(),
+            };
+            self.function_index.borrow_mut().insert(name, entry);
         }
         for child in die.children() {
             self.index_die(&child)?;

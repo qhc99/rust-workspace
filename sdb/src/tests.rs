@@ -383,13 +383,13 @@ fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
 
     for line in reader.lines() {
         let line = line?;
-        if let Some(caps) = re.captures(&line) {
-            if &caps[2] == "x" {
-                let low_range = u64::from_str_radix(&caps[1], 16).unwrap();
-                let file_offset = i64::from_str_radix(&caps[3], 16).unwrap();
-                let load_addr = offset - file_offset + low_range as i64;
-                return Ok(VirtualAddress::from(load_addr as u64));
-            }
+        if let Some(caps) = re.captures(&line)
+            && &caps[2] == "x"
+        {
+            let low_range = u64::from_str_radix(&caps[1], 16).unwrap();
+            let file_offset = i64::from_str_radix(&caps[3], 16).unwrap();
+            let load_addr = offset - file_offset + low_range as i64;
+            return Ok(VirtualAddress::from(load_addr as u64));
         }
     }
 

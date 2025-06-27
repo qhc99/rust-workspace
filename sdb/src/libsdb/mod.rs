@@ -121,7 +121,7 @@ fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String,
     }
     let func_name = target.function_name_at_address(pc)?;
     if !func_name.is_empty() {
-        msg += &format!("    in {}\n", func_name);
+        msg += &format!("    in {func_name}\n");
     }
     if reason.info == SIGTRAP {
         msg += &get_sigtrap_info(&process, reason)?;
@@ -176,7 +176,7 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
                     .join(",")
             )),
             process::SyscallData::Ret(data) => {
-                Ok(format!(" (syscall exit)\nsyscall returned {:#x}", data))
+                Ok(format!(" (syscall exit)\nsyscall returned {data:#x}"))
             }
         };
     }
@@ -437,13 +437,7 @@ fn print_source(path: &Path, line: u64, n_lines_context: u64) -> Result<(), SdbE
         }
         let text = line_text.map_err(|_| SdbError::new_err("Could not read source file"))?;
         let arrow = if current_line == line { ">" } else { " " };
-        println!(
-            "{} {:>width$} {}",
-            arrow,
-            current_line,
-            text,
-            width = fill_width
-        );
+        println!("{arrow} {current_line:>fill_width$} {text}");
     }
 
     Ok(())
@@ -478,10 +472,10 @@ fn handle_memory_read_command(process: &Process, args: &[&str]) -> Result<(), Sd
         let addr = VirtualAddress::from(address) + i as i64;
         let data_msg = bytes
             .iter()
-            .map(|b| format!("{:02x}", b))
+            .map(|b| format!("{b:02x}"))
             .collect::<Vec<_>>()
             .join(" ");
-        let msg = format!("{:#016x}: {}", addr, data_msg);
+        let msg = format!("{addr:#016x}: {data_msg}");
         println!("{msg}");
     }
     Ok(())

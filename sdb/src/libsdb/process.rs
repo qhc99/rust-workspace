@@ -276,10 +276,10 @@ impl Process {
                             reason = self.maybe_resume_from_syscall(&reason)?;
                         }
                     }
-                    if let Some(target) = self.target.borrow().as_ref() {
-                        if let Some(target) = target.upgrade() {
-                            target.notify_stop(&reason)?;
-                        }
+                    if let Some(target) = self.target.borrow().as_ref()
+                        && let Some(target) = target.upgrade()
+                    {
+                        target.notify_stop(&reason)?;
                     }
                 }
                 Ok(reason)
@@ -319,15 +319,13 @@ impl Process {
                 Process::exit_with_error(&channel, "Subprocess set peronality failed", errno);
             }
             channel.close_read();
-            if let Some(fd) = stdout_replacement {
-                if let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd()) {
-                    Process::exit_with_error(&channel, "Stdout replacement failed", errno);
-                }
+            if let Some(fd) = stdout_replacement
+                && let Err(errno) = dup2(fd, std::io::stdout().as_raw_fd())
+            {
+                Process::exit_with_error(&channel, "Stdout replacement failed", errno);
             }
-            if debug {
-                if let Err(errno) = traceme() {
-                    Process::exit_with_error(&channel, "Tracing failed", errno);
-                }
+            if debug && let Err(errno) = traceme() {
+                Process::exit_with_error(&channel, "Tracing failed", errno);
             }
             if execvp(&path_str, &[&path_str]).is_err() {
                 Process::exit_with_error(&channel, "Exec failed", Errno::from_raw(0));
