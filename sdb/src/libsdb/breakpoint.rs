@@ -7,18 +7,11 @@ use gimli::{DW_AT_low_pc, DW_AT_ranges, DW_TAG_inlined_subroutine};
 use typed_builder::TypedBuilder;
 
 use super::dwarf::LineTableExt;
-
-use super::types::FileAddress;
-
 use super::process::ProcessExt;
-
-use super::traits::BreakpointType;
-
 use super::stoppoint_collection::StoppointCollection;
-
-use super::{sdb_error::SdbError, traits::StoppointTrait, types::VirtualAddress};
-
 use super::target::Target;
+use super::types::FileAddress;
+use super::{sdb_error::SdbError, traits::StoppointTrait, types::VirtualAddress};
 
 pub type IdType = i32;
 
@@ -59,10 +52,6 @@ impl Breakpoint {
 }
 
 impl StoppointTrait for Breakpoint {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::BreakPoint
-    }
-
     fn id(&self) -> IdType {
         self.id
     }
@@ -218,10 +207,6 @@ impl FunctionBreakpoint {
 }
 
 impl StoppointTrait for FunctionBreakpoint {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::FunctionBreakPoint
-    }
-
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }
@@ -361,10 +346,6 @@ impl LineBreakpoint {
 }
 
 impl StoppointTrait for LineBreakpoint {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::LineBreakPoint
-    }
-
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }
@@ -466,10 +447,6 @@ impl AddressBreakpoint {
 }
 
 impl StoppointTrait for AddressBreakpoint {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::AddressBreakPoint
-    }
-
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }

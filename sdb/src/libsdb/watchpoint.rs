@@ -4,7 +4,6 @@ use super::breakpoint_site::IdType;
 use super::process::Process;
 use super::sdb_error::SdbError;
 use super::stoppoint_collection::StoppointCollection;
-use super::traits::BreakpointType;
 use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
 use std::mem::swap;
@@ -32,10 +31,6 @@ pub struct WatchPoint {
 }
 
 impl StoppointTrait for WatchPoint {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::WatchPoint
-    }
-
     fn id(&self) -> IdType {
         self.id
     }

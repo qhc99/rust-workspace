@@ -16,7 +16,7 @@ use process::{
 };
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cell::Ref;
 use std::cmp::min;
 use std::fs::File;
@@ -52,7 +52,6 @@ use breakpoint::AddressBreakpoint;
 use breakpoint::FunctionBreakpoint;
 use breakpoint::LineBreakpoint;
 
-use traits::BreakpointType;
 pub mod bit;
 pub mod pipe;
 pub mod process;
@@ -560,13 +559,14 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
         println!("No breakpoints set");
     } else {
         println!("Current breakpoints:");
-        breakpoints.for_each(|bp| {
+        for bp in breakpoints.iter() {
             if bp.borrow().is_internal() {
-                return;
+                continue;
             }
             print!("{}: ", bp.borrow().id());
-            match bp.borrow().breakpoint_type() {
-                BreakpointType::AddressBreakPoint => {
+
+            match (&*bp.borrow() as &dyn Any).type_id() {
+                id if id == TypeId::of::<AddressBreakpoint>() => {
                     print!(
                         "address = {:#x}",
                         (bp.borrow() as Ref<'_, dyn Any>)
@@ -575,7 +575,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                             .address()
                     );
                 }
-                BreakpointType::FunctionBreakPoint => {
+                id if id == TypeId::of::<FunctionBreakpoint>() => {
                     print!(
                         "function = {}",
                         (bp.borrow() as Ref<'_, dyn Any>)
@@ -584,7 +584,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                             .function_name()
                     );
                 }
-                BreakpointType::LineBreakPoint => {
+                id if id == TypeId::of::<LineBreakpoint>() => {
                     print!(
                         "file = {}, line = {}",
                         (bp.borrow() as Ref<'_, dyn Any>)
@@ -621,7 +621,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                     }
                 );
             });
-        });
+        }
     }
     Ok(())
 }

@@ -1,4 +1,4 @@
-use super::{stoppoint_collection::StoppointCollection, traits::BreakpointType};
+use super::stoppoint_collection::StoppointCollection;
 
 use super::breakpoint::Breakpoint;
 
@@ -44,10 +44,6 @@ pub struct BreakpointSite {
 }
 
 impl StoppointTrait for BreakpointSite {
-    fn breakpoint_type(&self) -> BreakpointType {
-        BreakpointType::BreakpointSite
-    }
-
     fn id(&self) -> IdType {
         self.id
     }

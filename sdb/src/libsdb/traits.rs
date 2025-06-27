@@ -26,18 +26,7 @@ pub trait StoppointTrait: Any {
 
     fn is_internal(&self) -> bool;
 
-    fn breakpoint_type(&self) -> BreakpointType;
-
     fn breakpoint_sites(&self) -> StoppointCollection;
-}
-
-pub enum BreakpointType {
-    BreakpointSite,
-    WatchPoint,
-    BreakPoint,
-    FunctionBreakPoint,
-    LineBreakPoint,
-    AddressBreakPoint,
 }
 
 pub trait MaybeRc {
