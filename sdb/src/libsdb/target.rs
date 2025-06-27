@@ -234,14 +234,12 @@ impl Target {
                 .breakpoint_sites()
                 .borrow_mut()
                 .remove_by_address({
-                    #[allow(clippy::let_and_return)]
-                    let ret = breakpoint_to_remove
+                    breakpoint_to_remove
                         .unwrap()
                         .upgrade()
                         .unwrap()
                         .borrow()
-                        .address();
-                    ret
+                        .address()
                 })?;
         }
         Ok(reason)

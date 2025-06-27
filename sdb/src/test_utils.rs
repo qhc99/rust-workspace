@@ -1,5 +1,4 @@
 #![cfg(test)]
-use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::{
     fs,
@@ -9,7 +8,7 @@ use std::{
 pub struct BinBuilder {
     output_path: PathBuf,
 }
-static GLOBAL_COUNT: Lazy<AtomicI32> = Lazy::new(|| AtomicI32::new(0));
+static GLOBAL_COUNT: AtomicI32 = AtomicI32::new(0);
 
 impl BinBuilder {
     pub fn rustc(dir: &str, source: &str) -> Self {

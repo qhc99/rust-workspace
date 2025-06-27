@@ -29,10 +29,6 @@ pub trait StoppointTrait: Any {
     fn breakpoint_type(&self) -> BreakpointType;
 
     fn breakpoint_sites(&self) -> StoppointCollection;
-
-    fn as_any(&self) -> &dyn Any;
-
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 pub enum BreakpointType {

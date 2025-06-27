@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
@@ -60,14 +59,6 @@ impl Breakpoint {
 }
 
 impl StoppointTrait for Breakpoint {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::BreakPoint
     }
@@ -227,14 +218,6 @@ impl FunctionBreakpoint {
 }
 
 impl StoppointTrait for FunctionBreakpoint {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::FunctionBreakPoint
     }
@@ -378,14 +361,6 @@ impl LineBreakpoint {
 }
 
 impl StoppointTrait for LineBreakpoint {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::LineBreakPoint
     }
@@ -491,14 +466,6 @@ impl AddressBreakpoint {
 }
 
 impl StoppointTrait for AddressBreakpoint {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::AddressBreakPoint
     }

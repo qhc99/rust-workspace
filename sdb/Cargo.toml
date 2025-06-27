@@ -6,6 +6,7 @@ license = "MIT"
 description = "Book: Building a Debugger, rust port of C++ debugger Sdb https://github.com/TartanLlama/sdb/tree/main."
 repository = "https://github.com/qhc99/rust-workspace/tree/master/sdb"
 keywords = ["sdb", "debugger"]
+rust-version = "1.88"
 
 [lib]
 name = "libsdb"
@@ -18,7 +19,6 @@ path = "src/sdb.rs"
 [dependencies]
 rustyline = "15.0.0"
 zydis = "4.1.1"
-once_cell = "1.21.0"
 libsdb_register_codegen = { path = "src/libsdb/codegen", version = "0.1.0"}
 bytemuck = "1.22.0"
 num_enum = "0.7.3"

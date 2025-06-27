@@ -53,6 +53,9 @@ use nix::{
     sys::ptrace::traceme,
     unistd::{ForkResult, Pid, execvp, fork},
 };
+use std::any::Any;
+use std::cell::Ref;
+use std::cell::RefMut;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::ffi::c_long;
@@ -263,11 +266,8 @@ impl Process {
                         } else if reason.trap_reason == Some(TrapType::HardwareBreak) {
                             let id = self.get_current_hardware_stoppoint()?;
                             if let StoppointId::Watchpoint(id) = id {
-                                self.watchpoints
-                                    .borrow()
-                                    .get_by_id(id)?
-                                    .borrow_mut()
-                                    .as_any_mut()
+                                (self.watchpoints.borrow().get_by_id(id)?.borrow_mut()
+                                    as RefMut<'_, dyn Any>)
                                     .downcast_mut::<WatchPoint>()
                                     .unwrap()
                                     .update_data()?;
@@ -545,8 +545,8 @@ impl Process {
             .borrow()
             .get_in_region(address, address + amount as i64);
         for site in sites.iter() {
-            let site = site.borrow();
-            let site = site.as_any().downcast_ref::<BreakpointSite>().unwrap();
+            let site = site.borrow() as Ref<'_, dyn Any>;
+            let site = site.downcast_ref::<BreakpointSite>().unwrap();
             if !site.is_enabled() || site.is_hardware() {
                 continue;
             }

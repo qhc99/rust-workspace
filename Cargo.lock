@@ -560,7 +560,6 @@ dependencies = [
  "multimap",
  "nix",
  "num_enum",
- "once_cell",
  "regex",
  "rustyline",
  "syscall-numbers",

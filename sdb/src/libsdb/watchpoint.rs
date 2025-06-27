@@ -7,7 +7,6 @@ use super::stoppoint_collection::StoppointCollection;
 use super::traits::BreakpointType;
 use super::traits::StoppointTrait;
 use super::types::{StoppointMode, VirtualAddress};
-use std::any::Any;
 use std::mem::swap;
 use std::rc::Rc;
 use std::rc::Weak;
@@ -35,14 +34,6 @@ pub struct WatchPoint {
 impl StoppointTrait for WatchPoint {
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::WatchPoint
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 
     fn id(&self) -> IdType {

@@ -7,7 +7,6 @@ use super::sdb_error::SdbError;
 use super::traits::StoppointTrait;
 use super::types::VirtualAddress;
 use nix::sys::ptrace::{AddressType, read, write};
-use std::any::Any;
 use std::cell::RefCell;
 use std::{
     rc::{Rc, Weak},
@@ -45,14 +44,6 @@ pub struct BreakpointSite {
 }
 
 impl StoppointTrait for BreakpointSite {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn breakpoint_type(&self) -> BreakpointType {
         BreakpointType::BreakpointSite
     }
