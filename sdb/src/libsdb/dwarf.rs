@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{OnceCell, Ref, RefCell};
 use std::ffi::CStr;
 use std::path::{Path, PathBuf};
 use std::rc::Weak;
@@ -22,6 +22,8 @@ use gimli::{
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
+
+use super::breakpoint::{CallFrameInformation, parse_eh_hdr};
 
 use super::bit::from_bytes;
 use super::elf::Elf;
@@ -1013,24 +1015,46 @@ fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Rc<Die> {
     Die::new(pos, cu, abbrev.clone(), attr_locs, next)
 }
 
+/*
+std::unique_ptr<sdb::call_frame_information>
+    parse_call_frame_information(sdb::dwarf& dwarf) {
+        auto eh_hdr = parse_eh_hdr(dwarf);
+
+        return std::make_unique<sdb::call_frame_information>(
+            &dwarf, eh_hdr);
+    }
+*/
+
+fn parse_call_frame_information(dwarf: &Rc<Dwarf>) -> Result<Rc<CallFrameInformation>, SdbError> {
+    let eh_hdr = parse_eh_hdr(dwarf)?;
+    Ok(CallFrameInformation::new(dwarf, eh_hdr))
+}
+
 #[derive(Debug)]
 pub struct Dwarf {
     elf: Weak<Elf>,
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
-    compile_units: RefCell<Vec<Rc<CompileUnit>>>,
+    compile_units: OnceCell<Vec<Rc<CompileUnit>>>,
     function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
+    cfi: OnceCell<Rc<CallFrameInformation>>,
 }
 
 impl Dwarf {
     pub fn new(parent: &Weak<Elf>) -> Result<Rc<Self>, SdbError> {
-        let ret = Self {
+        let ret = Rc::new(Self {
             elf: parent.clone(),
             abbrev_tables: RefCell::new(HashMap::default()),
-            compile_units: RefCell::new(Vec::default()),
+            compile_units: OnceCell::new(),
             function_index: RefCell::new(MultiMap::default()),
-        };
-        let ret = Rc::new(ret);
-        *ret.compile_units.borrow_mut() = parse_compile_units(&ret, &ret.elf_file())?;
+            cfi: OnceCell::new(),
+        });
+        let t = parse_compile_units(&ret, &ret.elf_file())?;
+        ret.compile_units
+            .set(t)
+            .map_err(|_| SdbError::new_err("Failed to set compile units"))?;
+        ret.cfi
+            .set(parse_call_frame_information(&ret)?)
+            .map_err(|_| SdbError::new_err("Failed to set call frame information"))?;
         Ok(ret)
     }
 
@@ -1048,15 +1072,15 @@ impl Dwarf {
         self.abbrev_tables.borrow()[&offset].clone()
     }
 
-    pub fn compile_units(&self) -> Ref<'_, Vec<Rc<CompileUnit>>> {
-        self.compile_units.borrow()
+    pub fn compile_units(&self) -> &Vec<Rc<CompileUnit>> {
+        self.compile_units.get().unwrap()
     }
 
     pub fn compile_unit_containing_address(
         &self,
         address: &FileAddress,
     ) -> Result<Option<Rc<CompileUnit>>, SdbError> {
-        for cu in self.compile_units.borrow().iter() {
+        for cu in self.compile_units().iter() {
             if cu.root().contains_address(address)? {
                 return Ok(Some(cu.clone()));
             }
@@ -1100,7 +1124,7 @@ impl Dwarf {
         if !self.function_index.borrow().is_empty() {
             return Ok(());
         }
-        for cu in self.compile_units.borrow().iter() {
+        for cu in self.compile_units().iter() {
             self.index_die(&cu.root())?;
         }
         Ok(())
@@ -1257,7 +1281,7 @@ pub struct Abbrev {
 }
 
 #[derive(Debug, Clone)]
-struct Cursor {
+pub struct Cursor {
     data: Bytes,
 }
 

@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     fmt::{Display, LowerHex},
     ops::{Add, AddAssign, Sub, SubAssign},
     rc::{Rc, Weak},
@@ -19,22 +18,22 @@ pub struct VirtualAddress {
 #[derive(Default, Debug)]
 pub struct FileOffset {
     addr: u64,
-    elf: Weak<RefCell<Elf>>,
+    elf: Weak<Elf>,
 }
 
 impl FileOffset {
-    pub fn new(elf: &Rc<RefCell<Elf>>, addr: u64) -> Self {
+    pub fn new(elf: &Rc<Elf>, addr: u64) -> Self {
         Self {
             addr,
             elf: Rc::downgrade(elf),
         }
     }
 
-    pub fn offset(&self) -> u64 {
+    pub fn off(&self) -> u64 {
         self.addr
     }
 
-    pub fn elf_file(&self) -> Rc<RefCell<Elf>> {
+    pub fn elf_file(&self) -> Rc<Elf> {
         self.elf.upgrade().unwrap()
     }
 }

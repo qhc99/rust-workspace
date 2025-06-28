@@ -1,3 +1,5 @@
+use super::types::FileOffset;
+
 use super::dwarf::Dwarf;
 
 use super::ffi::demangle;
@@ -330,9 +332,20 @@ pub trait ElfExt {
         &self,
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Sym>>;
+
+    fn data_pointer_as_file_offset(&self, ptr: &Bytes) -> FileOffset;
+
+    fn file_offset_as_data_pointer(&self, offset: FileOffset) -> Bytes;
 }
 
 impl ElfExt for Rc<Elf> {
+    fn data_pointer_as_file_offset(&self, ptr: &Bytes) -> FileOffset {
+        FileOffset::new(self, ptr.as_ptr() as u64 - self.data.as_ptr() as u64)
+    }
+    fn file_offset_as_data_pointer(&self, offset: FileOffset) -> Bytes {
+        self.data.slice(offset.off() as usize..)
+    }
+
     fn get_section_start_address(&self, name: &str) -> Option<FileAddress> {
         return self
             .get_section(name)
