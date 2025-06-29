@@ -6,10 +6,6 @@ compile_error!("No supported on non-linux system.");
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("Not x86_64 arch");
 
-#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
-#[global_allocator]
-static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 use libsdb::handle_command;
 use libsdb::process::Process;
 use libsdb::target::Target;
