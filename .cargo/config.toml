@@ -1,0 +1,2 @@
+[alias]
+test-leak = "test --features jemalloc -- --test-threads=1"
