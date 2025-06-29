@@ -6,6 +6,10 @@ compile_error!("No supported on non-linux system.");
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("Not x86_64 arch");
 
+#[cfg(all(feature = "jemalloc", not(target_env = "msvc")))]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use libsdb::handle_command;
 use libsdb::process::Process;
 use libsdb::target::Target;
@@ -23,15 +27,15 @@ mod test_utils;
 mod tests;
 
 thread_local! {
-    static GLOBAL: RefCell<Weak<Process>> = const {RefCell::new(Weak::new())};
+    static GLOBAL_PROCESS: RefCell<Weak<Process>> = const {RefCell::new(Weak::new())};
 }
 
 pub fn set_global(handle: &Rc<Process>) {
-    GLOBAL.with(|g| *g.borrow_mut() = Rc::downgrade(handle));
+    GLOBAL_PROCESS.with(|g| *g.borrow_mut() = Rc::downgrade(handle));
 }
 
 pub fn get_global() -> Option<Rc<Process>> {
-    GLOBAL.with(|g| g.borrow().upgrade())
+    GLOBAL_PROCESS.with(|g| g.borrow().upgrade())
 }
 
 extern "C" fn handle_sigint(_: c_int) {
