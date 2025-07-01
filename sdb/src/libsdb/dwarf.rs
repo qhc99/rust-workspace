@@ -1455,3 +1455,47 @@ impl AddAssign<usize> for Cursor {
         self.data = self.data.slice(rhs..);
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct UndefinedRule {}
+#[derive(Debug, Clone, Copy)]
+pub struct SameRule {}
+#[derive(Debug, Clone, Copy)]
+pub struct OffsetRule {
+    offset: i64,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct ValOffsetRule {
+    offset: i64,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct RegisterRule {
+    reg: u32,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct CfaRegisterRule {
+    reg: u32,
+    offset: i64,
+}
+
+
+pub enum Rule{
+    UndefinedRule(UndefinedRule),
+    SameRule(SameRule),
+    OffsetRule(OffsetRule),
+    ValOffsetRule(ValOffsetRule),
+    RegisterRule(RegisterRule),
+    CfaRegisterRule(CfaRegisterRule),
+}
+
+pub type RuleSet = HashMap<u32, Rule>;
+
+pub struct UnwindContext {
+    cursor: Cursor,
+    location: FileAddress,
+    cfa_rule: CfaRegisterRule,
+    cie_register_rules: RuleSet,
+    register_rules: RuleSet,
+    rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
+}
+    

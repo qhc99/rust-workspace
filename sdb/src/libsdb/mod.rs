@@ -730,7 +730,7 @@ fn handle_register_write(process: &Process, args: &[&str]) {
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
-        process.get_registers().borrow_mut().write(&info, value)?;
+        process.get_registers().borrow_mut().write(&info, value, true)?;
         Ok(())
     })() {
         eprintln!("{e}");

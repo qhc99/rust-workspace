@@ -460,7 +460,7 @@ impl Process {
     pub fn set_pc(&self, address: VirtualAddress) -> Result<(), SdbError> {
         self.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::rip, address.addr())?;
+            .write_by_id(RegisterId::rip, address.addr(), true)?;
         Ok(())
     }
 
@@ -576,7 +576,7 @@ impl Process {
 
         let free_space = Process::find_free_stoppoint_register(control)?;
         let id = RegisterId::dr0 as i32 + free_space as i32;
-        regs.write_by_id(RegisterId::try_from(id).unwrap(), address.addr())?;
+        regs.write_by_id(RegisterId::try_from(id).unwrap(), address.addr(), true)?;
 
         let mode_flag = Process::encode_hardware_stoppoint_mode(mode);
         let size_flag = Process::encode_hardware_stoppoint_size(size)?;
@@ -587,7 +587,7 @@ impl Process {
         let clear_mask = (0b11 << (free_space * 2)) | (0b1111 << (free_space * 4 + 16));
         let mut masked = control & !clear_mask;
         masked |= enable_bit | mode_bits | size_bits;
-        regs.write_by_id(RegisterId::dr7, masked)?;
+        regs.write_by_id(RegisterId::dr7, masked, true)?;
         return Ok(free_space as i32);
     }
 
@@ -596,7 +596,7 @@ impl Process {
         let owned_registers = self.get_registers();
         {
             let mut regs = owned_registers.borrow_mut();
-            regs.write_by_id(id, 0)?;
+            regs.write_by_id(id, 0, true)?;
         }
         let masked: u64;
         {
@@ -606,7 +606,7 @@ impl Process {
             masked = control & !clear_mask;
         }
         let mut regs = owned_registers.borrow_mut();
-        regs.write_by_id(RegisterId::dr7, masked)?;
+        regs.write_by_id(RegisterId::dr7, masked, true)?;
         Ok(())
     }
 

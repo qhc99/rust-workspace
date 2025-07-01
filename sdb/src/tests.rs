@@ -106,7 +106,7 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::rsi, 0xcafecafe_u64)
+            .write_by_id(RegisterId::rsi, 0xcafecafe_u64, true)
             .unwrap();
 
         proc.resume().unwrap();
@@ -120,7 +120,7 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::mm0, 0xba5eba11_u64)
+            .write_by_id(RegisterId::mm0, 0xba5eba11_u64, true)
             .unwrap();
 
         proc.resume().unwrap();
@@ -134,7 +134,7 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::xmm0, 42.24)
+            .write_by_id(RegisterId::xmm0, 42.24, true)
             .unwrap();
 
         proc.resume().unwrap();
@@ -148,15 +148,15 @@ fn write_registers() {
     {
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::st0, F80::new(42.24))
+            .write_by_id(RegisterId::st0, F80::new(42.24), true)
             .unwrap();
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::fsw, 0b0011100000000000_u16)
+            .write_by_id(RegisterId::fsw, 0b0011100000000000_u16, true)
             .unwrap();
         proc.get_registers()
             .borrow_mut()
-            .write_by_id(RegisterId::ftw, 0b0011111111111111_u16)
+            .write_by_id(RegisterId::ftw, 0b0011111111111111_u16, true)
             .unwrap();
 
         proc.resume().unwrap();
