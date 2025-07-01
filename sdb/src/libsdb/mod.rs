@@ -52,6 +52,8 @@ use breakpoint::AddressBreakpoint;
 use breakpoint::FunctionBreakpoint;
 use breakpoint::LineBreakpoint;
 
+use register_info::RegisterInfo;
+
 pub mod bit;
 pub mod pipe;
 pub mod process;
@@ -197,7 +199,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     } else if cmd == "help" {
         print_help(&args);
     } else if cmd == "register" {
-        handle_register_command(process, &args);
+        handle_register_command(target, &args)?;
     } else if cmd == "breakpoint" {
         handle_breakpoint_command(target, &args)?;
     } else if cmd == "memory" {
@@ -220,8 +222,46 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     } else if cmd == "stepi" {
         let reason = process.step_instruction()?;
         handle_stop(target, reason)?;
+    } else if cmd == "up" {
+        target.get_stack_mut().up();
+        print_code_location(target)?;
+    } else if cmd == "down" {
+        target.get_stack_mut().down();
+        print_code_location(target)?;
+    } else if cmd == "backtrace" {
+        print_backtrace(target)?;
     } else {
         eprintln!("Unknown command");
+    }
+    Ok(())
+}
+
+fn print_backtrace(target: &Rc<Target>) -> Result<(), SdbError> {
+    let stack = target.get_stack();
+    let mut i = 0;
+    for frame in stack.frames() {
+        let pc = frame.backtrace_report_address;
+        let func_name = target.function_name_at_address(pc)?;
+
+        let mut message = format!(
+            "{}[{}]: {:#x} {}",
+            if i == stack.current_frame_index() {
+                "*"
+            } else {
+                " "
+            },
+            i,
+            pc.addr(),
+            func_name
+        );
+        i += 1;
+        if frame.inlined {
+            message += &format!(
+                " [inlined] {}",
+                frame.func_die.name()?.unwrap_or("".to_string())
+            );
+        }
+        println!("{}", message);
     }
     Ok(())
 }
@@ -395,24 +435,24 @@ fn handle_disassemble_command(process: &Process, args: &[&str]) -> Result<(), Sd
 fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> {
     print_stop_reason(target, reason)?;
     if reason.reason == ProcessState::Stopped {
-        if target.get_stack().inline_height() > 0 {
-            let stack = target.get_stack().inline_stack_at_pc()?;
-            let frame = &stack[stack.len() - target.get_stack().inline_height() as usize];
-            print_source(&frame.file()?.path, frame.line()?, 3)?;
-        } else {
-            let entry = target.line_entry_at_pc();
-            if entry.is_ok() && !entry.as_ref().unwrap().is_end() {
-                let entry = entry.unwrap();
-                print_source(
-                    &entry.get_current().file_entry.as_ref().unwrap().path,
-                    entry.get_current().line,
-                    3,
-                )?;
-            } else {
-                print_disassembly(&target.get_process(), target.get_process().get_pc(), 5)?;
-            }
-        }
+        print_code_location(target)?;
     }
+    Ok(())
+}
+
+fn print_code_location(target: &Rc<Target>) -> Result<(), SdbError> {
+    if target.get_stack().has_frames() {
+        let stack = target.get_stack();
+        let frame = stack.current_frame();
+        print_source(
+            &frame.source_location.file.path,
+            frame.source_location.line,
+            3,
+        )?;
+    } else {
+        print_disassembly(&target.get_process(), target.get_process().get_pc(), 5)?;
+    }
+
     Ok(())
 }
 
@@ -680,38 +720,88 @@ fn handle_breakpoint_set_command(target: &Rc<Target>, args: &[&str]) -> Result<(
     Ok(())
 }
 
-fn handle_register_command(process: &Process, args: &[&str]) {
+fn handle_register_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
     if args.len() < 2 {
         print_help(&["help", "register"]);
-        return;
+        return Ok(());
     }
 
     if args[1] == "read" {
-        handle_register_read(process, args);
+        handle_register_read(target, args)?;
     } else if args[1] == "write" {
-        handle_register_write(process, args);
+        handle_register_write(&target.get_process(), args);
     } else {
         print_help(&["help", "register"]);
     }
+    Ok(())
 }
 
-fn handle_register_read(process: &Process, args: &[&str]) {
+/*
+void handle_register_read(
+       ➊ sdb::target& target,
+          const std::vector<std::string>& args) {
+        auto format = [](auto t) {
+            --snip--
+        };
+
+     ➋ auto& regs = target.get_stack().regs();
+        auto print_register_value = [&](auto info) {
+            if (regs.is_undefined(info.id)) {
+                fmt::print("{}:\tundefined\n", info.name);
+            }
+            else {
+                auto value = regs.read(info);
+                fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
+            }
+        };
+
+        if (args.size() == 2 or
+            (args.size() == 3 and args[2] == "all")) {
+            for (auto& info : sdb::g_register_infos) {
+                if (args.size() == 3 or info.type == sdb::register_type::gpr) {
+                    print_register_value(info);
+                }
+            }
+        }
+        else if (args.size() == 3) {
+            try {
+                auto info = sdb::register_info_by_name(args[2]);
+                print_register_value(info);
+            }
+            catch (sdb::error& err) {
+                std::cerr << "No such register\n";
+                return;
+            }
+        }
+        else {
+            print_help({ "help", "register" });
+        }
+    }
+*/
+fn handle_register_read(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    let stack = target.get_stack();
+    let regs = stack.regs();
+
+    let print_reg_info = |info: &RegisterInfo| -> Result<(), SdbError> {
+        if regs.is_undefined(info.id)? {
+            println!("{}:\tundefined", info.name);
+        } else {
+            let value = regs.read(&info)?;
+            println!("{}:\t{}", info.name, value);
+        }
+        Ok(())
+    };
     if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
         for info in GRegisterInfos {
-            let should_print =
-                (args.len() == 3 || info.type_ == RegisterType::Gpr) && info.name != "orig_rax";
-            if !should_print {
-                continue;
+            if args.len() == 3 || info.type_ == RegisterType::Gpr {
+                print_reg_info(&info)?;
             }
-            let value = process.get_registers().borrow().read(info);
-            println!("{}:\t{}", info.name, value.unwrap());
         }
     } else if args.len() == 3 {
         let info_res = register_info_by_name(args[2]);
         match info_res {
             Ok(info) => {
-                let value = process.get_registers().borrow().read(&info);
-                println!("{}:\t{}", info.name, value.unwrap());
+                print_reg_info(&info)?;
             }
             Err(_) => {
                 eprintln!("No such register")
@@ -720,6 +810,7 @@ fn handle_register_read(process: &Process, args: &[&str]) {
     } else {
         print_help(&["help", "register"]);
     }
+    Ok(())
 }
 
 fn handle_register_write(process: &Process, args: &[&str]) {
@@ -730,7 +821,10 @@ fn handle_register_write(process: &Process, args: &[&str]) {
     if let Err(e) = (|| -> Result<(), SdbError> {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
-        process.get_registers().borrow_mut().write(&info, value, true)?;
+        process
+            .get_registers()
+            .borrow_mut()
+            .write(&info, value, true)?;
         Ok(())
     })() {
         eprintln!("{e}");
@@ -752,6 +846,8 @@ fn print_help(args: &[&str]) {
             step - Step-in
             stepi - Single instruction step
             watchpoint - Commands for operating on watchpoints
+            down        - Select the stack frame below the current one
+            up          - Select the stack frame above the current one
         "
         });
     } else if args[1] == "register" {

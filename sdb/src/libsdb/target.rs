@@ -115,7 +115,7 @@ impl Target {
         }
         let pc = self.get_pc_file_address();
         if pc.has_elf() {
-            let dwarf = pc.elf_file().get_dwarf();
+            let dwarf = pc.rc_elf_file().get_dwarf();
             let func = dwarf.function_containing_address(&pc)?;
             if func.is_some() && func.as_ref().unwrap().low_pc()? == pc {
                 let mut line = self.line_entry_at_pc()?;
@@ -143,15 +143,18 @@ impl Target {
             let return_address = current_frame.high_pc()?.to_virt_addr();
             return self.run_until_address(return_address);
         }
-        let frame_pointer = self
-            .process
-            .get_registers()
-            .borrow()
-            .read_by_id_as::<u64>(RegisterId::rbp)?;
-        let return_address = self
-            .process
-            .read_memory_as::<u64>((frame_pointer + 8).into())?;
-        self.run_until_address(return_address.into())
+        let stack = self.stack.borrow();
+        let regs = &stack.frames()[stack.current_frame_index() + 1].registers;
+        let return_address = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)?);
+        let mut reason = StopReason::default();
+        let frames = stack.frames().len();
+        while stack.frames().len() >= frames {
+            reason = self.run_until_address(return_address)?;
+            if !reason.is_breakpoint() || self.process.get_pc() != return_address {
+                return Ok(reason);
+            }
+        }
+        Ok(reason)
     }
 
     pub fn step_over(&self) -> Result<StopReason, SdbError> {
@@ -199,7 +202,7 @@ impl Target {
         if !pc.has_elf() {
             return Ok(LineTableIter::default());
         }
-        let dwarf = pc.elf_file().get_dwarf();
+        let dwarf = pc.rc_elf_file().get_dwarf();
         let cu = dwarf.compile_unit_containing_address(&pc)?;
         if cu.is_none() {
             return Ok(LineTableIter::default());
@@ -271,7 +274,7 @@ impl Target {
         if !file_address.has_elf() {
             return Ok(String::new());
         }
-        let obj = file_address.elf_file();
+        let obj = file_address.rc_elf_file();
         let func = obj.get_dwarf().function_containing_address(&file_address)?;
         if func.is_some() {
             return Ok(func.unwrap().name()?.unwrap());

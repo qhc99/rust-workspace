@@ -204,7 +204,7 @@ impl Elf {
         &self,
         address: &FileAddress,
     ) -> Option<Rc<SdbElf64Shdr>> {
-        if ptr::eq(self, &*address.elf_file()) {
+        if ptr::eq(self, &*address.rc_elf_file()) {
             for section in &self.section_headers {
                 if section.0.sh_addr <= address.addr()
                     && (section.0.sh_addr + section.0.sh_size) > address.addr()
@@ -256,7 +256,7 @@ impl Elf {
     }
 
     pub fn get_symbol_at_file_address(&self, address: FileAddress) -> Option<Rc<SdbElf64Sym>> {
-        if !ptr::eq(self, address.elf_file().as_ref()) {
+        if !ptr::eq(self, address.rc_elf_file().as_ref()) {
             return None;
         }
         self.symbol_addr_map
@@ -269,7 +269,7 @@ impl Elf {
         &self,
         address: FileAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
-        if !ptr::eq(address.elf_file().as_ref(), self) {
+        if !ptr::eq(address.rc_elf_file().as_ref(), self) {
             return None;
         }
         let borrow_map = self.symbol_addr_map.borrow();

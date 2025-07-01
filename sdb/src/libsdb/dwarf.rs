@@ -34,8 +34,8 @@ type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
 
 #[derive(Debug, Clone)]
 pub struct SourceLocation {
-    file: Rc<LineTableFile>,
-    line: u64,
+    pub file: Rc<LineTableFile>,
+    pub line: u64,
 }
 
 #[derive(Debug, Clone, TypedBuilder, Default)]
@@ -363,7 +363,7 @@ impl LineTableExt for Rc<LineTable> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Die {
     pos: Bytes,
     cu: Weak<CompileUnit>,
@@ -482,7 +482,7 @@ impl Die {
     pub fn contains_address(&self, addr: &FileAddress) -> Result<bool, SdbError> {
         if !Rc::ptr_eq(
             &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
-            &addr.elf_file(),
+            &addr.rc_elf_file(),
         ) {
             return Ok(false);
         }

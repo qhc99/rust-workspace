@@ -322,7 +322,7 @@ impl LineBreakpoint {
                 .lines()
                 .get_entries_by_line(&self.file, self.line as u64)?;
             for mut entry in entries {
-                let dwarf = entry.get_current().address.elf_file().get_dwarf();
+                let dwarf = entry.get_current().address.rc_elf_file().get_dwarf();
                 let stack = dwarf.inline_stack_at_address(&entry.get_current().address)?;
                 let no_inline_stack = stack.len() == 1;
                 let should_skip_prologue = no_inline_stack
@@ -786,7 +786,7 @@ fn execute_unwind_rules(
                 unwound_regs.write(&reg_info, old_regs.read(&other_reg)?, false)?;
             }
             Rule::OffsetRule(offset) => {
-                let addr = VirtualAddress::new(cfa + offset.offset as u64);
+                let addr = VirtualAddress::new(cfa.wrapping_add(offset.offset as u64));
                 let value = from_bytes::<u64>(&proc.read_memory(addr, 8)?);
                 unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
             }
@@ -958,7 +958,7 @@ pub struct EhHdr {
 
 impl EhHdr {
     pub fn index(&self, file_addr: &FileAddress) -> Result<Bytes, SdbError> {
-        let elf = file_addr.elf_file();
+        let elf = file_addr.rc_elf_file();
         let text_section_start = elf.get_section_start_address(".text").unwrap();
         let encoding_size = eh_frame_pointer_encoding_size(self.encoding)?;
         let row_size = encoding_size * 2;

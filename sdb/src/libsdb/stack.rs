@@ -43,7 +43,7 @@ impl Stack {
         if !pc.has_elf() {
             return Ok(vec![]);
         }
-        return pc.elf_file().get_dwarf().inline_stack_at_address(&pc);
+        return pc.rc_elf_file().get_dwarf().inline_stack_at_address(&pc);
     }
 
     pub fn inline_height(&self) -> u32 {
@@ -72,9 +72,9 @@ impl Stack {
         if !file_pc.has_elf() {
             return Ok(());
         }
-        let mut elf = file_pc.elf_file();
-        while virt_pc.addr() != 0 && Rc::ptr_eq(&elf, &target.get_elf()) {
-            let dwarf = elf.get_dwarf();
+        let mut elf = file_pc.weak_elf_file();
+        while virt_pc.addr() != 0 && elf.upgrade().is_some() && Rc::ptr_eq(&elf.upgrade().unwrap(), &target.get_elf()) {
+            let dwarf = elf.upgrade().unwrap().get_dwarf();
             let inline_stack = dwarf.inline_stack_at_address(&file_pc)?;
             if inline_stack.is_empty() {
                 return Ok(());
@@ -105,8 +105,8 @@ impl Stack {
                 &mut self.frames.last_mut().unwrap().registers,
             )?));
             virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
-            file_pc = virt_pc.to_file_addr(&target.get_elf());
-            elf = file_pc.elf_file();
+            file_pc = virt_pc.to_file_addr(&elf.upgrade().unwrap());
+            elf = file_pc.weak_elf_file();
         }
         Ok(())
     }
@@ -145,43 +145,63 @@ impl Stack {
         ))
     }
 
-    /*
-    private:
-            void create_inline_stack_frames(
-            const sdb::registers& regs,
-            const std::vector<sdb::die> inline_stack,
-            file_addr pc);
-
-        void create_base_frame(
-            const registers& regs,
-            const std::vector<sdb::die> inline_stack,
-            file_addr pc,
-            bool inlined);
-     */
     fn create_inline_stack_frames(
-        &self,
+        &mut self,
         regs: &Registers,
         inline_stack: Vec<Rc<Die>>,
-        pc: FileAddress,
+        _pc: FileAddress,
     ) -> Result<(), SdbError> {
-        todo!()
+        let mut prev_it = inline_stack.last().unwrap().clone();
+        for (i, it) in inline_stack.iter().rev().enumerate().skip(1) {
+            let inlined_pc = prev_it.low_pc()?.to_virt_addr();
+            self.frames.push(StackFrame {
+                registers: regs.clone(),
+                backtrace_report_address: inlined_pc,
+                func_die: it.as_ref().clone(),
+                inlined: i +1 != inline_stack.len(),
+                source_location: prev_it.location()?,
+            });
+            prev_it = it.clone();
+        }
+        Ok(())
     }
 
     fn create_base_frame(
-        &self,
+        &mut self,
         regs: &Registers,
         inline_stack: Vec<Rc<Die>>,
         pc: FileAddress,
         inlined: bool,
     ) -> Result<(), SdbError> {
-        todo!()
+        let mut backtrace_pc = pc.to_virt_addr();
+        let line_entry = pc.rc_elf_file().get_dwarf().line_entry_at_address(&pc)?;
+        if !line_entry.is_end() {
+            backtrace_pc = line_entry.get_current().address.to_virt_addr();
+        }
+
+        self.frames.push(StackFrame {
+            registers: regs.clone(),
+            backtrace_report_address: backtrace_pc,
+            func_die: (*inline_stack.last().unwrap().as_ref()).clone(),
+            inlined,
+            source_location: SourceLocation {
+                file: line_entry
+                    .get_current()
+                    .file_entry
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
+                line: line_entry.get_current().line.clone(),
+            },
+        });
+        Ok(())
     }
 }
 
 pub struct StackFrame {
-    registers: Registers,
-    backtrace_report_address: VirtualAddress,
-    func_die: Die,
-    inlined: bool, /* false */
-    source_location: SourceLocation,
+    pub registers: Registers,
+    pub backtrace_report_address: VirtualAddress,
+    pub func_die: Die,
+    pub inlined: bool, /* false */
+    pub source_location: SourceLocation,
 }

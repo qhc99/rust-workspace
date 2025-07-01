@@ -60,8 +60,12 @@ impl FileAddress {
         self.addr
     }
 
-    pub fn elf_file(&self) -> Rc<Elf> {
+    pub fn rc_elf_file(&self) -> Rc<Elf> {
         self.elf.upgrade().unwrap()
+    }
+
+    pub fn weak_elf_file(&self) -> Weak<Elf> {
+        self.elf.clone()
     }
 
     pub fn has_elf(&self) -> bool {
