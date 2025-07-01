@@ -1015,17 +1015,7 @@ fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Rc<Die> {
     Die::new(pos, cu, abbrev.clone(), attr_locs, next)
 }
 
-/*
-std::unique_ptr<sdb::call_frame_information>
-    parse_call_frame_information(sdb::dwarf& dwarf) {
-        auto eh_hdr = parse_eh_hdr(dwarf);
-
-        return std::make_unique<sdb::call_frame_information>(
-            &dwarf, eh_hdr);
-    }
-*/
-
-fn parse_call_frame_information(dwarf: &Rc<Dwarf>) -> Result<Rc<CallFrameInformation>, SdbError> {
+fn parse_call_frame_information(dwarf: &Rc<Dwarf>) -> Result<Rc<RefCell<CallFrameInformation>>, SdbError> {
     let eh_hdr = parse_eh_hdr(dwarf)?;
     Ok(CallFrameInformation::new(dwarf, eh_hdr))
 }
@@ -1036,10 +1026,14 @@ pub struct Dwarf {
     abbrev_tables: RefCell<HashMap<usize, Rc<AbbrevTable>>>,
     compile_units: OnceCell<Vec<Rc<CompileUnit>>>,
     function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
-    cfi: OnceCell<Rc<CallFrameInformation>>,
+    cfi: OnceCell<Rc<RefCell<CallFrameInformation>>>,
 }
 
 impl Dwarf {
+    pub fn cfi(&self) -> Rc<RefCell<CallFrameInformation>> {
+        self.cfi.get().unwrap().clone()
+    }
+
     pub fn new(parent: &Weak<Elf>) -> Result<Rc<Self>, SdbError> {
         let ret = Rc::new(Self {
             elf: parent.clone(),
@@ -1280,7 +1274,7 @@ pub struct Abbrev {
     pub attr_specs: Vec<AttrSpec>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Cursor {
     data: Bytes,
 }
@@ -1462,23 +1456,24 @@ pub struct UndefinedRule {}
 pub struct SameRule {}
 #[derive(Debug, Clone, Copy)]
 pub struct OffsetRule {
-    offset: i64,
+    pub offset: i64,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct ValOffsetRule {
-    offset: i64,
+    pub offset: i64,
 }
 #[derive(Debug, Clone, Copy)]
 pub struct RegisterRule {
-    reg: u32,
+    pub reg: u32,
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct CfaRegisterRule {
-    reg: u32,
-    offset: i64,
+    pub reg: u32,
+    pub offset: i64,
 }
 
 
+#[derive(Debug, Clone)]
 pub enum Rule{
     UndefinedRule(UndefinedRule),
     SameRule(SameRule),
@@ -1490,12 +1485,13 @@ pub enum Rule{
 
 pub type RuleSet = HashMap<u32, Rule>;
 
+#[derive(Default)]
 pub struct UnwindContext {
-    cursor: Cursor,
-    location: FileAddress,
-    cfa_rule: CfaRegisterRule,
-    cie_register_rules: RuleSet,
-    register_rules: RuleSet,
-    rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
+    pub cursor: Cursor,
+    pub location: FileAddress,
+    pub cfa_rule: CfaRegisterRule,
+    pub cie_register_rules: RuleSet,
+    pub register_rules: RuleSet,
+    pub rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
 }
     

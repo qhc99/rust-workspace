@@ -7,20 +7,39 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 use bytes::Bytes;
 use gimli::{
-    DW_AT_low_pc, DW_AT_ranges, DW_EH_PE_absptr, DW_EH_PE_datarel, DW_EH_PE_funcrel,
-    DW_EH_PE_pcrel, DW_EH_PE_sdata2, DW_EH_PE_sdata4, DW_EH_PE_sdata8, DW_EH_PE_sleb128,
-    DW_EH_PE_textrel, DW_EH_PE_udata2, DW_EH_PE_udata4, DW_EH_PE_udata8, DW_EH_PE_uleb128,
-    DW_TAG_inlined_subroutine, DwEhPe,
+    DW_AT_low_pc, DW_AT_ranges, DW_CFA_advance_loc, DW_CFA_advance_loc1, DW_CFA_advance_loc2,
+    DW_CFA_advance_loc4, DW_CFA_def_cfa, DW_CFA_def_cfa_expression, DW_CFA_def_cfa_offset,
+    DW_CFA_def_cfa_offset_sf, DW_CFA_def_cfa_register, DW_CFA_def_cfa_sf, DW_CFA_expression,
+    DW_CFA_offset, DW_CFA_offset_extended, DW_CFA_offset_extended_sf, DW_CFA_register,
+    DW_CFA_remember_state, DW_CFA_restore, DW_CFA_restore_extended, DW_CFA_restore_state,
+    DW_CFA_same_value, DW_CFA_set_loc, DW_CFA_undefined, DW_CFA_val_expression, DW_CFA_val_offset,
+    DW_CFA_val_offset_sf, DW_EH_PE_absptr, DW_EH_PE_datarel, DW_EH_PE_funcrel, DW_EH_PE_pcrel,
+    DW_EH_PE_sdata2, DW_EH_PE_sdata4, DW_EH_PE_sdata8, DW_EH_PE_sleb128, DW_EH_PE_textrel,
+    DW_EH_PE_udata2, DW_EH_PE_udata4, DW_EH_PE_udata8, DW_EH_PE_uleb128, DW_TAG_inlined_subroutine,
+    DwCfa, DwEhPe,
 };
 use typed_builder::TypedBuilder;
 
-use super::elf::Elf;
+use super::bit::from_bytes;
 
 use super::dwarf::Cursor;
 use super::dwarf::Dwarf;
 use super::dwarf::LineTableExt;
+use super::dwarf::OffsetRule;
+use super::dwarf::RegisterRule;
+use super::dwarf::Rule;
+use super::dwarf::SameRule;
+use super::dwarf::UndefinedRule;
+use super::dwarf::UnwindContext;
+use super::dwarf::ValOffsetRule;
+use super::elf::Elf;
 use super::elf::ElfExt;
+use super::process::Process;
 use super::process::ProcessExt;
+use super::register_info::RegisterId;
+use super::register_info::register_info_by_dwarf;
+use super::registers::RegisterValue;
+use super::registers::Registers;
 use super::stoppoint_collection::StoppointCollection;
 use super::target::Target;
 use super::types::FileAddress;
@@ -528,12 +547,12 @@ pub struct FrameDescriptionEntry {
 }
 
 impl CallFrameInformation {
-    pub fn new(dwarf: &Rc<Dwarf>, eh_hdr: EhHdr) -> Rc<Self> {
-        Rc::new(Self {
+    pub fn new(dwarf: &Rc<Dwarf>, eh_hdr: EhHdr) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             dwarf: Rc::downgrade(dwarf),
             cie_map: HashMap::new(),
             eh_hdr,
-        })
+        }))
     }
     pub fn dwarf_info(&self) -> Rc<Dwarf> {
         self.dwarf.upgrade().unwrap()
@@ -556,6 +575,229 @@ impl CallFrameInformation {
             }
         }
     }
+
+    pub fn unwind(
+        &mut self,
+        proc: &Process,
+        pc: FileAddress,
+        regs: &mut Registers,
+    ) -> Result<Registers, SdbError> {
+        let fde_start = self.eh_hdr.index(&pc)?;
+        let eh_frame_end = self
+            .dwarf_info()
+            .elf_file()
+            .get_section_contents(".eh_frame");
+        let eh_frame_end = eh_frame_end.as_ptr() as usize + eh_frame_end.len();
+        let cursor = Cursor::new(&fde_start.slice(..(eh_frame_end - fde_start.as_ptr() as usize)));
+        let fde = parse_fde(self, cursor)?;
+        if pc.clone() < fde.initial_location
+            || pc.clone()
+                >= fde.initial_location.clone() + (fde.address_range as u64).try_into().unwrap()
+        {
+            return SdbError::err("No unwind information at PC");
+        }
+        let mut ctx = UnwindContext::default();
+        ctx.cursor = Cursor::new(&fde.cie.instructions);
+        while !ctx.cursor.finished() {
+            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
+        }
+        ctx.cie_register_rules = ctx.register_rules.clone();
+        ctx.cursor = Cursor::new(&fde.instructions);
+        ctx.location = fde.initial_location.clone();
+        while !ctx.cursor.finished() && ctx.location <= pc.clone() {
+            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
+        }
+        execute_unwind_rules(&mut ctx, regs, proc)
+    }
+}
+
+#[allow(non_upper_case_globals)]
+fn execute_cfi_instruction(
+    elf: &Rc<Elf>,
+    fde: &FrameDescriptionEntry,
+    ctx: &mut UnwindContext,
+    _pc: FileAddress,
+) -> Result<(), SdbError> {
+    let cie = fde.cie.clone();
+    let cur = &mut ctx.cursor;
+    let text_section_start = elf.get_section_start_address(".text").unwrap();
+    let plt_start = elf
+        .get_section_start_address(".got.plt")
+        .unwrap_or(FileAddress::null());
+
+    let opcode = cur.u8();
+    let primary_opcode = opcode & 0xc0;
+    let extended_opcode = opcode & 0x3f;
+    if primary_opcode != 0 {
+        match DwCfa(primary_opcode) {
+            DW_CFA_advance_loc => {
+                ctx.location += ((extended_opcode as u64) * cie.code_alignment_factor) as i64;
+            }
+            DW_CFA_offset => {
+                let offset = (cur.uleb128() as i64) * cie.data_alignment_factor;
+                ctx.register_rules.insert(
+                    extended_opcode as u32,
+                    Rule::OffsetRule(OffsetRule { offset }),
+                );
+            }
+            DW_CFA_restore => {
+                ctx.register_rules.insert(
+                    extended_opcode as u32,
+                    ctx.cie_register_rules[&(extended_opcode as u32)].clone(),
+                );
+            }
+            _ => {}
+        }
+    } else if extended_opcode != 0 {
+        match DwCfa(extended_opcode) {
+            DW_CFA_set_loc => {
+                let current_offset = elf.data_pointer_as_file_offset(&cur.position());
+                let loc = parse_eh_frame_pointer(
+                    elf,
+                    cur,
+                    cie.fde_pointer_encoding,
+                    current_offset.off(),
+                    text_section_start.addr(),
+                    plt_start.addr(),
+                    fde.initial_location.addr(),
+                )?;
+                ctx.location = FileAddress::new(elf, loc);
+            }
+            DW_CFA_advance_loc1 => {
+                ctx.location += (cur.u8() as u64 * cie.code_alignment_factor) as i64;
+            }
+            DW_CFA_advance_loc2 => {
+                ctx.location += (cur.u16() as u64 * cie.code_alignment_factor) as i64;
+            }
+            DW_CFA_advance_loc4 => {
+                ctx.location += (cur.u32() as u64 * cie.code_alignment_factor) as i64;
+            }
+            DW_CFA_def_cfa => {
+                ctx.cfa_rule.reg = cur.uleb128() as u32;
+                ctx.cfa_rule.offset = cur.uleb128() as i64;
+            }
+            DW_CFA_def_cfa_sf => {
+                ctx.cfa_rule.reg = cur.uleb128() as u32;
+                ctx.cfa_rule.offset = (cur.sleb128() as i64) * cie.data_alignment_factor;
+            }
+            DW_CFA_def_cfa_register => {
+                ctx.cfa_rule.reg = cur.uleb128() as u32;
+            }
+            DW_CFA_def_cfa_offset => {
+                ctx.cfa_rule.offset = cur.uleb128() as i64;
+            }
+            DW_CFA_def_cfa_offset_sf => {
+                ctx.cfa_rule.offset = (cur.sleb128() as i64) * cie.data_alignment_factor;
+            }
+            DW_CFA_def_cfa_expression => {
+                return SdbError::err("DWARF expressions not yet implemented");
+            }
+            DW_CFA_undefined => {
+                ctx.register_rules
+                    .insert(cur.uleb128() as u32, Rule::UndefinedRule(UndefinedRule {}));
+            }
+            DW_CFA_same_value => {
+                ctx.register_rules
+                    .insert(cur.uleb128() as u32, Rule::SameRule(SameRule {}));
+            }
+            DW_CFA_offset_extended => {
+                let reg = cur.uleb128();
+                let offset = cur.uleb128() as i64 * cie.data_alignment_factor;
+                ctx.register_rules
+                    .insert(reg as u32, Rule::OffsetRule(OffsetRule { offset }));
+            }
+            DW_CFA_offset_extended_sf => {
+                let reg = cur.uleb128();
+                let offset = (cur.sleb128()) as i64 * cie.data_alignment_factor;
+                ctx.register_rules
+                    .insert(reg as u32, Rule::OffsetRule(OffsetRule { offset }));
+            }
+            DW_CFA_val_offset => {
+                let reg = cur.uleb128();
+                let offset = (cur.uleb128()) as i64 * cie.data_alignment_factor;
+                ctx.register_rules
+                    .insert(reg as u32, Rule::ValOffsetRule(ValOffsetRule { offset }));
+            }
+            DW_CFA_val_offset_sf => {
+                let reg = cur.uleb128();
+                let offset = (cur.sleb128()) as i64 * cie.data_alignment_factor;
+                ctx.register_rules
+                    .insert(reg as u32, Rule::ValOffsetRule(ValOffsetRule { offset }));
+            }
+            DW_CFA_register => {
+                let reg = cur.uleb128();
+                ctx.register_rules.insert(
+                    reg as u32,
+                    Rule::RegisterRule(RegisterRule {
+                        reg: (cur.uleb128()) as u32,
+                    }),
+                );
+            }
+            DW_CFA_expression => {
+                return SdbError::err("DWARF expressions not yet implemented");
+            }
+            DW_CFA_val_expression => {
+                return SdbError::err("DWARF expressions not yet implemented");
+            }
+            DW_CFA_restore_extended => {
+                let reg = cur.uleb128();
+                ctx.register_rules
+                    .insert(reg as u32, ctx.cie_register_rules[&(reg as u32)].clone());
+            }
+            DW_CFA_remember_state => {
+                ctx.rule_stack
+                    .push((ctx.register_rules.clone(), ctx.cfa_rule.clone()));
+            }
+            DW_CFA_restore_state => {
+                ctx.register_rules = ctx.rule_stack.last().unwrap().0.clone();
+                ctx.cfa_rule = ctx.rule_stack.last().unwrap().1.clone();
+                ctx.rule_stack.pop();
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn execute_unwind_rules(
+    ctx: &mut UnwindContext,
+    old_regs: &mut Registers,
+    proc: &Process,
+) -> Result<Registers, SdbError> {
+    let mut unwound_regs = old_regs.clone();
+    let cfa_reg_info = register_info_by_dwarf(ctx.cfa_rule.reg as i32)?;
+    let cfa = match old_regs.read(&cfa_reg_info)? {
+        RegisterValue::U64(v) => v,
+        _ => return SdbError::err("Unexpected register value type"),
+    } + ctx.cfa_rule.offset as u64;
+    old_regs.set_cfa(VirtualAddress::new(cfa));
+    unwound_regs.write_by_id(RegisterId::rsp, cfa, false)?;
+    for (reg, rule) in &ctx.register_rules {
+        let reg_info = register_info_by_dwarf(*reg as i32)?;
+        match &rule {
+            Rule::UndefinedRule(_) => {
+                unwound_regs.undefine(reg_info.id)?;
+            }
+            Rule::SameRule(_) => {
+                // Do nothing.
+            }
+            Rule::RegisterRule(reg) => {
+                let other_reg = register_info_by_dwarf(reg.reg as i32)?;
+                unwound_regs.write(&reg_info, old_regs.read(&other_reg)?, false)?;
+            }
+            Rule::OffsetRule(offset) => {
+                let addr = VirtualAddress::new(cfa + offset.offset as u64);
+                let value = from_bytes::<u64>(&proc.read_memory(addr, 8)?);
+                unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
+            }
+            Rule::ValOffsetRule(val_offset) => {
+                let addr = cfa + val_offset.offset as u64;
+                unwound_regs.write(&reg_info, RegisterValue::U64(addr), false)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(unwound_regs)
 }
 
 fn parse_cie(mut cursor: Cursor) -> Result<CommonInformationEntry, SdbError> {

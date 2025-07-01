@@ -84,7 +84,7 @@ impl Target {
     }
 
     pub fn notify_stop(&self, _reason: &StopReason) -> Result<(), SdbError> {
-        self.stack.borrow_mut().reset_inline_height()
+        self.stack.borrow_mut().unwind()
     }
 
     pub fn get_pc_file_address(&self) -> FileAddress {

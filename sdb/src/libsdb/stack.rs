@@ -1,4 +1,8 @@
+use super::register_info::RegisterId;
+use super::types::FileAddress;
 use super::{dwarf::Die, sdb_error::SdbError};
+use super::{dwarf::SourceLocation, registers::Registers, types::VirtualAddress};
+use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use super::target::Target;
@@ -6,6 +10,8 @@ use super::target::Target;
 pub struct Stack {
     target: Weak<Target>,
     inline_height: u32, // 0
+    frames: Vec<StackFrame>,
+    current_frame: usize, /* 0 */
 }
 
 impl Stack {
@@ -13,6 +19,8 @@ impl Stack {
         Self {
             target: target.clone(),
             inline_height: 0,
+            frames: Vec::new(),
+            current_frame: 0,
         }
     }
 
@@ -48,5 +56,132 @@ impl Stack {
 
     pub fn simulate_inlined_step_in(&mut self) {
         self.inline_height -= 1;
+        self.current_frame = self.inline_height as usize;
     }
+
+    pub fn unwind(&mut self) -> Result<(), SdbError> {
+        self.reset_inline_height()?;
+        self.current_frame = self.inline_height as usize;
+        let target = self.get_target();
+        let mut virt_pc = target.get_process().get_pc();
+        let mut file_pc = target.get_pc_file_address();
+        let proc = target.get_process();
+        let mut regs = proc.get_registers();
+
+        self.frames.clear();
+        if !file_pc.has_elf() {
+            return Ok(());
+        }
+        let mut elf = file_pc.elf_file();
+        while virt_pc.addr() != 0 && Rc::ptr_eq(&elf, &target.get_elf()) {
+            let dwarf = elf.get_dwarf();
+            let inline_stack = dwarf.inline_stack_at_address(&file_pc)?;
+            if inline_stack.is_empty() {
+                return Ok(());
+            }
+            if inline_stack.len() > 1 {
+                self.create_base_frame(
+                    &regs.borrow(),
+                    inline_stack.clone(),
+                    file_pc.clone(),
+                    true,
+                )?;
+                self.create_inline_stack_frames(
+                    &regs.borrow(),
+                    inline_stack.clone(),
+                    file_pc.clone(),
+                )?;
+            } else {
+                self.create_base_frame(
+                    &regs.borrow(),
+                    inline_stack.clone(),
+                    file_pc.clone(),
+                    false,
+                )?;
+            }
+            regs = Rc::new(RefCell::new(dwarf.cfi().borrow_mut().unwind(
+                &proc,
+                file_pc,
+                &mut self.frames.last_mut().unwrap().registers,
+            )?));
+            virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
+            file_pc = virt_pc.to_file_addr(&target.get_elf());
+            elf = file_pc.elf_file();
+        }
+        Ok(())
+    }
+
+    pub fn up(&mut self) {
+        self.current_frame += 1;
+    }
+
+    pub fn down(&mut self) {
+        self.current_frame -= 1;
+    }
+
+    pub fn frames(&self) -> &[StackFrame] {
+        &self.frames[self.inline_height as usize..]
+    }
+
+    pub fn has_frames(&self) -> bool {
+        !self.frames.is_empty()
+    }
+
+    pub fn current_frame(&self) -> &StackFrame {
+        &self.frames[self.current_frame]
+    }
+
+    pub fn current_frame_index(&self) -> usize {
+        self.current_frame - self.inline_height as usize
+    }
+
+    pub fn regs(&self) -> &Registers {
+        &self.current_frame().registers
+    }
+
+    pub fn get_pc(&self) -> Result<VirtualAddress, SdbError> {
+        Ok(VirtualAddress::new(
+            self.regs().read_by_id_as::<u64>(RegisterId::rip)?,
+        ))
+    }
+
+    /*
+    private:
+            void create_inline_stack_frames(
+            const sdb::registers& regs,
+            const std::vector<sdb::die> inline_stack,
+            file_addr pc);
+
+        void create_base_frame(
+            const registers& regs,
+            const std::vector<sdb::die> inline_stack,
+            file_addr pc,
+            bool inlined);
+     */
+    fn create_inline_stack_frames(
+        &self,
+        regs: &Registers,
+        inline_stack: Vec<Rc<Die>>,
+        pc: FileAddress,
+    ) -> Result<(), SdbError> {
+        todo!()
+    }
+
+    fn create_base_frame(
+        &self,
+        regs: &Registers,
+        inline_stack: Vec<Rc<Die>>,
+        pc: FileAddress,
+        inlined: bool,
+    ) -> Result<(), SdbError> {
+        todo!()
+    }
+}
+
+pub struct StackFrame {
+    registers: Registers,
+    backtrace_report_address: VirtualAddress,
+    func_die: Die,
+    inlined: bool, /* false */
+    source_location: SourceLocation,
 }
