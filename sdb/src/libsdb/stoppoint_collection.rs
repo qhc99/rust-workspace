@@ -51,7 +51,7 @@ impl StoppointCollection {
                 .get_by_address(address)
                 .unwrap()
                 .borrow()
-                .at_address(address)
+                .is_enabled()
     }
 
     pub fn get_by_id(&self, id: IdType) -> Result<Rc<RefCell<dyn StoppointTrait>>, SdbError> {
