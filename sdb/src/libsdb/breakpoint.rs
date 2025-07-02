@@ -786,7 +786,7 @@ fn execute_unwind_rules(
                 unwound_regs.write(&reg_info, old_regs.read(&other_reg)?, false)?;
             }
             Rule::OffsetRule(offset) => {
-                let addr = VirtualAddress::new(cfa.wrapping_add(offset.offset as u64));
+                let addr = VirtualAddress::new((cfa as i64 + offset.offset) as u64);
                 let value = from_bytes::<u64>(&proc.read_memory(addr, 8)?);
                 unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
             }
