@@ -311,6 +311,6 @@ impl Registers {
     }
 
     pub fn cfa(&self) -> VirtualAddress {
-        self.cfa.clone()
+        self.cfa
     }
 }

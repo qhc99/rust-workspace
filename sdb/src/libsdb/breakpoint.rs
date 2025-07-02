@@ -596,8 +596,10 @@ impl CallFrameInformation {
         {
             return SdbError::err("No unwind information at PC");
         }
-        let mut ctx = UnwindContext::default();
-        ctx.cursor = Cursor::new(&fde.cie.instructions);
+        let mut ctx = UnwindContext {
+            cursor: Cursor::new(&fde.cie.instructions),
+            ..Default::default()
+        };
         while !ctx.cursor.finished() {
             execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
         }
@@ -637,7 +639,7 @@ fn execute_cfi_instruction(
                 let offset = (cur.uleb128() as i64) * cie.data_alignment_factor;
                 ctx.register_rules.insert(
                     extended_opcode as u32,
-                    Rule::OffsetRule(OffsetRule { offset }),
+                    Rule::Offset(OffsetRule { offset }),
                 );
             }
             DW_CFA_restore => {
@@ -678,7 +680,7 @@ fn execute_cfi_instruction(
             }
             DW_CFA_def_cfa_sf => {
                 ctx.cfa_rule.reg = cur.uleb128() as u32;
-                ctx.cfa_rule.offset = (cur.sleb128() as i64) * cie.data_alignment_factor;
+                ctx.cfa_rule.offset = cur.sleb128() * cie.data_alignment_factor;
             }
             DW_CFA_def_cfa_register => {
                 ctx.cfa_rule.reg = cur.uleb128() as u32;
@@ -687,48 +689,48 @@ fn execute_cfi_instruction(
                 ctx.cfa_rule.offset = cur.uleb128() as i64;
             }
             DW_CFA_def_cfa_offset_sf => {
-                ctx.cfa_rule.offset = (cur.sleb128() as i64) * cie.data_alignment_factor;
+                ctx.cfa_rule.offset = cur.sleb128() * cie.data_alignment_factor;
             }
             DW_CFA_def_cfa_expression => {
                 return SdbError::err("DWARF expressions not yet implemented");
             }
             DW_CFA_undefined => {
                 ctx.register_rules
-                    .insert(cur.uleb128() as u32, Rule::UndefinedRule(UndefinedRule {}));
+                    .insert(cur.uleb128() as u32, Rule::Undefined(UndefinedRule {}));
             }
             DW_CFA_same_value => {
                 ctx.register_rules
-                    .insert(cur.uleb128() as u32, Rule::SameRule(SameRule {}));
+                    .insert(cur.uleb128() as u32, Rule::Same(SameRule {}));
             }
             DW_CFA_offset_extended => {
                 let reg = cur.uleb128();
                 let offset = cur.uleb128() as i64 * cie.data_alignment_factor;
                 ctx.register_rules
-                    .insert(reg as u32, Rule::OffsetRule(OffsetRule { offset }));
+                    .insert(reg as u32, Rule::Offset(OffsetRule { offset }));
             }
             DW_CFA_offset_extended_sf => {
                 let reg = cur.uleb128();
-                let offset = (cur.sleb128()) as i64 * cie.data_alignment_factor;
+                let offset = cur.sleb128() * cie.data_alignment_factor;
                 ctx.register_rules
-                    .insert(reg as u32, Rule::OffsetRule(OffsetRule { offset }));
+                    .insert(reg as u32, Rule::Offset(OffsetRule { offset }));
             }
             DW_CFA_val_offset => {
                 let reg = cur.uleb128();
                 let offset = (cur.uleb128()) as i64 * cie.data_alignment_factor;
                 ctx.register_rules
-                    .insert(reg as u32, Rule::ValOffsetRule(ValOffsetRule { offset }));
+                    .insert(reg as u32, Rule::ValOffset(ValOffsetRule { offset }));
             }
             DW_CFA_val_offset_sf => {
                 let reg = cur.uleb128();
-                let offset = (cur.sleb128()) as i64 * cie.data_alignment_factor;
+                let offset = cur.sleb128()* cie.data_alignment_factor;
                 ctx.register_rules
-                    .insert(reg as u32, Rule::ValOffsetRule(ValOffsetRule { offset }));
+                    .insert(reg as u32, Rule::ValOffset(ValOffsetRule { offset }));
             }
             DW_CFA_register => {
                 let reg = cur.uleb128();
                 ctx.register_rules.insert(
                     reg as u32,
-                    Rule::RegisterRule(RegisterRule {
+                    Rule::Register(RegisterRule {
                         reg: (cur.uleb128()) as u32,
                     }),
                 );
@@ -746,11 +748,11 @@ fn execute_cfi_instruction(
             }
             DW_CFA_remember_state => {
                 ctx.rule_stack
-                    .push((ctx.register_rules.clone(), ctx.cfa_rule.clone()));
+                    .push((ctx.register_rules.clone(), ctx.cfa_rule));
             }
             DW_CFA_restore_state => {
                 ctx.register_rules = ctx.rule_stack.last().unwrap().0.clone();
-                ctx.cfa_rule = ctx.rule_stack.last().unwrap().1.clone();
+                ctx.cfa_rule = ctx.rule_stack.last().unwrap().1;
                 ctx.rule_stack.pop();
             }
             _ => {}
@@ -775,22 +777,22 @@ fn execute_unwind_rules(
     for (reg, rule) in &ctx.register_rules {
         let reg_info = register_info_by_dwarf(*reg as i32)?;
         match &rule {
-            Rule::UndefinedRule(_) => {
+            Rule::Undefined(_) => {
                 unwound_regs.undefine(reg_info.id)?;
             }
-            Rule::SameRule(_) => {
+            Rule::Same(_) => {
                 // Do nothing.
             }
-            Rule::RegisterRule(reg) => {
+            Rule::Register(reg) => {
                 let other_reg = register_info_by_dwarf(reg.reg as i32)?;
                 unwound_regs.write(&reg_info, old_regs.read(&other_reg)?, false)?;
             }
-            Rule::OffsetRule(offset) => {
+            Rule::Offset(offset) => {
                 let addr = VirtualAddress::new((cfa as i64 + offset.offset) as u64);
                 let value = from_bytes::<u64>(&proc.read_memory(addr, 8)?);
                 unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
             }
-            Rule::ValOffsetRule(val_offset) => {
+            Rule::ValOffset(val_offset) => {
                 let addr = cfa + val_offset.offset as u64;
                 unwound_regs.write(&reg_info, RegisterValue::U64(addr), false)?;
             }

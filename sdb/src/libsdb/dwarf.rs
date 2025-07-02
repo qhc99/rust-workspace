@@ -1475,12 +1475,12 @@ pub struct CfaRegisterRule {
 
 #[derive(Debug, Clone)]
 pub enum Rule{
-    UndefinedRule(UndefinedRule),
-    SameRule(SameRule),
-    OffsetRule(OffsetRule),
-    ValOffsetRule(ValOffsetRule),
-    RegisterRule(RegisterRule),
-    CfaRegisterRule(CfaRegisterRule),
+    Undefined(UndefinedRule),
+    Same(SameRule),
+    Offset(OffsetRule),
+    ValOffset(ValOffsetRule),
+    Register(RegisterRule),
+    CfaRegister(CfaRegisterRule),
 }
 
 pub type RuleSet = HashMap<u32, Rule>;

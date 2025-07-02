@@ -238,8 +238,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
 
 fn print_backtrace(target: &Rc<Target>) -> Result<(), SdbError> {
     let stack = target.get_stack();
-    let mut i = 0;
-    for frame in stack.frames() {
+    for (i, frame) in stack.frames().iter().enumerate() {
         let pc = frame.backtrace_report_address;
         let func_name = target.function_name_at_address(pc)?;
 
@@ -254,14 +253,13 @@ fn print_backtrace(target: &Rc<Target>) -> Result<(), SdbError> {
             pc.addr(),
             func_name
         );
-        i += 1;
         if frame.inlined {
             message += &format!(
                 " [inlined] {}",
                 frame.func_die.name()?.unwrap_or("".to_string())
             );
         }
-        println!("{}", message);
+        println!("{message}");
     }
     Ok(())
 }
@@ -786,7 +784,7 @@ fn handle_register_read(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbErr
         if regs.is_undefined(info.id)? {
             println!("{}:\tundefined", info.name);
         } else {
-            let value = regs.read(&info)?;
+            let value = regs.read(info)?;
             println!("{}:\t{}", info.name, value);
         }
         Ok(())
@@ -794,7 +792,7 @@ fn handle_register_read(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbErr
     if args.len() == 2 || (args.len() == 3 && args[2] == "all") {
         for info in GRegisterInfos {
             if args.len() == 3 || info.type_ == RegisterType::Gpr {
-                print_reg_info(&info)?;
+                print_reg_info(info)?;
             }
         }
     } else if args.len() == 3 {

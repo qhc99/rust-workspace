@@ -72,9 +72,12 @@ impl Stack {
         if !file_pc.has_elf() {
             return Ok(());
         }
-        let mut elf = file_pc.rc_elf_file();
-        while virt_pc.addr() != 0 && Rc::ptr_eq(&elf, &target.get_elf()) {
-            let dwarf = elf.get_dwarf();
+        let mut elf = file_pc.weak_elf_file();
+        while virt_pc.addr() != 0
+            && elf.upgrade().is_some()
+            && Rc::ptr_eq(&elf.upgrade().unwrap(), &target.get_elf())
+        {
+            let dwarf = elf.upgrade().unwrap().get_dwarf();
             let inline_stack = dwarf.inline_stack_at_address(&file_pc)?;
             if inline_stack.is_empty() {
                 return Ok(());
@@ -106,7 +109,7 @@ impl Stack {
             )?));
             virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
             file_pc = virt_pc.to_file_addr(&target.get_elf());
-            elf = file_pc.rc_elf_file();
+            elf = file_pc.weak_elf_file();
         }
         Ok(())
     }
@@ -158,7 +161,7 @@ impl Stack {
                 registers: regs.clone(),
                 backtrace_report_address: inlined_pc,
                 func_die: it.as_ref().clone(),
-                inlined: i +1 != inline_stack.len(),
+                inlined: i + 1 != inline_stack.len(),
                 source_location: prev_it.location()?,
             });
             prev_it = it.clone();
@@ -191,7 +194,7 @@ impl Stack {
                     .as_ref()
                     .unwrap()
                     .clone(),
-                line: line_entry.get_current().line.clone(),
+                line: line_entry.get_current().line,
             },
         });
         Ok(())
