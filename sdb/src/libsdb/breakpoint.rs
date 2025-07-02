@@ -969,7 +969,7 @@ impl EhHdr {
             let mut cursor = Cursor::new(
                 &self
                     .search_table
-                    .slice(mid * row_size..(self.count - mid) * row_size),
+                    .slice(mid * row_size..self.count * row_size),
             );
             let current_offset = elf.data_pointer_as_file_offset(&cursor.position());
             let eh_hdr_offset = elf.data_pointer_as_file_offset(&self.start);
@@ -995,7 +995,7 @@ impl EhHdr {
             }
         }
         let mut cursor = Cursor::new(&self.search_table.slice(
-            high * row_size + encoding_size..(self.count - high) * row_size - encoding_size,
+            high * row_size + encoding_size..self.count * row_size,
         ));
         let current_offset = elf.data_pointer_as_file_offset(&cursor.position());
         let eh_hdr_offset = elf.data_pointer_as_file_offset(&self.start);
