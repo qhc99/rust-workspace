@@ -72,9 +72,9 @@ impl Stack {
         if !file_pc.has_elf() {
             return Ok(());
         }
-        let mut elf = file_pc.weak_elf_file();
-        while virt_pc.addr() != 0 && elf.upgrade().is_some() && Rc::ptr_eq(&elf.upgrade().unwrap(), &target.get_elf()) {
-            let dwarf = elf.upgrade().unwrap().get_dwarf();
+        let mut elf = file_pc.rc_elf_file();
+        while virt_pc.addr() != 0 && Rc::ptr_eq(&elf, &target.get_elf()) {
+            let dwarf = elf.get_dwarf();
             let inline_stack = dwarf.inline_stack_at_address(&file_pc)?;
             if inline_stack.is_empty() {
                 return Ok(());
@@ -105,8 +105,8 @@ impl Stack {
                 &mut self.frames.last_mut().unwrap().registers,
             )?));
             virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
-            file_pc = virt_pc.to_file_addr(&elf.upgrade().unwrap());
-            elf = file_pc.weak_elf_file();
+            file_pc = virt_pc.to_file_addr(&target.get_elf());
+            elf = file_pc.rc_elf_file();
         }
         Ok(())
     }
