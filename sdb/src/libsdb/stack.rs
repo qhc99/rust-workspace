@@ -2,7 +2,6 @@ use super::register_info::RegisterId;
 use super::types::FileAddress;
 use super::{dwarf::Die, sdb_error::SdbError};
 use super::{dwarf::SourceLocation, registers::Registers, types::VirtualAddress};
-use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use super::target::Target;
@@ -66,7 +65,7 @@ impl Stack {
         let mut virt_pc = target.get_process().get_pc();
         let mut file_pc = target.get_pc_file_address();
         let proc = target.get_process();
-        let mut regs = proc.get_registers();
+        let regs = proc.get_registers();
 
         self.frames.clear();
         if !file_pc.has_elf() {
@@ -102,11 +101,11 @@ impl Stack {
                     false,
                 )?;
             }
-            regs = Rc::new(RefCell::new(dwarf.cfi().borrow_mut().unwind(
+            *regs.borrow_mut() = dwarf.cfi().borrow_mut().unwind(
                 &proc,
                 file_pc,
                 &mut self.frames.last_mut().unwrap().registers,
-            )?));
+            )?;
             virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
             file_pc = virt_pc.to_file_addr(&target.get_elf());
             elf = file_pc.weak_elf_file();
