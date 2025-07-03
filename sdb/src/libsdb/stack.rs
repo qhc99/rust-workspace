@@ -65,7 +65,7 @@ impl Stack {
         let mut virt_pc = target.get_process().get_pc();
         let mut file_pc = target.get_pc_file_address();
         let proc = target.get_process();
-        let regs = proc.get_registers();
+        let mut regs = proc.get_registers().borrow().clone();
 
         self.frames.clear();
         if !file_pc.has_elf() {
@@ -83,30 +83,30 @@ impl Stack {
             }
             if inline_stack.len() > 1 {
                 self.create_base_frame(
-                    &regs.borrow(),
+                    &regs,
                     inline_stack.clone(),
                     file_pc.clone(),
                     true,
                 )?;
                 self.create_inline_stack_frames(
-                    &regs.borrow(),
+                    &regs,
                     inline_stack.clone(),
                     file_pc.clone(),
                 )?;
             } else {
                 self.create_base_frame(
-                    &regs.borrow(),
+                    &regs,
                     inline_stack.clone(),
                     file_pc.clone(),
                     false,
                 )?;
             }
-            *regs.borrow_mut() = dwarf.cfi().borrow_mut().unwind(
+            regs = dwarf.cfi().borrow_mut().unwind(
                 &proc,
                 file_pc,
                 &mut self.frames.last_mut().unwrap().registers,
             )?;
-            virt_pc = VirtualAddress::new(regs.borrow().read_by_id_as::<u64>(RegisterId::rip)? - 1);
+            virt_pc = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)? - 1);
             file_pc = virt_pc.to_file_addr(&target.get_elf());
             elf = file_pc.weak_elf_file();
         }

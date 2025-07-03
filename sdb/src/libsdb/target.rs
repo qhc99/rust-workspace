@@ -147,8 +147,9 @@ impl Target {
         let regs = &stack.frames()[stack.current_frame_index() + 1].registers;
         let return_address = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)?);
         let mut reason = StopReason::default();
-        let frames = stack.frames().len();
-        while stack.frames().len() >= frames {
+        drop(stack);
+        let frames = self.stack.borrow().frames().len();
+        while self.stack.borrow().frames().len() >= frames {
             reason = self.run_until_address(return_address)?;
             if !reason.is_breakpoint() || self.process.get_pc() != return_address {
                 return Ok(reason);
