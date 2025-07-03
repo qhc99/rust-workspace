@@ -846,4 +846,27 @@ fn source_level_stepping() {
     assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
 }
 
-// TODO p423
+#[test]
+fn stack_unwinding() {
+    let bin = BinBuilder::cpp("resource", &["step.cpp"]);
+    let target = Target::launch(bin.target_path(), None).unwrap();
+    let proc = target.get_process();
+    target
+        .create_function_breakpoint("scratch_ears", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+    target.step_in().unwrap();
+    target.step_in().unwrap();
+    let stack = target.get_stack();
+    let frames = stack.frames();
+    let expected_names = vec!["scratch_ears", "pet_cat", "find_happiness", "main"];
+    for (i, frame) in frames.iter().enumerate() {
+        assert_eq!(frame.func_die.name().unwrap().unwrap(), expected_names[i]);
+    }
+}
