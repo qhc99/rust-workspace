@@ -47,11 +47,7 @@ impl StoppointCollection {
 
     pub fn enabled_breakpoint_at_address(&self, address: VirtualAddress) -> bool {
         self.contains_address(address)
-            && self
-                .get_by_address(address)
-                .unwrap()
-                .borrow()
-                .is_enabled()
+            && self.get_by_address(address).unwrap().borrow().is_enabled()
     }
 
     pub fn get_by_id(&self, id: IdType) -> Result<Rc<RefCell<dyn StoppointTrait>>, SdbError> {

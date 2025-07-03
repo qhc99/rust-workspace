@@ -82,24 +82,10 @@ impl Stack {
                 return Ok(());
             }
             if inline_stack.len() > 1 {
-                self.create_base_frame(
-                    &regs,
-                    inline_stack.clone(),
-                    file_pc.clone(),
-                    true,
-                )?;
-                self.create_inline_stack_frames(
-                    &regs,
-                    inline_stack.clone(),
-                    file_pc.clone(),
-                )?;
+                self.create_base_frame(&regs, inline_stack.clone(), file_pc.clone(), true)?;
+                self.create_inline_stack_frames(&regs, inline_stack.clone(), file_pc.clone())?;
             } else {
-                self.create_base_frame(
-                    &regs,
-                    inline_stack.clone(),
-                    file_pc.clone(),
-                    false,
-                )?;
+                self.create_base_frame(&regs, inline_stack.clone(), file_pc.clone(), false)?;
             }
             regs = dwarf.cfi().borrow_mut().unwind(
                 &proc,

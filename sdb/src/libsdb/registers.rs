@@ -1,4 +1,3 @@
-use super::types::VirtualAddress;
 use super::bit::from_bytes;
 use super::bit::to_byte128;
 use super::process::Process;
@@ -8,6 +7,7 @@ use super::register_info::RegisterInfo;
 use super::register_info::RegisterType;
 use super::register_info::register_info_by_id;
 use super::sdb_error::SdbError;
+use super::types::VirtualAddress;
 use super::types::{Byte64, Byte128};
 use bytemuck::Pod;
 use bytemuck::Zeroable;
@@ -245,10 +245,7 @@ impl Registers {
                 proc.write_fprs(&mut self.data.0.i387)?;
             } else {
                 let aligned_offset = info.offset & !0b111;
-                proc.write_user_area(
-                    info.offset,
-                    from_bytes::<u64>(&bytes[aligned_offset..]),
-                )?;
+                proc.write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]))?;
             }
         }
 

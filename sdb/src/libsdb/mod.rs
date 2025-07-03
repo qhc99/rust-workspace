@@ -442,11 +442,7 @@ fn print_code_location(target: &Rc<Target>) -> Result<(), SdbError> {
     if target.get_stack().has_frames() {
         let stack = target.get_stack();
         let frame = stack.current_frame();
-        print_source(
-            &frame.location.file.path,
-            frame.location.line,
-            3,
-        )?;
+        print_source(&frame.location.file.path, frame.location.line, 3)?;
     } else {
         print_disassembly(&target.get_process(), target.get_process().get_pc(), 5)?;
     }

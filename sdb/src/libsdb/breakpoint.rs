@@ -596,8 +596,10 @@ impl CallFrameInformation {
         {
             return SdbError::err("No unwind information at PC");
         }
-        let mut ctx = UnwindContext::default();
-        ctx.cursor = Cursor::new(&fde.cie.instructions);
+        let mut ctx = UnwindContext {
+            cursor: Cursor::new(&fde.cie.instructions),
+            ..Default::default()
+        };
         while !ctx.cursor.finished() {
             execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
         }
@@ -635,10 +637,8 @@ fn execute_cfi_instruction(
             }
             DW_CFA_offset => {
                 let offset = (cur.uleb128() as i64) * cie.data_alignment_factor;
-                ctx.register_rules.insert(
-                    extended_opcode as u32,
-                    Rule::Offset(OffsetRule { offset }),
-                );
+                ctx.register_rules
+                    .insert(extended_opcode as u32, Rule::Offset(OffsetRule { offset }));
             }
             DW_CFA_restore => {
                 ctx.register_rules.insert(
@@ -720,7 +720,7 @@ fn execute_cfi_instruction(
             }
             DW_CFA_val_offset_sf => {
                 let reg = cur.uleb128();
-                let offset = cur.sleb128()* cie.data_alignment_factor;
+                let offset = cur.sleb128() * cie.data_alignment_factor;
                 ctx.register_rules
                     .insert(reg as u32, Rule::ValOffset(ValOffsetRule { offset }));
             }
@@ -994,9 +994,11 @@ impl EhHdr {
                 break;
             }
         }
-        let mut cursor = Cursor::new(&self.search_table.slice(
-            high * row_size + encoding_size..self.count * row_size,
-        ));
+        let mut cursor = Cursor::new(
+            &self
+                .search_table
+                .slice(high * row_size + encoding_size..self.count * row_size),
+        );
         let current_offset = elf.data_pointer_as_file_offset(&cursor.position());
         let eh_hdr_offset = elf.data_pointer_as_file_offset(&self.start);
         let fde_offset_int = parse_eh_frame_pointer(

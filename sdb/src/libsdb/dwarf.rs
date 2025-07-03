@@ -1015,7 +1015,9 @@ fn parse_die(cu: &Rc<CompileUnit>, mut cursor: Cursor) -> Rc<Die> {
     Die::new(pos, cu, abbrev.clone(), attr_locs, next)
 }
 
-fn parse_call_frame_information(dwarf: &Rc<Dwarf>) -> Result<Rc<RefCell<CallFrameInformation>>, SdbError> {
+fn parse_call_frame_information(
+    dwarf: &Rc<Dwarf>,
+) -> Result<Rc<RefCell<CallFrameInformation>>, SdbError> {
     let eh_hdr = parse_eh_hdr(dwarf)?;
     Ok(CallFrameInformation::new(dwarf, eh_hdr))
 }
@@ -1472,9 +1474,8 @@ pub struct CfaRegisterRule {
     pub offset: i64,
 }
 
-
 #[derive(Debug, Clone)]
-pub enum Rule{
+pub enum Rule {
     Undefined(UndefinedRule),
     Same(SameRule),
     Offset(OffsetRule),
@@ -1494,4 +1495,3 @@ pub struct UnwindContext {
     pub register_rules: RuleSet,
     pub rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
 }
-    
