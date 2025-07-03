@@ -161,7 +161,7 @@ impl Stack {
                 backtrace_report_address: inlined_pc,
                 func_die: it.as_ref().clone(),
                 inlined: i + 1 != inline_stack.len(),
-                source_location: prev_it.location()?,
+                location: prev_it.location()?,
             });
             prev_it = it.clone();
         }
@@ -186,7 +186,7 @@ impl Stack {
             backtrace_report_address: backtrace_pc,
             func_die: (*inline_stack.last().unwrap().as_ref()).clone(),
             inlined,
-            source_location: SourceLocation {
+            location: SourceLocation {
                 file: line_entry
                     .get_current()
                     .file_entry
@@ -205,5 +205,5 @@ pub struct StackFrame {
     pub backtrace_report_address: VirtualAddress,
     pub func_die: Die,
     pub inlined: bool, /* false */
-    pub source_location: SourceLocation,
+    pub location: SourceLocation,
 }

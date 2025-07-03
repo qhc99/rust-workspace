@@ -443,8 +443,8 @@ fn print_code_location(target: &Rc<Target>) -> Result<(), SdbError> {
         let stack = target.get_stack();
         let frame = stack.current_frame();
         print_source(
-            &frame.source_location.file.path,
-            frame.source_location.line,
+            &frame.location.file.path,
+            frame.location.line,
             3,
         )?;
     } else {

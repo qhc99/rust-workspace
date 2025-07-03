@@ -240,13 +240,6 @@ impl Registers {
             /* vectors   */ Byte64 => Byte64, Byte128 => Byte128,
         );
         let proc = self.process.upgrade().unwrap();
-        if info.type_ == RegisterType::Fpr {
-            proc.write_fprs(&mut self.data.0.i387)?;
-        } else {
-            let aligned_offset = info.offset & !0b111;
-            proc.write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]))?;
-        }
-
         if commit {
             if info.type_ == RegisterType::Fpr {
                 proc.write_fprs(&mut self.data.0.i387)?;
@@ -272,7 +265,7 @@ impl Registers {
         &mut self,
         id: RegisterId,
         value: T,
-        commit: bool,
+        commit: bool, /* true */
     ) -> Result<(), SdbError> {
         let info = register_info_by_id(id)?;
         self.write(&info, value.into(), commit)?;
