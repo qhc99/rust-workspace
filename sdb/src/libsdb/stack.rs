@@ -82,14 +82,14 @@ impl Stack {
                 return Ok(());
             }
             if inline_stack.len() > 1 {
-                self.create_base_frame(&regs, inline_stack.clone(), file_pc.clone(), true)?;
-                self.create_inline_stack_frames(&regs, inline_stack.clone(), file_pc.clone())?;
+                self.create_base_frame(&regs, inline_stack.clone(), &file_pc, true)?;
+                self.create_inline_stack_frames(&regs, inline_stack.clone(), &file_pc)?;
             } else {
-                self.create_base_frame(&regs, inline_stack.clone(), file_pc.clone(), false)?;
+                self.create_base_frame(&regs, inline_stack.clone(), &file_pc, false)?;
             }
             regs = dwarf.cfi().borrow_mut().unwind(
                 &proc,
-                file_pc,
+                &file_pc,
                 &mut self.frames.last_mut().unwrap().registers,
             )?;
             virt_pc = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)? - 1);
@@ -137,7 +137,7 @@ impl Stack {
         &mut self,
         regs: &Registers,
         inline_stack: Vec<Rc<Die>>,
-        _pc: FileAddress,
+        _pc: &FileAddress,
     ) -> Result<(), SdbError> {
         let mut prev_it = inline_stack.last().unwrap().clone();
         for (i, it) in inline_stack.iter().rev().enumerate().skip(1) {
@@ -158,11 +158,11 @@ impl Stack {
         &mut self,
         regs: &Registers,
         inline_stack: Vec<Rc<Die>>,
-        pc: FileAddress,
+        pc: &FileAddress,
         inlined: bool,
     ) -> Result<(), SdbError> {
         let mut backtrace_pc = pc.to_virt_addr();
-        let line_entry = pc.rc_elf_file().get_dwarf().line_entry_at_address(&pc)?;
+        let line_entry = pc.rc_elf_file().get_dwarf().line_entry_at_address(pc)?;
         if !line_entry.is_end() {
             backtrace_pc = line_entry.get_current().address.to_virt_addr();
         }

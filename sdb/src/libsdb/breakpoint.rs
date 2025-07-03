@@ -579,10 +579,10 @@ impl CallFrameInformation {
     pub fn unwind(
         &mut self,
         proc: &Process,
-        pc: FileAddress,
+        pc: &FileAddress,
         regs: &mut Registers,
     ) -> Result<Registers, SdbError> {
-        let fde_start = self.eh_hdr.index(&pc)?;
+        let fde_start = self.eh_hdr.index(pc)?;
         let eh_frame_end = self
             .dwarf_info()
             .elf_file()
@@ -601,13 +601,13 @@ impl CallFrameInformation {
             ..Default::default()
         };
         while !ctx.cursor.finished() {
-            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
+            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc)?;
         }
         ctx.cie_register_rules = ctx.register_rules.clone();
         ctx.cursor = Cursor::new(&fde.instructions);
         ctx.location = fde.initial_location.clone();
         while !ctx.cursor.finished() && ctx.location <= pc.clone() {
-            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc.clone())?;
+            execute_cfi_instruction(&self.dwarf_info().elf_file(), &fde, &mut ctx, pc)?;
         }
         execute_unwind_rules(&mut ctx, regs, proc)
     }
@@ -618,7 +618,7 @@ fn execute_cfi_instruction(
     elf: &Rc<Elf>,
     fde: &FrameDescriptionEntry,
     ctx: &mut UnwindContext,
-    _pc: FileAddress,
+    _pc: &FileAddress,
 ) -> Result<(), SdbError> {
     let cie = fde.cie.clone();
     let cur = &mut ctx.cursor;
