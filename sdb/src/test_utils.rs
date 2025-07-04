@@ -182,7 +182,7 @@ impl Drop for BinBuilder {
 
 static LD_PATH_LOCK: Mutex<()> = Mutex::new(());
 
-pub fn set_ld_dir(dir: &str) {
+pub fn append_ld_dir(dir: &str) {
     let _guard = LD_PATH_LOCK.lock().unwrap();
     let mut ld_path = env::var("LD_LIBRARY_PATH").unwrap_or_default();
     if !ld_path.split(':').any(|p| p == dir) {
