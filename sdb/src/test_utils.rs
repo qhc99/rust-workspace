@@ -1,4 +1,6 @@
 #![cfg(test)]
+use std::env;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::{
     fs,
@@ -176,4 +178,16 @@ impl Drop for BinBuilder {
             }
         }
     }
+}
+
+static LD_PATH_LOCK: Mutex<()> = Mutex::new(());
+
+pub fn set_ld_dir(dir: &str) {
+    let _guard = LD_PATH_LOCK.lock().unwrap();
+    let mut ld_path = env::var("LD_LIBRARY_PATH").unwrap_or_default();
+    if !ld_path.split(':').any(|p| p == dir) {
+        ld_path.push(':');
+        ld_path.push_str(dir);
+    }
+    unsafe { env::set_var("LD_LIBRARY_PATH", ld_path) };
 }
