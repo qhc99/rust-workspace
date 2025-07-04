@@ -101,7 +101,7 @@ impl BinBuilder {
             ])
             .current_dir(&current_dir)
             .status()
-            .expect("Failed to run g++");
+            .expect("Failed to run build .o");
 
             let lib_name = format!("lib{name}_{suffix}.so");
             let mut cmd = Command::new("g++");
@@ -116,7 +116,7 @@ impl BinBuilder {
             ])
             .current_dir(&current_dir)
             .status()
-            .expect("Failed to run g++");
+            .expect("Failed to run .so");
         }
         let l_args = so_names
             .iter()
@@ -133,7 +133,7 @@ impl BinBuilder {
             ret
         })
         .current_dir(&current_dir);
-        let status = cmd.status().expect("Failed to run g++");
+        let status = cmd.status().expect("Failed to build bin");
         assert!(status.success(), "Compilation failed");
 
         let mut so_paths = Vec::new();
