@@ -144,9 +144,9 @@ impl BinBuilder {
                 .status()
                 .expect("Failed to run rm");
 
-            let lib_name = format!("lib{name}_{suffix}.so");
+            let so_file = format!("lib{name}_{suffix}.so");
             let mut output_path = current_dir.clone();
-            output_path.push(lib_name);
+            output_path.push(so_file);
             so_paths.push(output_path);
         }
 
