@@ -7,6 +7,7 @@ use std::{
 };
 pub struct BinBuilder {
     output_path: PathBuf,
+    so_paths: Vec<PathBuf>,
 }
 static GLOBAL_COUNT: AtomicI32 = AtomicI32::new(0);
 
@@ -24,7 +25,10 @@ impl BinBuilder {
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
-        BinBuilder { output_path }
+        BinBuilder {
+            output_path,
+            so_paths: Vec::new(),
+        }
     }
 
     pub fn asm(dir: &str, source: &str) -> Self {
@@ -40,7 +44,10 @@ impl BinBuilder {
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
-        BinBuilder { output_path }
+        BinBuilder {
+            output_path,
+            so_paths: Vec::new(),
+        }
     }
 
     pub fn cpp(dir: &str, source: &[&str]) -> Self {
@@ -59,7 +66,10 @@ impl BinBuilder {
         assert!(status.success(), "Compilation failed");
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
-        BinBuilder { output_path }
+        BinBuilder {
+            output_path,
+            so_paths: Vec::new(),
+        }
     }
 
     pub fn cpp_with_so(dir: &str, sources: &[&str], libs: &[&str]) -> Self {
@@ -124,25 +134,28 @@ impl BinBuilder {
         let status = cmd.status().expect("Failed to run g++");
         assert!(status.success(), "Compilation failed");
 
+        let mut so_paths = Vec::new();
         for lib in libs {
             let mut cmd = Command::new("rm");
             let name = lib.strip_suffix(".cpp").unwrap();
-            let lib_name = format!("lib{name}_{suffix}.so");
-            cmd.args(&["-f", &lib_name]);
+            let o_file = format!("{name}_{suffix}.o");
+            cmd.args(&["-f", &o_file]);
             cmd.current_dir(&current_dir)
                 .status()
                 .expect("Failed to run rm");
 
-            let lib_name = format!("{name}_{suffix}.o");
-            cmd.args(&["-f", &lib_name]);
-            cmd.current_dir(&current_dir)
-                .status()
-                .expect("Failed to run rm");
+            let lib_name = format!("lib{name}_{suffix}");
+            let mut output_path = current_dir.clone();
+            output_path.push(lib_name);
+            so_paths.push(output_path);
         }
 
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
-        BinBuilder { output_path }
+        BinBuilder {
+            output_path,
+            so_paths,
+        }
     }
 
     pub fn target_path(&self) -> &Path {
@@ -155,6 +168,11 @@ impl Drop for BinBuilder {
         if self.output_path.exists() {
             if let Err(e) = fs::remove_file(&self.output_path) {
                 eprintln!("Failed to delete binary {:?}: {}", self.output_path, e);
+            }
+        }
+        for so_path in &self.so_paths {
+            if let Err(e) = fs::remove_file(&so_path) {
+                eprintln!("Failed to delete shared object {:?}: {}", so_path, e);
             }
         }
     }
