@@ -58,6 +58,7 @@ use std::cell::Ref;
 use std::cell::RefMut;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::env;
 use std::ffi::c_long;
 use std::fs::File;
 use std::io::IoSliceMut;
@@ -890,5 +891,14 @@ mod tests {
     fn process_launch_no_such_program() {
         let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"), true, None);
         assert!(proc.is_err());
+    }
+}
+
+pub fn set_ld_dir(dir: &str) {
+    unsafe {
+        env::set_var(
+            "LD_LIBRARY_PATH",
+            env::var("LD_LIBRARY_PATH").unwrap_or_default() + ":" + dir,
+        );
     }
 }

@@ -159,9 +159,3 @@ impl Drop for BinBuilder {
         }
     }
 }
-
-#[test]
-fn test_so() {
-    let builder = BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
-    let t = 1;
-}
