@@ -46,7 +46,7 @@ impl BinBuilder {
     pub fn cpp(dir: &str, source: &[&str]) -> Self {
         let current_dir = PathBuf::from(dir);
         let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
-        let output_name = source.last().unwrap().strip_suffix(".cpp").unwrap();
+        let output_name = source.first().unwrap().strip_suffix(".cpp").unwrap();
         let output_name = format!("{output_name}_{suffix}");
         let mut cmd = Command::new("g++");
         cmd.args(&{
@@ -57,6 +57,89 @@ impl BinBuilder {
         .current_dir(&current_dir);
         let status = cmd.status().expect("Failed to run g++");
         assert!(status.success(), "Compilation failed");
+        let mut output_path = current_dir.clone();
+        output_path.push(output_name);
+        BinBuilder { output_path }
+    }
+
+    pub fn cpp_with_so(dir: &str, sources: &[&str], libs: &[&str]) -> Self {
+        let current_dir = PathBuf::from(dir);
+        let suffix = GLOBAL_COUNT.fetch_add(1, Ordering::SeqCst);
+
+        let so_names = libs
+            .iter()
+            .map(|lib| {
+                let so_name = lib.strip_suffix(".cpp").unwrap();
+                format!("{so_name}_{suffix}")
+            })
+            .collect::<Vec<_>>();
+        for lib in libs {
+            let mut cmd = Command::new("g++");
+            let name = lib.strip_suffix(".cpp").unwrap();
+            let o_with_suffix = format!("{name}_{suffix}.o");
+            cmd.args(&[
+                "-fPIC",
+                "-g",
+                "-O0",
+                "-gdwarf-4",
+                "-c",
+                lib,
+                "-o",
+                &o_with_suffix,
+            ])
+            .current_dir(&current_dir)
+            .status()
+            .expect("Failed to run g++");
+
+            let lib_name = format!("lib{name}_{suffix}.so");
+            let mut cmd = Command::new("g++");
+            cmd.args(&[
+                "-g",
+                "-O0",
+                "-gdwarf-4",
+                "-shared",
+                "-o",
+                &lib_name,
+                &o_with_suffix,
+            ])
+            .current_dir(&current_dir)
+            .status()
+            .expect("Failed to run g++");
+        }
+        let l_args = so_names
+            .iter()
+            .map(|so_name| format!("-l{so_name}"))
+            .collect::<Vec<String>>();
+
+        let output_name = sources.first().unwrap().strip_suffix(".cpp").unwrap();
+        let output_name = format!("{output_name}_{suffix}");
+        let mut cmd = Command::new("g++");
+        cmd.args(&{
+            let mut ret = sources.to_vec();
+            ret.extend_from_slice(&["-pie", "-g", "-O0", "-gdwarf-4", "-L.", "-o", &output_name]);
+            ret.extend_from_slice(&l_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+            ret
+        })
+        .current_dir(&current_dir);
+        let status = cmd.status().expect("Failed to run g++");
+        assert!(status.success(), "Compilation failed");
+
+        for lib in libs {
+            let mut cmd = Command::new("rm");
+            let name = lib.strip_suffix(".cpp").unwrap();
+            let lib_name = format!("lib{name}_{suffix}.so");
+            cmd.args(&["-f", &lib_name]);
+            cmd.current_dir(&current_dir)
+                .status()
+                .expect("Failed to run rm");
+
+            let lib_name = format!("{name}_{suffix}.o");
+            cmd.args(&["-f", &lib_name]);
+            cmd.current_dir(&current_dir)
+                .status()
+                .expect("Failed to run rm");
+        }
+
         let mut output_path = current_dir.clone();
         output_path.push(output_name);
         BinBuilder { output_path }
@@ -75,4 +158,10 @@ impl Drop for BinBuilder {
             }
         }
     }
+}
+
+#[test]
+fn test_so() {
+    let builder = BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
+    let t = 1;
 }
