@@ -1,6 +1,12 @@
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(improper_ctypes)]
 use cpp_demangle::Symbol;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
+
+include!("bindings.rs");
 
 pub fn demangle(name: &str) -> Option<String> {
     let sym = Symbol::new(name);
