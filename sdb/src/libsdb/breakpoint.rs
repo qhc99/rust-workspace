@@ -54,6 +54,27 @@ fn get_next_id() -> IdType {
     NEXT_ID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
+/*
+namespace sdb {
+    class breakpoint {
+    public:
+        --snip--
+        void install_hit_handler(std::function<bool(void)> on_hit) {
+            on_hit_ = std::move(on_hit);
+        }
+
+        bool notify_hit() const {
+            if (on_hit_) return on_hit_();
+            return false;
+        }
+
+    protected:
+        --snip--
+        std::function<bool(void)> on_hit_;
+    };
+}
+*/
+
 #[derive(TypedBuilder)]
 pub struct Breakpoint {
     id: IdType,
@@ -67,6 +88,7 @@ pub struct Breakpoint {
     breakpoint_sites: StoppointCollection,
     #[builder(default = 1)]
     next_site_id: IdType,
+    on_hit: Option<Box<dyn Fn() -> bool>>,
 }
 
 impl Breakpoint {
@@ -80,6 +102,19 @@ impl Breakpoint {
             is_internal,
             breakpoint_sites: StoppointCollection::default(),
             next_site_id: 1,
+            on_hit: None,
+        }
+    }
+
+    pub fn install_hit_handler<F>(&mut self, on_hit: F) where F: Fn() -> bool + 'static {
+        self.on_hit = Some(Box::new(on_hit));
+    }
+
+    pub fn notify_hit(&self) -> bool {
+        if let Some(on_hit) = &self.on_hit {
+            (*on_hit)()
+        } else {
+            false
         }
     }
 }
