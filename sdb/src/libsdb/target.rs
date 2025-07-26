@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::{Ref, RefCell, RefMut};
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
@@ -6,6 +7,10 @@ use elf::abi::STT_FUNC;
 use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
+
+use super::ffi::r_debug;
+
+use super::breakpoint::Breakpoint;
 
 use super::ffi::demangle;
 
@@ -38,6 +43,7 @@ pub struct Target {
     elf: Rc<Elf>,
     stack: RefCell<Stack>,
     breakpoints: RefCell<StoppointCollection>,
+    dynamic_linker_rendezvous_address: RefCell<VirtualAddress>,
 }
 
 impl Target {
@@ -47,6 +53,7 @@ impl Target {
             elf: elf.clone(),
             stack: RefCell::new(Stack::new(weak_self)),
             breakpoints: RefCell::new(StoppointCollection::default()),
+            dynamic_linker_rendezvous_address: RefCell::new(VirtualAddress::default()),
         })
     }
 
@@ -63,6 +70,18 @@ impl Target {
         let obj = create_loaded_elf(&proc, path)?;
         let tgt = Target::new(proc, obj);
         tgt.process.set_target(&tgt);
+        let entry_point = VirtualAddress::new(tgt.get_process().get_auxv()[&(AT_ENTRY as i32)]);
+        let entry_bp = tgt.create_address_breakpoint(entry_point, false, true)?;
+        let entry_bp = entry_bp.upgrade().unwrap();
+        let entry_bp = entry_bp.borrow_mut();
+        let mut entry_bp = entry_bp as RefMut<'_, dyn Any>;
+        let entry_bp = entry_bp.downcast_mut::<Breakpoint>().unwrap();
+        let tgt_clone = tgt.clone();
+        entry_bp.install_hit_handler(move || {
+            tgt_clone.resolve_dynamic_linker_rendezvous();
+            true
+        });
+        entry_bp.enable()?;
         Ok(tgt)
     }
 
@@ -72,6 +91,7 @@ impl Target {
         let obj = create_loaded_elf(&proc, &elf_path)?;
         let tgt = Target::new(proc, obj);
         tgt.process.set_target(&tgt);
+        tgt.resolve_dynamic_linker_rendezvous();
         Ok(tgt)
     }
 
@@ -288,6 +308,81 @@ impl Target {
             }
         }
         Ok(String::new())
+    }
+
+    pub fn read_dynamic_linker_rendezvous(&self) -> Option<r_debug> {
+        todo!()
+    }
+
+
+    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError> {
+        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
+            return Ok(());
+        }
+
+        let dynamic_section = match self.elf.get_section(".dynamic") {
+            Some(section) => section,
+            None => return Ok(()),
+        };
+
+        let dynamic_start = FileAddress::new(&self.elf, dynamic_section.0.sh_addr);
+        let dynamic_size = dynamic_section.0.sh_size as usize;
+        let dynamic_bytes = self.process.read_memory(
+            dynamic_start.to_virt_addr(),
+            dynamic_size,
+        )?;
+
+        let entry_size = std::mem::size_of::<super::ffi::Elf64_Dyn>();
+        let num_entries = dynamic_size / entry_size;
+
+        for i in 0..num_entries {
+            let start_idx = i * entry_size;
+            let end_idx = start_idx + entry_size;
+            if end_idx > dynamic_bytes.len() {
+                break;
+            }
+
+            let entry_bytes = &dynamic_bytes[start_idx..end_idx];
+            let entry: super::ffi::Elf64_Dyn = unsafe {
+                std::ptr::read(entry_bytes.as_ptr() as *const super::ffi::Elf64_Dyn)
+            };
+
+            if entry.d_tag == super::ffi::DT_DEBUG as u64 {
+                let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
+                *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
+                self.reload_dynamic_libraries();
+
+                if let Some(debug_info) = self.read_dynamic_linker_rendezvous() {
+                    let debug_state_addr = VirtualAddress::new(debug_info.r_brk as u64);
+                    match self.create_address_breakpoint(debug_state_addr, false, true) {
+                        Ok(debug_state_bp) => {
+                            if let Some(bp) = debug_state_bp.upgrade() {
+                                let mut bp_ref = bp.borrow_mut();
+                                let bp_any = bp_ref.as_mut() as &mut dyn std::any::Any;
+                                if let Some(breakpoint) = bp_any.downcast_mut::<super::breakpoint::Breakpoint>() {
+                                    let target_clone = self as *const Self;
+                                    breakpoint.install_hit_handler(move || {
+                                        unsafe {
+                                            (*target_clone).reload_dynamic_libraries();
+                                        }
+                                        true
+                                    });
+                                    let _ = breakpoint.enable();
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn reload_dynamic_libraries(&self) {
+        todo!()
     }
 }
 
