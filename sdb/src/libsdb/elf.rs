@@ -19,7 +19,7 @@ use nix::{
 };
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::{
     num::NonZeroUsize,
     os::fd::{FromRawFd, OwnedFd},
@@ -388,3 +388,51 @@ impl ElfExt for Rc<Elf> {
         self.get_symbol_containing_file_address(address.to_file_addr(self))
     }
 }
+
+#[derive(Debug, Default)]
+pub struct ElfCollection {
+    elves: Vec<Rc<Elf>>,
+}
+
+impl ElfCollection {
+    pub fn push(&mut self, elf: Elf) {
+        self.elves.push(Rc::new(elf));
+    }
+
+    pub fn for_each<F>(&self, f: F)
+    where
+        F: Fn(&Rc<Elf>),
+    {
+        for elf in &self.elves {
+            f(elf);
+        }
+    }
+
+    pub fn get_elf_containing_address(&self, address: VirtualAddress) -> Weak<Elf> {
+        for elf in &self.elves {
+            if elf.get_section_containing_virt_addr(address).is_some() {
+                return Rc::downgrade(elf);
+            }
+        }
+        Weak::new()
+    }
+
+    pub fn get_elf_by_path(&self, path: &Path) -> Weak<Elf> {
+        for elf in &self.elves {
+            if elf.path() == path {
+                return Rc::downgrade(elf);
+            }
+        }
+        Weak::new()
+    }
+
+    pub fn get_elf_by_filename(&self, filename: &str) -> Weak<Elf> {
+        for elf in &self.elves {
+            if elf.path().file_name().unwrap() == filename {
+                return Rc::downgrade(elf);
+            }
+        }
+        Weak::new()
+    }
+}
+    

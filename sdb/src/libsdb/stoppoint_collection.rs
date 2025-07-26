@@ -6,7 +6,6 @@ use super::types::VirtualAddress;
 use std::rc::Weak;
 use std::{cell::RefCell, rc::Rc};
 
-// TODO p392 - 422
 #[derive(Default, Clone)]
 pub struct StoppointCollection {
     stoppoints: Vec<Rc<dyn MaybeRc>>,
