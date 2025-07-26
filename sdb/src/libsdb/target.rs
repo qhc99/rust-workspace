@@ -40,7 +40,7 @@ use super::types::VirtualAddress;
 
 pub struct Target {
     process: Rc<Process>,
-    elf: Rc<Elf>,
+    main_elf: Rc<Elf>,
     stack: RefCell<Stack>,
     breakpoints: RefCell<StoppointCollection>,
     dynamic_linker_rendezvous_address: RefCell<VirtualAddress>,
@@ -50,7 +50,7 @@ impl Target {
     fn new(process: Rc<Process>, elf: Rc<Elf>) -> Rc<Self> {
         Rc::new_cyclic(|weak_self| Self {
             process: process.clone(),
-            elf: elf.clone(),
+            main_elf: elf.clone(),
             stack: RefCell::new(Stack::new(weak_self)),
             breakpoints: RefCell::new(StoppointCollection::default()),
             dynamic_linker_rendezvous_address: RefCell::new(VirtualAddress::default()),
@@ -78,8 +78,8 @@ impl Target {
         let entry_bp = entry_bp.downcast_mut::<Breakpoint>().unwrap();
         let tgt_clone = tgt.clone();
         entry_bp.install_hit_handler(move || {
-            tgt_clone.resolve_dynamic_linker_rendezvous();
-            true
+            tgt_clone.resolve_dynamic_linker_rendezvous()?;
+            Ok(true)
         });
         entry_bp.enable()?;
         Ok(tgt)
@@ -91,7 +91,7 @@ impl Target {
         let obj = create_loaded_elf(&proc, &elf_path)?;
         let tgt = Target::new(proc, obj);
         tgt.process.set_target(&tgt);
-        tgt.resolve_dynamic_linker_rendezvous();
+        tgt.resolve_dynamic_linker_rendezvous()?;
         Ok(tgt)
     }
 
@@ -100,7 +100,7 @@ impl Target {
     }
 
     pub fn get_elf(&self) -> Rc<Elf> {
-        self.elf.clone()
+        self.main_elf.clone()
     }
 
     pub fn notify_stop(&self, _reason: &StopReason) -> Result<(), SdbError> {
@@ -108,7 +108,7 @@ impl Target {
     }
 
     pub fn get_pc_file_address(&self) -> FileAddress {
-        self.process.get_pc().to_file_addr(&self.elf)
+        self.process.get_pc().to_file_addr(&self.main_elf)
     }
 
     pub fn step_in(&self) -> Result<StopReason, SdbError> {
@@ -274,11 +274,13 @@ impl Target {
             dwarf_functions: Vec::new(),
             elf_functions: Vec::new(),
         };
-        let dwarf_found = self.elf.get_dwarf().find_functions(name)?;
+        let dwarf_found = self.main_elf.get_dwarf().find_functions(name)?;
         if dwarf_found.is_empty() {
-            let elf_found = self.elf.get_symbols_by_name(name);
+            let elf_found = self.main_elf.get_symbols_by_name(name);
             for sym in &elf_found {
-                result.elf_functions.push((self.elf.clone(), sym.clone()));
+                result
+                    .elf_functions
+                    .push((self.main_elf.clone(), sym.clone()));
             }
         } else {
             result.dwarf_functions.extend(dwarf_found);
@@ -291,7 +293,7 @@ impl Target {
     }
 
     pub fn function_name_at_address(&self, address: VirtualAddress) -> Result<String, SdbError> {
-        let file_address = address.to_file_addr(&self.elf);
+        let file_address = address.to_file_addr(&self.main_elf);
         if !file_address.has_elf() {
             return Ok(String::new());
         }
@@ -312,73 +314,6 @@ impl Target {
 
     pub fn read_dynamic_linker_rendezvous(&self) -> Option<r_debug> {
         todo!()
-    }
-
-
-    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError> {
-        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
-            return Ok(());
-        }
-
-        let dynamic_section = match self.elf.get_section(".dynamic") {
-            Some(section) => section,
-            None => return Ok(()),
-        };
-
-        let dynamic_start = FileAddress::new(&self.elf, dynamic_section.0.sh_addr);
-        let dynamic_size = dynamic_section.0.sh_size as usize;
-        let dynamic_bytes = self.process.read_memory(
-            dynamic_start.to_virt_addr(),
-            dynamic_size,
-        )?;
-
-        let entry_size = std::mem::size_of::<super::ffi::Elf64_Dyn>();
-        let num_entries = dynamic_size / entry_size;
-
-        for i in 0..num_entries {
-            let start_idx = i * entry_size;
-            let end_idx = start_idx + entry_size;
-            if end_idx > dynamic_bytes.len() {
-                break;
-            }
-
-            let entry_bytes = &dynamic_bytes[start_idx..end_idx];
-            let entry: super::ffi::Elf64_Dyn = unsafe {
-                std::ptr::read(entry_bytes.as_ptr() as *const super::ffi::Elf64_Dyn)
-            };
-
-            if entry.d_tag == super::ffi::DT_DEBUG as u64 {
-                let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
-                *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
-                self.reload_dynamic_libraries();
-
-                if let Some(debug_info) = self.read_dynamic_linker_rendezvous() {
-                    let debug_state_addr = VirtualAddress::new(debug_info.r_brk as u64);
-                    match self.create_address_breakpoint(debug_state_addr, false, true) {
-                        Ok(debug_state_bp) => {
-                            if let Some(bp) = debug_state_bp.upgrade() {
-                                let mut bp_ref = bp.borrow_mut();
-                                let bp_any = bp_ref.as_mut() as &mut dyn std::any::Any;
-                                if let Some(breakpoint) = bp_any.downcast_mut::<super::breakpoint::Breakpoint>() {
-                                    let target_clone = self as *const Self;
-                                    breakpoint.install_hit_handler(move || {
-                                        unsafe {
-                                            (*target_clone).reload_dynamic_libraries();
-                                        }
-                                        true
-                                    });
-                                    let _ = breakpoint.enable();
-                                }
-                            }
-                        }
-                        Err(_) => {}
-                    }
-                }
-                break;
-            }
-        }
-
-        Ok(())
     }
 
     fn reload_dynamic_libraries(&self) {
@@ -408,6 +343,8 @@ pub trait TargetExt {
         is_hardware: bool,
         is_internal: bool,
     ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
+
+    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError>;
 }
 
 impl TargetExt for Rc<Target> {
@@ -468,6 +405,72 @@ impl TargetExt for Rc<Target> {
             .borrow_mut()
             .push_strong(breakpoint.clone());
         Ok(breakpoint)
+    }
+
+    /*
+    void sdb::target::resolve_dynamic_linker_rendezvous() {
+        for (auto entry : dynamic_entries) {
+            if (entry.d_tag == DT_DEBUG) {
+                auto& debug_state_bp = create_address_breakpoint(
+                    debug_state_addr, false, true);
+                debug_state_bp.install_hit_handler([&] {
+                    reload_dynamic_libraries();
+                    return true;
+                });
+                debug_state_bp.enable();
+            }
+        }
+    }
+    */
+    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError> {
+        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
+            return Ok(());
+        }
+
+        let dynamic_section = self.main_elf.get_section(".dynamic").unwrap();
+        let dynamic_start = FileAddress::new(&self.main_elf, dynamic_section.0.sh_addr);
+        let dynamic_size = dynamic_section.0.sh_size as usize;
+        let dynamic_bytes = self
+            .process
+            .read_memory(dynamic_start.to_virt_addr(), dynamic_size)?;
+
+        let entry_size = std::mem::size_of::<super::ffi::Elf64_Dyn>();
+        let num_entries = dynamic_size / entry_size;
+
+        for i in 0..num_entries {
+            let start_idx = i * entry_size;
+            let end_idx = start_idx + entry_size;
+            if end_idx > dynamic_bytes.len() {
+                break;
+            }
+
+            let entry_bytes = &dynamic_bytes[start_idx..end_idx];
+            let entry: super::ffi::Elf64_Dyn =
+                unsafe { std::ptr::read(entry_bytes.as_ptr() as *const super::ffi::Elf64_Dyn) };
+
+            if entry.d_tag == super::ffi::DT_DEBUG as i64 {
+                let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
+                *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
+                self.reload_dynamic_libraries();
+
+                let debug_info = self.read_dynamic_linker_rendezvous().unwrap();
+                let debug_state_addr = VirtualAddress::new(debug_info.r_brk);
+                let debug_state_bp =
+                    self.create_address_breakpoint(debug_state_addr, false, true)?;
+                let debug_state_bp = debug_state_bp.upgrade().unwrap();
+                let bp_ref = debug_state_bp.borrow_mut();
+                let mut bp = bp_ref as RefMut<dyn std::any::Any>;
+                let breakpoint = bp.downcast_mut::<super::breakpoint::Breakpoint>().unwrap();
+                let target_clone = self.clone();
+                breakpoint.install_hit_handler(move || {
+                    target_clone.reload_dynamic_libraries();
+                    Ok(true)
+                });
+                breakpoint.enable()?;
+            }
+        }
+
+        Ok(())
     }
 }
 

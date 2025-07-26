@@ -268,7 +268,7 @@ impl Process {
                             let bp = bp.downcast_ref::<BreakpointSite>().unwrap();
                             if bp.parent.upgrade().is_some() {
                                 let should_restart =
-                                    bp.parent.upgrade().unwrap().borrow().notify_hit();
+                                    bp.parent.upgrade().unwrap().borrow().notify_hit()?;
                                 if should_restart {
                                     self.resume()?;
                                     return self.wait_on_signal();

@@ -67,7 +67,7 @@ pub struct Breakpoint {
     breakpoint_sites: StoppointCollection,
     #[builder(default = 1)]
     next_site_id: IdType,
-    on_hit: Option<Box<dyn Fn() -> bool>>,
+    on_hit: Option<Box<dyn Fn() -> Result<bool, SdbError>>>,
 }
 
 impl Breakpoint {
@@ -87,16 +87,16 @@ impl Breakpoint {
 
     pub fn install_hit_handler<F>(&mut self, on_hit: F)
     where
-        F: Fn() -> bool + 'static,
+        F: Fn() -> Result<bool, SdbError> + 'static,
     {
         self.on_hit = Some(Box::new(on_hit));
     }
 
-    pub fn notify_hit(&self) -> bool {
+    pub fn notify_hit(&self) -> Result<bool, SdbError> {
         if let Some(on_hit) = &self.on_hit {
             (*on_hit)()
         } else {
-            false
+            Ok(false)
         }
     }
 }
