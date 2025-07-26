@@ -263,6 +263,17 @@ impl Process {
                                 .is_enabled()
                         {
                             self.set_pc(instr_begin)?;
+                            let bp = breakpoint_sites.get_by_address(instr_begin)?;
+                            let bp = bp.borrow() as Ref<'_, dyn Any>;
+                            let bp = bp.downcast_ref::<BreakpointSite>().unwrap();
+                            if bp.parent.upgrade().is_some() {
+                                let should_restart =
+                                    bp.parent.upgrade().unwrap().borrow().notify_hit();
+                                if should_restart {
+                                    self.resume()?;
+                                    return self.wait_on_signal();
+                                }
+                            }
                         } else if reason.trap_reason == Some(TrapType::HardwareBreak) {
                             let id = self.get_current_hardware_stoppoint()?;
                             if let StoppointId::Watchpoint(id) = id {

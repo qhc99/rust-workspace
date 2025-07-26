@@ -40,7 +40,7 @@ pub struct BreakpointSite {
     #[builder(default = -1)]
     hardware_register_index: i32,
     #[builder(default = Weak::new())]
-    parent: Weak<RefCell<Breakpoint>>,
+    pub parent: Weak<RefCell<Breakpoint>>,
 }
 
 impl StoppointTrait for BreakpointSite {
