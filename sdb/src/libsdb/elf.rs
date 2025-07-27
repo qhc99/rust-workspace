@@ -378,14 +378,14 @@ impl ElfExt for Rc<Elf> {
     }
 
     fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        self.get_symbol_at_file_address(address.to_file_addr(self))
+        self.get_symbol_at_file_address(address.to_file_addr_elf(self))
     }
 
     fn get_symbol_containing_virt_address(
         &self,
         address: VirtualAddress,
     ) -> Option<Rc<SdbElf64Sym>> {
-        self.get_symbol_containing_file_address(address.to_file_addr(self))
+        self.get_symbol_containing_file_address(address.to_file_addr_elf(self))
     }
 }
 
@@ -395,17 +395,12 @@ pub struct ElfCollection {
 }
 
 impl ElfCollection {
-    pub fn push(&mut self, elf: Elf) {
-        self.elves.push(Rc::new(elf));
+    pub fn push(&mut self, elf: Rc<Elf>) {
+        self.elves.push(elf);
     }
 
-    pub fn for_each<F>(&self, f: F)
-    where
-        F: Fn(&Rc<Elf>),
-    {
-        for elf in &self.elves {
-            f(elf);
-        }
+    pub fn iter(&self) -> std::slice::Iter<Rc<Elf>> {
+        self.elves.iter()
     }
 
     pub fn get_elf_containing_address(&self, address: VirtualAddress) -> Weak<Elf> {
@@ -435,4 +430,3 @@ impl ElfCollection {
         Weak::new()
     }
 }
-    

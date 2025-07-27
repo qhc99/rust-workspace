@@ -4,6 +4,8 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use super::elf::ElfCollection;
+
 use super::elf::Elf;
 
 pub type Byte64 = [u8; 8];
@@ -147,7 +149,7 @@ impl VirtualAddress {
         Self { addr }
     }
 
-    pub fn to_file_addr(self, elf: &Rc<Elf>) -> FileAddress {
+    pub fn to_file_addr_elf(self, elf: &Rc<Elf>) -> FileAddress {
         let obj = elf;
         let section = obj.get_section_containing_virt_addr(self);
         return match section {
@@ -157,6 +159,14 @@ impl VirtualAddress {
             },
             None => FileAddress::default(),
         };
+    }
+
+    pub fn to_file_addr_elves(self, elves: &ElfCollection) -> FileAddress {
+        let obj = elves.get_elf_containing_address(self);
+        if obj.upgrade().is_none() {
+            return FileAddress::default();
+        }
+        return self.to_file_addr_elf(&obj.upgrade().unwrap());
     }
 }
 

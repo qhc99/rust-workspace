@@ -332,7 +332,9 @@ impl LineBreakpoint {
             .target
             .upgrade()
             .unwrap()
-            .get_elf()
+            .get_main_elf()
+            .upgrade()
+            .unwrap()
             .get_dwarf();
         for cu in dwarf.compile_units().iter() {
             let entries = cu

@@ -8,6 +8,8 @@ use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 
+use super::elf::ElfCollection;
+
 use super::ffi::r_debug;
 
 use super::breakpoint::Breakpoint;
@@ -40,7 +42,8 @@ use super::types::VirtualAddress;
 
 pub struct Target {
     process: Rc<Process>,
-    main_elf: Rc<Elf>,
+    main_elf: Weak<Elf>,
+    elves: RefCell<ElfCollection>,
     stack: RefCell<Stack>,
     breakpoints: RefCell<StoppointCollection>,
     dynamic_linker_rendezvous_address: RefCell<VirtualAddress>,
@@ -50,7 +53,12 @@ impl Target {
     fn new(process: Rc<Process>, elf: Rc<Elf>) -> Rc<Self> {
         Rc::new_cyclic(|weak_self| Self {
             process: process.clone(),
-            main_elf: elf.clone(),
+            main_elf: Rc::downgrade(&elf),
+            elves: RefCell::new({
+                let mut t = ElfCollection::default();
+                t.push(elf.clone());
+                t
+            }),
             stack: RefCell::new(Stack::new(weak_self)),
             breakpoints: RefCell::new(StoppointCollection::default()),
             dynamic_linker_rendezvous_address: RefCell::new(VirtualAddress::default()),
@@ -99,7 +107,7 @@ impl Target {
         self.process.clone()
     }
 
-    pub fn get_elf(&self) -> Rc<Elf> {
+    pub fn get_main_elf(&self) -> Weak<Elf> {
         self.main_elf.clone()
     }
 
@@ -108,7 +116,9 @@ impl Target {
     }
 
     pub fn get_pc_file_address(&self) -> FileAddress {
-        self.process.get_pc().to_file_addr(&self.main_elf)
+        self.process
+            .get_pc()
+            .to_file_addr_elf(&self.main_elf.upgrade().unwrap())
     }
 
     pub fn step_in(&self) -> Result<StopReason, SdbError> {
@@ -274,13 +284,18 @@ impl Target {
             dwarf_functions: Vec::new(),
             elf_functions: Vec::new(),
         };
-        let dwarf_found = self.main_elf.get_dwarf().find_functions(name)?;
+        let dwarf_found = self
+            .main_elf
+            .upgrade()
+            .unwrap()
+            .get_dwarf()
+            .find_functions(name)?;
         if dwarf_found.is_empty() {
-            let elf_found = self.main_elf.get_symbols_by_name(name);
+            let elf_found = self.main_elf.upgrade().unwrap().get_symbols_by_name(name);
             for sym in &elf_found {
                 result
                     .elf_functions
-                    .push((self.main_elf.clone(), sym.clone()));
+                    .push((self.main_elf.upgrade().unwrap(), sym.clone()));
             }
         } else {
             result.dwarf_functions.extend(dwarf_found);
@@ -293,7 +308,7 @@ impl Target {
     }
 
     pub fn function_name_at_address(&self, address: VirtualAddress) -> Result<String, SdbError> {
-        let file_address = address.to_file_addr(&self.main_elf);
+        let file_address = address.to_file_addr_elf(&self.main_elf.upgrade().unwrap());
         if !file_address.has_elf() {
             return Ok(String::new());
         }
@@ -318,6 +333,25 @@ impl Target {
 
     fn reload_dynamic_libraries(&self) {
         todo!()
+    }
+
+    pub fn get_elves(&self) -> &RefCell<ElfCollection> {
+        &self.elves
+    }
+
+    pub fn get_line_entries_by_line(
+        &self,
+        path: &Path,
+        line: usize,
+    ) -> Result<Vec<LineTableIter>, SdbError> {
+        let mut entries = Vec::<LineTableIter>::new();
+        for elf in self.elves.borrow().iter() {
+            for cu in elf.get_dwarf().compile_units() {
+                let new_entries = cu.lines().get_entries_by_line(path, line as u64)?;
+                entries.extend(new_entries);
+            }
+        }
+        Ok(entries)
     }
 }
 
@@ -427,8 +461,14 @@ impl TargetExt for Rc<Target> {
             return Ok(());
         }
 
-        let dynamic_section = self.main_elf.get_section(".dynamic").unwrap();
-        let dynamic_start = FileAddress::new(&self.main_elf, dynamic_section.0.sh_addr);
+        let dynamic_section = self
+            .main_elf
+            .upgrade()
+            .unwrap()
+            .get_section(".dynamic")
+            .unwrap();
+        let dynamic_start =
+            FileAddress::new(&self.main_elf.upgrade().unwrap(), dynamic_section.0.sh_addr);
         let dynamic_size = dynamic_section.0.sh_size as usize;
         let dynamic_bytes = self
             .process
