@@ -150,8 +150,8 @@ impl StopReason {
 }
 
 fn set_ptrace_options(pid: Pid) -> Result<(), SdbError> {
-    setoptions(pid, Options::PTRACE_O_TRACESYSGOOD)
-        .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD option", errno))
+    setoptions(pid, Options::PTRACE_O_TRACESYSGOOD | Options::PTRACE_O_TRACECLONE)
+        .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD and TRACECLONE options", errno))
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
