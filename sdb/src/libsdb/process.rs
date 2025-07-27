@@ -214,9 +214,8 @@ impl Process {
 
     pub fn resume(&self) -> Result<(), SdbError> {
         let pc = self.get_pc();
-        let breakpoint_sites = &self.breakpoint_sites.borrow();
-        if breakpoint_sites.enabled_breakpoint_at_address(pc) {
-            let bp = breakpoint_sites.get_by_address(pc)?;
+        if self.breakpoint_sites.borrow().enabled_breakpoint_at_address(pc) {
+            let bp = self.breakpoint_sites.borrow().get_by_address(pc)?;
             bp.borrow_mut().disable()?;
             step(self.pid, None)
                 .map_err(|errno| SdbError::new_errno("Failed to single step", errno))?;
@@ -254,21 +253,21 @@ impl Process {
                     self.augment_stop_reason(&mut reason)?;
                     let instr_begin = self.get_pc() - 1;
                     if reason.info == Signal::SIGTRAP as i32 {
-                        let breakpoint_sites = self.breakpoint_sites.borrow();
                         if reason.trap_reason == Some(TrapType::SoftwareBreak)
-                            && breakpoint_sites.contains_address(instr_begin)
-                            && breakpoint_sites
+                            && self.breakpoint_sites.borrow().contains_address(instr_begin)
+                            && self.breakpoint_sites.borrow()
                                 .get_by_address(instr_begin)?
                                 .borrow()
                                 .is_enabled()
                         {
                             self.set_pc(instr_begin)?;
-                            let bp = breakpoint_sites.get_by_address(instr_begin)?;
-                            let bp = bp.borrow() as Ref<'_, dyn Any>;
-                            let bp = bp.downcast_ref::<BreakpointSite>().unwrap();
+                            let bp = self.breakpoint_sites.borrow().get_by_address(instr_begin)?;
+                            let bp_borrow = bp.borrow() as Ref<'_, dyn Any>;
+                            let bp = bp_borrow.downcast_ref::<BreakpointSite>().unwrap();
                             if bp.parent.upgrade().is_some() {
                                 let should_restart =
                                     bp.parent.upgrade().unwrap().borrow().notify_hit()?;
+                                drop(bp_borrow);
                                 if should_restart {
                                     self.resume()?;
                                     return self.wait_on_signal();

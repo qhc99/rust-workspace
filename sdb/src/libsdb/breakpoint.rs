@@ -442,7 +442,7 @@ impl StoppointTrait for LineBreakpoint {
 }
 
 pub struct AddressBreakpoint {
-    breakpoint: Rc<RefCell<Breakpoint>>,
+    pub breakpoint: Rc<RefCell<Breakpoint>>,
     address: VirtualAddress,
 }
 

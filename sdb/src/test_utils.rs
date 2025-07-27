@@ -191,3 +191,10 @@ pub fn append_ld_dir(dir: &str) {
     }
     unsafe { env::set_var("LD_LIBRARY_PATH", ld_path) };
 }
+
+#[ignore = "Manual"]
+#[test]
+fn build_marshmallow() {
+    BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
+}
+    
