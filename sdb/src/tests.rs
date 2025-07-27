@@ -880,3 +880,36 @@ fn stack_unwinding() {
         assert_eq!(frame.func_die.name().unwrap().unwrap(), expected_names[i]);
     }
 }
+
+#[test]
+fn shared_library_tracing_works() {
+    use std::fs::OpenOptions;
+    use std::os::fd::AsRawFd;
+    use super::test_utils::append_ld_dir;
+    
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    append_ld_dir("resource");
+    let bin = BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
+    let file_num = bin.target_path().file_stem().unwrap().to_str().unwrap().split('_').last().unwrap();
+    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+
+    target.create_function_breakpoint("libmeow_client_is_cute", false, false).unwrap()
+        .upgrade().unwrap().borrow_mut().enable().unwrap();
+    proc.resume().unwrap();
+    proc.wait_on_signal().unwrap();
+
+    assert_eq!(target.get_stack().frames().len(), 2);
+    assert_eq!(
+        target.get_stack().frames()[0].func_die.name().unwrap().unwrap(),
+        "libmeow_client_is_cute"
+    );
+    assert_eq!(
+        target.get_stack().frames()[1].func_die.name().unwrap().unwrap(),
+        "main"
+    );
+    assert_eq!(
+        target.get_pc_file_address().rc_elf_file().path().file_name().unwrap().to_str().unwrap(),
+        &format!("libmeow_{file_num}.so")
+    );
+}
