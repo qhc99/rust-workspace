@@ -27,6 +27,8 @@ pub trait StoppointTrait: Any {
     fn is_internal(&self) -> bool;
 
     fn breakpoint_sites(&self) -> StoppointCollection;
+
+    fn resolve(&mut self) -> Result<(), SdbError>;
 }
 
 pub trait MaybeRc {

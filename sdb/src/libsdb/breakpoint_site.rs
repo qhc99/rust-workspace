@@ -44,6 +44,10 @@ pub struct BreakpointSite {
 }
 
 impl StoppointTrait for BreakpointSite {
+    fn resolve(&mut self) -> Result<(), SdbError> {
+        unimplemented!()
+    }
+
     fn id(&self) -> IdType {
         self.id
     }

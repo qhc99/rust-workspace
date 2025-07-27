@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::{Ref, RefCell, RefMut};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 
@@ -7,6 +8,8 @@ use elf::abi::STT_FUNC;
 use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
+
+use super::elf::SdbElf64Ehdr;
 
 use super::elf::ElfCollection;
 
@@ -332,8 +335,61 @@ impl Target {
         Ok(None)
     }
 
-    fn reload_dynamic_libraries(&self) {
-        todo!()
+    fn reload_dynamic_libraries(&self) -> Result<(), SdbError> {
+        let debug = self.read_dynamic_linker_rendezvous()?;
+        if debug.is_none() {
+            return Ok(());
+        }
+
+        let debug = debug.unwrap();
+        let mut entry_ptr = debug.r_map;
+
+        while !entry_ptr.is_null() {
+            let entry_addr = VirtualAddress::new(entry_ptr as u64);
+            let entry = self
+                .process
+                .read_memory_as::<super::ffi::link_map>(entry_addr)?;
+            entry_ptr = entry.l_next;
+
+            let name_addr = VirtualAddress::new(entry.l_name as u64);
+            let name_bytes = self.process.read_memory(name_addr, 4096)?;
+
+            let null_pos = name_bytes
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(name_bytes.len());
+            let name_str = String::from_utf8_lossy(&name_bytes[..null_pos]);
+            let name = PathBuf::from(name_str.as_ref());
+
+            if name_str.is_empty() {
+                continue;
+            }
+
+            const VDSO_NAME: &str = "linux-vdso.so.1";
+            let found = if name_str == VDSO_NAME {
+                self.elves.borrow().get_elf_by_filename(VDSO_NAME)
+            } else {
+                self.elves.borrow().get_elf_by_path(&name)
+            };
+
+            if found.upgrade().is_none() {
+                let elf_path = if name_str == VDSO_NAME {
+                    dump_vdso(&self.process, VirtualAddress::new(entry.l_addr))?
+                } else {
+                    name
+                };
+
+                let new_elf = Elf::new(&elf_path)?;
+                new_elf.notify_loaded(VirtualAddress::new(entry.l_addr));
+                self.elves.borrow_mut().push(new_elf);
+            }
+        }
+
+        for bp in self.breakpoints.borrow().iter() {
+            bp.borrow_mut().resolve()?;
+        }
+
+        Ok(())
     }
 
     pub fn get_elves(&self) -> &RefCell<ElfCollection> {
@@ -354,6 +410,22 @@ impl Target {
         }
         Ok(entries)
     }
+}
+
+fn dump_vdso(process: &Process, address: VirtualAddress) -> Result<PathBuf, SdbError> {
+    let tmp_dir = "/tmp/sdb-XXXXXX".to_string();
+    let mut vdso_dump_path = PathBuf::from(tmp_dir);
+    vdso_dump_path.push("linux-vdso.so.1");
+    let mut vdso_dump =
+        std::fs::File::create(&vdso_dump_path).map_err(|e| SdbError::new_err(&e.to_string()))?;
+    let vdso_header = process.read_memory_as::<SdbElf64Ehdr>(address)?;
+    let vdso_size =
+        vdso_header.0.e_shoff + vdso_header.0.e_shentsize as u64 * vdso_header.0.e_shnum as u64;
+    let vdso_bytes = process.read_memory(address, vdso_size as usize)?;
+    vdso_dump
+        .write_all(&vdso_bytes)
+        .map_err(|e| SdbError::new_err(&e.to_string()))?;
+    Ok(vdso_dump_path)
 }
 
 pub trait TargetExt {
@@ -492,7 +564,7 @@ impl TargetExt for Rc<Target> {
             if entry.d_tag == super::ffi::DT_DEBUG as i64 {
                 let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
                 *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
-                self.reload_dynamic_libraries();
+                self.reload_dynamic_libraries()?;
 
                 let debug_info = self.read_dynamic_linker_rendezvous()?.unwrap();
                 let debug_state_addr = VirtualAddress::new(debug_info.r_brk);
@@ -504,7 +576,7 @@ impl TargetExt for Rc<Target> {
                 let breakpoint = bp.downcast_mut::<super::breakpoint::Breakpoint>().unwrap();
                 let target_clone = self.clone();
                 breakpoint.install_hit_handler(move || {
-                    target_clone.reload_dynamic_libraries();
+                    target_clone.reload_dynamic_libraries()?;
                     Ok(true)
                 });
                 breakpoint.enable()?;

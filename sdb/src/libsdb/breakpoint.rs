@@ -102,6 +102,9 @@ impl Breakpoint {
 }
 
 impl StoppointTrait for Breakpoint {
+    fn resolve(&mut self) -> Result<(), SdbError> {
+        unimplemented!()
+    }
     fn id(&self) -> IdType {
         self.id
     }
@@ -257,6 +260,10 @@ impl FunctionBreakpoint {
 }
 
 impl StoppointTrait for FunctionBreakpoint {
+    fn resolve(&mut self) -> Result<(), SdbError> {
+        self.resolve()
+    }
+    
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }
@@ -390,6 +397,9 @@ impl LineBreakpoint {
 }
 
 impl StoppointTrait for LineBreakpoint {
+    fn resolve(&mut self) -> Result<(), SdbError> {
+        self.resolve()
+    }
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }
@@ -491,6 +501,10 @@ impl AddressBreakpoint {
 }
 
 impl StoppointTrait for AddressBreakpoint {
+    fn resolve(&mut self) -> Result<(), SdbError> {
+        self.resolve()
+    }
+    
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }

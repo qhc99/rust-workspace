@@ -13,6 +13,10 @@ unsafe impl Pod for r_debug {}
 
 unsafe impl Zeroable for r_debug {}
 
+unsafe impl Pod for link_map {}
+
+unsafe impl Zeroable for link_map {}
+
 pub fn demangle(name: &str) -> Option<String> {
     let sym = Symbol::new(name);
     if let Ok(sym) = sym {
