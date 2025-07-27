@@ -323,16 +323,6 @@ impl Target {
         Ok(String::new())
     }
 
-    /*
-    std::optional<r_debug>
-    sdb::target::read_dynamic_linker_rendezvous() const {
-        if (dynamic_linker_rendezvous_address_.addr()) {
-            return process_->read_memory_as<r_debug>(
-                dynamic_linker_rendezvous_address_);
-        }
-        return std::nullopt;
-    }
-     */
     pub fn read_dynamic_linker_rendezvous(&self) -> Result<Option<r_debug>, SdbError> {
         if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
             return Ok(Some(self.process.read_memory_as::<r_debug>(
