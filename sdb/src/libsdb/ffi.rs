@@ -2,11 +2,16 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(improper_ctypes)]
+use bytemuck::{Pod, Zeroable};
 use cpp_demangle::Symbol;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
 include!("bindings.rs");
+
+unsafe impl Pod for r_debug {}
+
+unsafe impl Zeroable for r_debug {}
 
 pub fn demangle(name: &str) -> Option<String> {
     let sym = Symbol::new(name);

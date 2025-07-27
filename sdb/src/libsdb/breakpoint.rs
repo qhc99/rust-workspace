@@ -326,62 +326,54 @@ impl LineBreakpoint {
     }
 
     pub fn resolve(&mut self) -> Result<(), SdbError> {
-        let dwarf = self
+        let entries = self
             .breakpoint
             .borrow()
             .target
             .upgrade()
             .unwrap()
-            .get_main_elf()
-            .upgrade()
-            .unwrap()
-            .get_dwarf();
-        for cu in dwarf.compile_units().iter() {
-            let entries = cu
-                .lines()
-                .get_entries_by_line(&self.file, self.line as u64)?;
-            for mut entry in entries {
-                let dwarf = entry.get_current().address.rc_elf_file().get_dwarf();
-                let stack = dwarf.inline_stack_at_address(&entry.get_current().address)?;
-                let no_inline_stack = stack.len() == 1;
-                let should_skip_prologue = no_inline_stack
-                    && (stack[0].contains(DW_AT_ranges.0 as u64)
-                        || stack[0].contains(DW_AT_low_pc.0 as u64))
-                    && stack[0].low_pc()? == entry.get_current().address;
-                if should_skip_prologue {
-                    entry.step()?;
-                }
-                let load_address = entry.get_current().address.to_virt_addr();
-                if !self
+            .get_line_entries_by_line(&self.file, self.line)?;
+        for mut entry in entries {
+            let dwarf = entry.get_current().address.rc_elf_file().get_dwarf();
+            let stack = dwarf.inline_stack_at_address(&entry.get_current().address)?;
+            let no_inline_stack = stack.len() == 1;
+            let should_skip_prologue = no_inline_stack
+                && (stack[0].contains(DW_AT_ranges.0 as u64)
+                    || stack[0].contains(DW_AT_low_pc.0 as u64))
+                && stack[0].low_pc()? == entry.get_current().address;
+            if should_skip_prologue {
+                entry.step()?;
+            }
+            let load_address = entry.get_current().address.to_virt_addr();
+            if !self
+                .breakpoint
+                .borrow()
+                .breakpoint_sites
+                .contains_address(load_address)
+            {
+                let new_site = self
                     .breakpoint
                     .borrow()
+                    .target
+                    .upgrade()
+                    .unwrap()
+                    .get_process()
+                    .create_breakpoint_site_from_breakpoint(
+                        &self.breakpoint,
+                        self.breakpoint.borrow().next_site_id,
+                        load_address,
+                        self.breakpoint.borrow().is_hardware,
+                        self.breakpoint.borrow().is_internal,
+                    )?;
+                self.breakpoint.borrow_mut().next_site_id += 1;
+                let new_site_weak = new_site.clone();
+                let new_site = new_site.upgrade().unwrap();
+                self.breakpoint
+                    .borrow_mut()
                     .breakpoint_sites
-                    .contains_address(load_address)
-                {
-                    let new_site = self
-                        .breakpoint
-                        .borrow()
-                        .target
-                        .upgrade()
-                        .unwrap()
-                        .get_process()
-                        .create_breakpoint_site_from_breakpoint(
-                            &self.breakpoint,
-                            self.breakpoint.borrow().next_site_id,
-                            load_address,
-                            self.breakpoint.borrow().is_hardware,
-                            self.breakpoint.borrow().is_internal,
-                        )?;
-                    self.breakpoint.borrow_mut().next_site_id += 1;
-                    let new_site_weak = new_site.clone();
-                    let new_site = new_site.upgrade().unwrap();
-                    self.breakpoint
-                        .borrow_mut()
-                        .breakpoint_sites
-                        .push_weak(new_site_weak);
-                    if self.breakpoint.borrow().is_enabled {
-                        new_site.borrow_mut().enable()?;
-                    }
+                    .push_weak(new_site_weak);
+                if self.breakpoint.borrow().is_enabled {
+                    new_site.borrow_mut().enable()?;
                 }
             }
         }

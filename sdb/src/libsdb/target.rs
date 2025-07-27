@@ -118,7 +118,7 @@ impl Target {
     pub fn get_pc_file_address(&self) -> FileAddress {
         self.process
             .get_pc()
-            .to_file_addr_elf(&self.main_elf.upgrade().unwrap())
+            .to_file_addr_elves(&self.elves.borrow())
     }
 
     pub fn step_in(&self) -> Result<StopReason, SdbError> {
@@ -284,22 +284,18 @@ impl Target {
             dwarf_functions: Vec::new(),
             elf_functions: Vec::new(),
         };
-        let dwarf_found = self
-            .main_elf
-            .upgrade()
-            .unwrap()
-            .get_dwarf()
-            .find_functions(name)?;
-        if dwarf_found.is_empty() {
-            let elf_found = self.main_elf.upgrade().unwrap().get_symbols_by_name(name);
-            for sym in &elf_found {
-                result
-                    .elf_functions
-                    .push((self.main_elf.upgrade().unwrap(), sym.clone()));
+        for elf in self.elves.borrow().iter() {
+            let dwarf_found = elf.get_dwarf().find_functions(name)?;
+            if dwarf_found.is_empty() {
+                let elf_found = elf.get_symbols_by_name(name);
+                for sym in &elf_found {
+                    result.elf_functions.push((elf.clone(), sym.clone()));
+                }
+            } else {
+                result.dwarf_functions.extend(dwarf_found);
             }
-        } else {
-            result.dwarf_functions.extend(dwarf_found);
         }
+
         Ok(result)
     }
 
@@ -308,7 +304,7 @@ impl Target {
     }
 
     pub fn function_name_at_address(&self, address: VirtualAddress) -> Result<String, SdbError> {
-        let file_address = address.to_file_addr_elf(&self.main_elf.upgrade().unwrap());
+        let file_address = address.to_file_addr_elves(&self.elves.borrow());
         if !file_address.has_elf() {
             return Ok(String::new());
         }
@@ -327,8 +323,23 @@ impl Target {
         Ok(String::new())
     }
 
-    pub fn read_dynamic_linker_rendezvous(&self) -> Option<r_debug> {
-        todo!()
+    /*
+    std::optional<r_debug>
+    sdb::target::read_dynamic_linker_rendezvous() const {
+        if (dynamic_linker_rendezvous_address_.addr()) {
+            return process_->read_memory_as<r_debug>(
+                dynamic_linker_rendezvous_address_);
+        }
+        return std::nullopt;
+    }
+     */
+    pub fn read_dynamic_linker_rendezvous(&self) -> Result<Option<r_debug>, SdbError> {
+        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
+            return Ok(Some(self.process.read_memory_as::<r_debug>(
+                *self.dynamic_linker_rendezvous_address.borrow(),
+            )?));
+        }
+        Ok(None)
     }
 
     fn reload_dynamic_libraries(&self) {
@@ -493,7 +504,7 @@ impl TargetExt for Rc<Target> {
                 *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
                 self.reload_dynamic_libraries();
 
-                let debug_info = self.read_dynamic_linker_rendezvous().unwrap();
+                let debug_info = self.read_dynamic_linker_rendezvous()?.unwrap();
                 let debug_state_addr = VirtualAddress::new(debug_info.r_brk);
                 let debug_state_bp =
                     self.create_address_breakpoint(debug_state_addr, false, true)?;
