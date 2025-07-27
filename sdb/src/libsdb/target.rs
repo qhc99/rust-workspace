@@ -15,7 +15,6 @@ use super::elf::ElfCollection;
 
 use super::ffi::r_debug;
 
-
 use super::breakpoint::AddressBreakpoint;
 use super::breakpoint::FunctionBreakpoint;
 use super::breakpoint::LineBreakpoint;
@@ -85,10 +84,13 @@ impl Target {
         let mut entry_bp = entry_bp as RefMut<'_, dyn Any>;
         let entry_bp = entry_bp.downcast_mut::<AddressBreakpoint>().unwrap();
         let tgt_clone = tgt.clone();
-        entry_bp.breakpoint.borrow_mut().install_hit_handler(move || {
-            tgt_clone.resolve_dynamic_linker_rendezvous()?;
-            Ok(true)
-        });
+        entry_bp
+            .breakpoint
+            .borrow_mut()
+            .install_hit_handler(move || {
+                tgt_clone.resolve_dynamic_linker_rendezvous()?;
+                Ok(true)
+            });
         entry_bp.enable()?;
         Ok(tgt)
     }
@@ -307,23 +309,29 @@ impl Target {
         let file_address = address.to_file_addr_elves(&self.elves.borrow());
         let obj = file_address.rc_elf_file();
         let func = obj.get_dwarf().function_containing_address(&file_address)?;
-        let elf_filename = obj.path().file_name()
+        let elf_filename = obj
+            .path()
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_string();
         let mut func_name = String::new();
 
-        if let Some(func) = func && let Some(name) = func.name()?{
+        if let Some(func) = func
+            && let Some(name) = func.name()?
+        {
             func_name = name;
         } else {
             let elf_func = obj.get_symbol_containing_file_address(file_address);
-            if let Some(elf_func) = elf_func && st_type(elf_func.0.st_info) == STT_FUNC {
+            if let Some(elf_func) = elf_func
+                && st_type(elf_func.0.st_info) == STT_FUNC
+            {
                 func_name = obj.get_string(elf_func.0.st_name as usize).to_string();
             }
         }
 
         if !func_name.is_empty() {
-            return Ok(format!("{}\\`{}", elf_filename, func_name));
+            return Ok(format!("{elf_filename}`{func_name}"));
         }
         Ok(String::new())
     }
@@ -416,11 +424,12 @@ impl Target {
 
 fn dump_vdso(process: &Process, address: VirtualAddress) -> Result<PathBuf, SdbError> {
     let tmp_dir = "/tmp/sdb-233456".to_string();
-    std::fs::create_dir_all(&tmp_dir).map_err(|_| SdbError::new_err("Cannot create temp directory"))?;
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|_| SdbError::new_err("Cannot create temp directory"))?;
     let mut vdso_dump_path = PathBuf::from(tmp_dir);
     vdso_dump_path.push("linux-vdso.so.1");
-    let mut vdso_dump =
-        std::fs::File::create(&vdso_dump_path).map_err(|_| SdbError::new_err("Cannot create vdso dump file"))?;
+    let mut vdso_dump = std::fs::File::create(&vdso_dump_path)
+        .map_err(|_| SdbError::new_err("Cannot create vdso dump file"))?;
     let vdso_header = process.read_memory_as::<SdbElf64Ehdr>(address)?;
     let vdso_size =
         vdso_header.0.e_shoff + vdso_header.0.e_shentsize as u64 * vdso_header.0.e_shnum as u64;
@@ -578,10 +587,13 @@ impl TargetExt for Rc<Target> {
                 let mut bp = bp_ref as RefMut<dyn std::any::Any>;
                 let breakpoint = bp.downcast_mut::<AddressBreakpoint>().unwrap();
                 let target_clone = self.clone();
-                breakpoint.breakpoint.borrow_mut().install_hit_handler(move || {
-                    target_clone.reload_dynamic_libraries()?;
-                    Ok(true)
-                });
+                breakpoint
+                    .breakpoint
+                    .borrow_mut()
+                    .install_hit_handler(move || {
+                        target_clone.reload_dynamic_libraries()?;
+                        Ok(true)
+                    });
                 breakpoint.enable()?;
             }
         }

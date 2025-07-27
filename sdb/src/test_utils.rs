@@ -197,4 +197,3 @@ pub fn append_ld_dir(dir: &str) {
 fn build_marshmallow() {
     BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
 }
-    

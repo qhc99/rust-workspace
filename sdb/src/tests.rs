@@ -805,6 +805,7 @@ fn source_level_breakpoint() {
 fn source_level_stepping() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let bin = BinBuilder::cpp("resource", &["step.cpp"]);
+    let file_name = bin.target_path().file_stem().unwrap().to_str().unwrap();
     let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
     target
@@ -818,16 +819,22 @@ fn source_level_stepping() {
     proc.resume().unwrap();
     proc.wait_on_signal().unwrap();
     let mut pc = proc.get_pc();
-    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+    assert_eq!(
+        target.function_name_at_address(pc).unwrap(),
+        format!("{file_name}`main")
+    );
     target.step_over().unwrap();
     let mut new_pc = proc.get_pc();
     assert_ne!(new_pc, pc);
-    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+    assert_eq!(
+        target.function_name_at_address(pc).unwrap(),
+        format!("{file_name}`main")
+    );
     target.step_in().unwrap();
     pc = proc.get_pc();
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
-        "find_happiness"
+        format!("{file_name}`find_happiness")
     );
     assert_eq!(target.get_stack().inline_height(), 2);
     target.step_in().unwrap();
@@ -839,11 +846,14 @@ fn source_level_stepping() {
     assert_ne!(new_pc, pc);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
-        "find_happiness"
+        format!("{file_name}`find_happiness")
     );
     target.step_out().unwrap();
     pc = proc.get_pc();
-    assert_eq!(target.function_name_at_address(pc).unwrap(), "main");
+    assert_eq!(
+        target.function_name_at_address(pc).unwrap(),
+        format!("{file_name}`main")
+    );
 }
 
 #[test]

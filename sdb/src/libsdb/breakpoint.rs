@@ -263,7 +263,7 @@ impl StoppointTrait for FunctionBreakpoint {
     fn resolve(&mut self) -> Result<(), SdbError> {
         self.resolve()
     }
-    
+
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }
@@ -504,7 +504,7 @@ impl StoppointTrait for AddressBreakpoint {
     fn resolve(&mut self) -> Result<(), SdbError> {
         self.resolve()
     }
-    
+
     fn id(&self) -> IdType {
         self.breakpoint.borrow().id
     }

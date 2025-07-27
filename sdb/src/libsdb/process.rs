@@ -214,7 +214,11 @@ impl Process {
 
     pub fn resume(&self) -> Result<(), SdbError> {
         let pc = self.get_pc();
-        if self.breakpoint_sites.borrow().enabled_breakpoint_at_address(pc) {
+        if self
+            .breakpoint_sites
+            .borrow()
+            .enabled_breakpoint_at_address(pc)
+        {
             let bp = self.breakpoint_sites.borrow().get_by_address(pc)?;
             bp.borrow_mut().disable()?;
             step(self.pid, None)
@@ -255,7 +259,9 @@ impl Process {
                     if reason.info == Signal::SIGTRAP as i32 {
                         if reason.trap_reason == Some(TrapType::SoftwareBreak)
                             && self.breakpoint_sites.borrow().contains_address(instr_begin)
-                            && self.breakpoint_sites.borrow()
+                            && self
+                                .breakpoint_sites
+                                .borrow()
                                 .get_by_address(instr_begin)?
                                 .borrow()
                                 .is_enabled()

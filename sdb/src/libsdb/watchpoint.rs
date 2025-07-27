@@ -34,7 +34,7 @@ impl StoppointTrait for WatchPoint {
     fn resolve(&mut self) -> Result<(), SdbError> {
         unimplemented!()
     }
-    
+
     fn id(&self) -> IdType {
         self.id
     }
