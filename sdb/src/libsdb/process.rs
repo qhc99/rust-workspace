@@ -222,11 +222,11 @@ impl Process {
     }
 
     pub fn resume_all_threads(&self) -> Result<(), SdbError> {
-        let threads = self.threads.borrow();
-        for (tid, _) in threads.iter() {
+        let tids = self.threads.borrow().iter().map(|(tid, _)| *tid).collect::<Vec<_>>();
+        for tid in tids.iter() {
             self.step_over_breakpoint(*tid)?;
         }
-        for (tid, _) in threads.iter() {
+        for tid in tids.iter() {
             self.send_continue(*tid)?;
         }
         Ok(())

@@ -226,8 +226,6 @@ impl Target {
 
     pub fn step_over(&self, otid: Option<Pid>) -> Result<StopReason, SdbError> {
         let tid = otid.unwrap_or(self.process.current_thread());
-        let thread = self.threads.borrow();
-        let thread = thread.get(&tid).unwrap();
         let stack = self.get_stack(Some(tid));
         let orig_line = self.line_entry_at_pc(Some(tid))?;
         let disas = Disassembler::new(&self.process);
@@ -241,7 +239,7 @@ impl Target {
                 let return_address = frame_to_skip.high_pc()?.to_virt_addr();
                 reason = self.run_until_address(return_address, Some(tid))?;
                 if !reason.is_step() || self.process.get_pc(Some(tid)) != return_address {
-                    thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+                    self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
                     return Ok(reason);
                 }
             } else {
@@ -251,13 +249,13 @@ impl Target {
                     if !reason.is_step()
                         || self.process.get_pc(Some(tid)) != instructions[1].address
                     {
-                        thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+                        self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
                         return Ok(reason);
                     }
                 } else {
                     reason = self.process.step_instruction(Some(tid))?;
                     if !reason.is_step() {
-                        thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+                        self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
                         return Ok(reason);
                     }
                 }
