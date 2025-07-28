@@ -147,10 +147,9 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
             StoppointId::BreakpointSite(id) => return Ok(format!(" (breakpoint {id})")),
             StoppointId::Watchpoint(id) => {
                 let point = process.watchpoints().borrow().get_by_id(id)?;
-                let point = point.borrow();
-                let mut msg = format!(" (watchpoint {})", point.id());
-                let point = point as Ref<'_, dyn Any>;
+                let point = point.borrow() as Ref<dyn Any>;
                 let point = point.downcast_ref::<WatchPoint>().unwrap();
+                let mut msg = format!(" (watchpoint {})", point.id());
                 if point.data() == point.previous_data() {
                     msg += &format!("\nValue: {:#x}", point.data());
                 } else {
@@ -354,7 +353,7 @@ fn handle_watchpoint_list(process: &Process) -> Result<(), SdbError> {
     } else {
         println!("Current watchpoints:");
         watchpoints.for_each(|w| {
-            let w = w.borrow() as Ref<'_, dyn Any>;
+            let w = w.borrow() as Ref<dyn Any>;
             let w = w.downcast_ref::<WatchPoint>().unwrap();
             println!(
                 "{}: address = {:#x}, mode = {}, size = {}, {}",
@@ -603,7 +602,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                 id if id == TypeId::of::<AddressBreakpoint>() => {
                     print!(
                         "address = {:#x}",
-                        (bp.borrow() as Ref<'_, dyn Any>)
+                        (bp.borrow() as Ref<dyn Any>)
                             .downcast_ref::<AddressBreakpoint>()
                             .unwrap()
                             .address()
@@ -612,7 +611,7 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                 id if id == TypeId::of::<FunctionBreakpoint>() => {
                     print!(
                         "function = {}",
-                        (bp.borrow() as Ref<'_, dyn Any>)
+                        (bp.borrow() as Ref<dyn Any>)
                             .downcast_ref::<FunctionBreakpoint>()
                             .unwrap()
                             .function_name()
@@ -621,13 +620,13 @@ fn handle_breakpoint_list_command(target: &Rc<Target>) -> Result<(), SdbError> {
                 id if id == TypeId::of::<LineBreakpoint>() => {
                     print!(
                         "file = {}, line = {}",
-                        (bp.borrow() as Ref<'_, dyn Any>)
+                        (bp.borrow() as Ref<dyn Any>)
                             .downcast_ref::<LineBreakpoint>()
                             .unwrap()
                             .file()
                             .to_str()
                             .unwrap(),
-                        (bp.borrow() as Ref<'_, dyn Any>)
+                        (bp.borrow() as Ref<dyn Any>)
                             .downcast_ref::<LineBreakpoint>()
                             .unwrap()
                             .line()

@@ -104,7 +104,7 @@ impl Target {
         let entry_bp = tgt.create_address_breakpoint(entry_point, false, true)?;
         let entry_bp = entry_bp.upgrade().unwrap();
         let entry_bp = entry_bp.borrow_mut();
-        let mut entry_bp = entry_bp as RefMut<'_, dyn Any>;
+        let mut entry_bp = entry_bp as RefMut<dyn Any>;
         let entry_bp = entry_bp.downcast_mut::<AddressBreakpoint>().unwrap();
         let tgt_clone = tgt.clone();
         entry_bp
