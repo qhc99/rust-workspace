@@ -18,6 +18,9 @@ use rustyline::error::ReadlineError;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::{env, process::exit};
+
+use libsdb::process::StopReason;
+use libsdb::process::ProcessState;
 mod libsdb;
 mod test_utils;
 mod tests;
@@ -41,6 +44,16 @@ extern "C" fn handle_sigint(_: c_int) {
     }
 }
 
+fn thread_lifecycle_callback(reason: &StopReason) {
+    let action = match reason.reason {
+        ProcessState::Exited => "exited",
+        ProcessState::Terminated => "terminated",
+        ProcessState::Stopped => "created",
+        _ => "unexpected state",
+    };
+    println!("Thread {} {}", reason.tid, action);
+}
+
 #[cfg(target_os = "linux")]
 fn main() {
     use nix::sys::signal::SigHandler;
@@ -60,6 +73,7 @@ fn main() {
             unsafe {
                 signal(Signal::SIGINT, SigHandler::Handler(handle_sigint)).unwrap();
             }
+            process.install_thread_lifecycle_callback(thread_lifecycle_callback);
             main_loop(&target);
         }
         err => err.log_error(),

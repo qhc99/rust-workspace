@@ -80,35 +80,35 @@ pub fn attach(args: &[&str]) -> Result<Rc<Target>, SdbError> {
 fn print_stop_reason(target: &Target, reason: StopReason) -> Result<(), SdbError> {
     let process = &target.get_process();
     let pid = process.pid();
-    let msg_start = format!("Process {pid}");
-    let msg = match reason.reason {
+    match reason.reason {
         ProcessState::Exited => {
             let info = reason.info;
-            format!("{msg_start} exited with status {info}")
+            println!("Process {pid} exited with status {info}");
         }
         ProcessState::Terminated => {
             let sig: Signal = reason.info.try_into().unwrap();
-            format!("{msg_start} terminated with signal {}", sig.as_str())
+            println!("Process {pid} terminated with signal {}", sig.as_str());
         }
-        ProcessState::Stopped => get_signal_stop_reason(target, reason)?,
+        ProcessState::Stopped => {
+            get_signal_stop_reason(target, reason)?;
+            println!("Thread {} {}", reason.tid, get_signal_stop_reason(target, reason)?);
+        },
         ProcessState::Running => {
             eprintln!("Incorrect state");
-            String::new()
         }
     };
-    println!("Process {pid} {msg}");
     Ok(())
 }
 
 fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String, SdbError> {
     let process = target.get_process();
-    let pc = process.get_pc(None);
+    let pc = process.get_pc(Some(reason.tid));
     let mut msg = format!(
         "stopped with signal {} at {:#x}\n",
         sig_abbrev(reason.info),
         pc.addr()
     );
-    let line = target.line_entry_at_pc(None)?;
+    let line = target.line_entry_at_pc(Some(reason.tid))?;
     if !line.is_end() {
         let file = line
             .get_current()
@@ -137,11 +137,11 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
         let site = process
             .breakpoint_sites()
             .borrow()
-            .get_by_address(process.get_pc(None))?;
+            .get_by_address(process.get_pc(Some(reason.tid)))?;
         return Ok(format!(" (breakpoint {})", site.borrow().id()));
     }
     if reason.trap_reason == Some(TrapType::HardwareBreak) {
-        let id = process.get_current_hardware_stoppoint(None)?;
+        let id = process.get_current_hardware_stoppoint(Some(reason.tid))?;
 
         match id {
             StoppointId::BreakpointSite(id) => return Ok(format!(" (breakpoint {id})")),
@@ -192,7 +192,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     let process = &target.get_process();
     let cmd = args[0];
     if cmd == "continue" {
-        process.resume(None)?;
+        process.resume_all_threads()?;
         let reason = process.wait_on_signal(Pid::from_raw(-1))?;
         handle_stop(target, reason)?;
     } else if cmd == "help" {
@@ -229,8 +229,35 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
         print_code_location(target)?;
     } else if cmd == "backtrace" {
         print_backtrace(target)?;
+    } else if cmd == "thread" {
+        handle_thread_command(target, &args)?;
     } else {
         eprintln!("Unknown command");
+    }
+    Ok(())
+}
+
+fn handle_thread_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() < 2 {
+        print_help(&["help", "thread"]);
+        return Ok(());
+    }
+    if args[1] == "list" {
+        for (tid, thread) in target.threads().borrow().iter() {
+            let prefix = if *tid == target.get_process().current_thread() {
+                "*"
+            } else {
+                " "
+            };
+            println!("{prefix}Thread {tid}: {}", get_signal_stop_reason(target, thread.state.upgrade().unwrap().borrow().reason)?);
+        }
+    } else if args[1] == "select" {
+        if args.len() != 3 {
+            print_help(&["help", "thread"]);
+            return Ok(());
+        }
+        let tid = i32::from_integral(args[2])?;
+        target.get_process().set_current_thread(Pid::from_raw(tid));
     }
     Ok(())
 }
@@ -801,6 +828,7 @@ fn print_help(args: &[&str]) {
             watchpoint - Commands for operating on watchpoints
             down        - Select the stack frame below the current one
             up          - Select the stack frame above the current one
+            thread      - Commands for operating on threads
         "
         });
     } else if args[1] == "register" {
@@ -849,6 +877,12 @@ fn print_help(args: &[&str]) {
             syscall
             syscall none
             syscall <list of syscall IDs or names>
+        "})
+    } else if args[1] == "thread" {
+        eprintln!(indoc! {"
+            Available commands:
+            list
+            select <thread ID>
         "})
     }
 }

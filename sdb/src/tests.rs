@@ -11,6 +11,8 @@ use std::{
 
 use libsdb::target::{Target, TargetExt};
 
+use crate::test_utils::append_ld_dir;
+
 use super::test_utils::BinBuilder;
 use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
@@ -761,7 +763,7 @@ fn source_level_breakpoint() {
         .unwrap();
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-    let entry = target.line_entry_at_pc().unwrap();
+    let entry = target.line_entry_at_pc(None).unwrap();
     assert_eq!(
         entry
             .get_current()
@@ -792,10 +794,10 @@ fn source_level_breakpoint() {
     lowest_bkpt.unwrap().borrow_mut().disable().unwrap();
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-    assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 9);
+    assert_eq!(target.line_entry_at_pc(None).unwrap().get_current().line, 9);
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-    assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 13);
+    assert_eq!(target.line_entry_at_pc(None).unwrap().get_current().line, 13);
     proc.resume(None).unwrap();
     let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(reason.reason, ProcessState::Exited);
@@ -823,32 +825,32 @@ fn source_level_stepping() {
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`main")
     );
-    target.step_over().unwrap();
+    target.step_over(None).unwrap();
     let mut new_pc = proc.get_pc(None);
     assert_ne!(new_pc, pc);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`main")
     );
-    target.step_in().unwrap();
+    target.step_in(None).unwrap();
     pc = proc.get_pc(None);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`find_happiness")
     );
-    assert_eq!(target.get_stack().inline_height(), 2);
-    target.step_in().unwrap();
+    assert_eq!(target.get_stack(None).borrow().inline_height(), 2);
+    target.step_in(None).unwrap();
     new_pc = proc.get_pc(None);
     assert_eq!(new_pc, pc);
-    assert_eq!(target.get_stack().inline_height(), 1);
-    target.step_out().unwrap();
+    assert_eq!(target.get_stack(None).borrow().inline_height(), 1);
+    target.step_out(None).unwrap();
     new_pc = proc.get_pc(None);
     assert_ne!(new_pc, pc);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`find_happiness")
     );
-    target.step_out().unwrap();
+    target.step_out(None).unwrap();
     pc = proc.get_pc(None);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
@@ -871,9 +873,10 @@ fn stack_unwinding() {
         .unwrap();
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-    target.step_in().unwrap();
-    target.step_in().unwrap();
-    let stack = target.get_stack();
+    target.step_in(None).unwrap();
+    target.step_in(None).unwrap();
+    let stack = target.get_stack(None);
+    let stack = stack.borrow();
     let frames = stack.frames();
     let expected_names = vec!["scratch_ears", "pet_cat", "find_happiness", "main"];
     for (i, frame) in frames.iter().enumerate() {
@@ -909,9 +912,9 @@ fn shared_library_tracing_works() {
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    assert_eq!(target.get_stack().frames().len(), 2);
+    assert_eq!(target.get_stack(None).borrow().frames().len(), 2);
     assert_eq!(
-        target.get_stack().frames()[0]
+        target.get_stack(None).borrow().frames()[0]
             .func_die
             .name()
             .unwrap()
@@ -919,7 +922,7 @@ fn shared_library_tracing_works() {
         "libmeow_client_is_cute"
     );
     assert_eq!(
-        target.get_stack().frames()[1]
+        target.get_stack(None).borrow().frames()[1]
             .func_die
             .name()
             .unwrap()
@@ -928,7 +931,7 @@ fn shared_library_tracing_works() {
     );
     assert_eq!(
         target
-            .get_pc_file_address()
+            .get_pc_file_address(None)
             .rc_elf_file()
             .path()
             .file_name()
