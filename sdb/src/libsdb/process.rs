@@ -899,7 +899,11 @@ pub trait ProcessExt {
 
     fn populate_existing_threads(&self);
 
-    fn handle_signal(&self, reason: StopReason, is_main_stop: bool) -> Result<Option<StopReason>, SdbError> ;
+    fn handle_signal(
+        &self,
+        reason: StopReason,
+        is_main_stop: bool,
+    ) -> Result<Option<StopReason>, SdbError>;
 
     fn wait_on_signal(&self, to_await: Pid /* -1 */) -> Result<StopReason, SdbError>;
 
