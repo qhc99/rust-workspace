@@ -1,3 +1,5 @@
+use super::target::TargetExt;
+
 use super::breakpoint::Breakpoint;
 
 use super::bit::from_bytes;
@@ -196,6 +198,8 @@ pub enum SyscallData {
     Ret(i64),
 }
 
+type HitHandler = Option<Box<dyn Fn(&StopReason)>>;
+
 pub struct Process {
     pid: Pid,
     terminate_on_end: bool,       // true
@@ -209,7 +213,7 @@ pub struct Process {
     target: RefCell<Option<Weak<Target>>>,
     threads: RefCell<HashMap<Pid, Rc<RefCell<ThreadState>>>>,
     current_thread: RefCell<Pid>,
-    thread_lifecycle_callback: RefCell<Option<Box<dyn Fn(&StopReason)>>>,
+    thread_lifecycle_callback: RefCell<HitHandler>,
 }
 
 impl Process {
@@ -226,40 +230,6 @@ impl Process {
             self.send_continue(*tid)?;
         }
         Ok(())
-    }
-
-    pub fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
-        let threads = self.threads.borrow();
-        let mut to_remove = Vec::new();
-        let mut to_report = None;
-        for (tid, thread) in threads.iter() {
-            if *tid != main_stop_tid
-                && (thread.borrow().state == ProcessState::Exited
-                    || thread.borrow().state == ProcessState::Terminated)
-            {
-                self.report_thread_lifecycle_event(&thread.borrow().stop_reason);
-                to_remove.push(*tid);
-                if *tid == self.pid {
-                    to_report = Some(thread.borrow().stop_reason);
-                }
-            }
-        }
-        for tid in to_remove {
-            self.threads.borrow_mut().remove(&tid);
-        }
-        to_report
-    }
-
-    pub fn report_thread_lifecycle_event(&self, reason: &StopReason) {
-        if let Some(callback) = self.thread_lifecycle_callback.borrow().as_ref() {
-            callback(reason);
-        }
-        if let Some(target) = self.target.borrow().as_ref() {
-            target
-                .upgrade()
-                .unwrap()
-                .notify_thread_lifecycle_event(reason);
-        }
     }
 
     fn send_continue(&self, tid: Pid) -> Result<(), SdbError> {
@@ -910,9 +880,47 @@ pub trait ProcessExt {
     fn step_instruction(&self, otid: Option<Pid> /* None */) -> Result<StopReason, SdbError>;
 
     fn stop_running_threads(&self) -> Result<(), SdbError>;
+
+    fn report_thread_lifecycle_event(&self, reason: &StopReason);
+
+    fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason>;
 }
 
 impl ProcessExt for Rc<Process> {
+    fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
+        let threads = self.threads.borrow();
+        let mut to_remove = Vec::new();
+        let mut to_report = None;
+        for (tid, thread) in threads.iter() {
+            if *tid != main_stop_tid
+                && (thread.borrow().state == ProcessState::Exited
+                    || thread.borrow().state == ProcessState::Terminated)
+            {
+                self.report_thread_lifecycle_event(&thread.borrow().reason);
+                to_remove.push(*tid);
+                if *tid == self.pid {
+                    to_report = Some(thread.borrow().reason);
+                }
+            }
+        }
+        for tid in to_remove {
+            self.threads.borrow_mut().remove(&tid);
+        }
+        to_report
+    }
+
+    fn report_thread_lifecycle_event(&self, reason: &StopReason) {
+        if let Some(callback) = self.thread_lifecycle_callback.borrow().as_ref() {
+            callback(reason);
+        }
+        if let Some(target) = self.target.borrow().as_ref() {
+            target
+                .upgrade()
+                .unwrap()
+                .notify_thread_lifecycle_event(reason);
+        }
+    }
+
     fn stop_running_threads(&self) -> Result<(), SdbError> {
         let threads = self.threads.borrow().clone();
         for (tid, thread) in threads.iter() {
@@ -949,7 +957,7 @@ impl ProcessExt for Rc<Process> {
 
                 let mut temp_mut = self.threads.borrow_mut();
                 let mut temp_mut = temp_mut.get_mut(tid).unwrap().borrow_mut();
-                temp_mut.stop_reason = thread_reason;
+                temp_mut.reason = thread_reason;
                 temp_mut.state = thread_reason.reason;
             }
         }
@@ -1010,7 +1018,7 @@ impl ProcessExt for Rc<Process> {
         let thread = self.threads.borrow().get(&tid).unwrap().clone();
         {
             let mut thread_state = thread.borrow_mut();
-            thread_state.stop_reason = reason;
+            thread_state.reason = reason;
             thread_state.state = reason.reason;
         }
 
@@ -1024,7 +1032,7 @@ impl ProcessExt for Rc<Process> {
             }
         }
 
-        self.stop_running_threads();
+        self.stop_running_threads()?;
         reason = self.cleanup_exited_threads(tid).unwrap_or(reason);
 
         *self.state.borrow_mut() = reason.reason;
@@ -1112,7 +1120,7 @@ impl ProcessExt for Rc<Process> {
             }
 
             if let Some(target_weak) = self.target.borrow().as_ref() {
-                target_weak.upgrade().unwrap().notify_stop(&reason);
+                target_weak.upgrade().unwrap().notify_stop(&reason)?;
             }
         }
 
@@ -1139,7 +1147,7 @@ impl ProcessExt for Rc<Process> {
                     ThreadState::builder()
                         .tid(tid)
                         .regs(Rc::new(RefCell::new(Registers::new(
-                            &Rc::downgrade(&self),
+                            &Rc::downgrade(self),
                             tid,
                         ))))
                         .build(),
@@ -1230,7 +1238,7 @@ pub struct ThreadState {
     tid: Pid,
     regs: Rc<RefCell<Registers>>,
     #[builder(default = StopReason::builder().build())]
-    stop_reason: StopReason,
+    pub reason: StopReason,
     #[builder(default = ProcessState::Stopped)]
     state: ProcessState,
     #[builder(default = false)]

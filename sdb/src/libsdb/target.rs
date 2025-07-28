@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -57,10 +57,6 @@ impl Target {
         &self.threads
     }
 
-    pub fn notify_thread_lifecycle_event(&self, reason: &StopReason) {
-        todo!()
-    }
-
     fn new(process: Rc<Process>, elf: Rc<Elf>) -> Rc<Self> {
         Rc::new_cyclic(|weak_self| Self {
             process: process.clone(),
@@ -73,13 +69,12 @@ impl Target {
             breakpoints: RefCell::new(StoppointCollection::default()),
             dynamic_linker_rendezvous_address: RefCell::new(VirtualAddress::default()),
             threads: RefCell::new({
-                let pid = process.pid();
                 let threads = process.thread_states();
                 let mut ret = HashMap::new();
                 for (tid, state) in threads.borrow().iter() {
                     ret.insert(
                         *tid,
-                        SdbThread::new(Rc::downgrade(&state), Stack::new(weak_self)),
+                        SdbThread::new(Rc::downgrade(state), Stack::new(weak_self, *tid)),
                     );
                 }
                 ret
@@ -87,12 +82,9 @@ impl Target {
         })
     }
 
-    pub fn get_stack(&self) -> Ref<Stack> {
-        self.stack.borrow()
-    }
-
-    pub fn get_stack_mut(&self) -> RefMut<Stack> {
-        self.stack.borrow_mut()
+    pub fn get_stack(&self, otid: Option<Pid>) -> Rc<RefCell<Stack>> {
+        let tid = otid.unwrap_or(self.process.current_thread());
+        self.threads.borrow().get(&tid).unwrap().frames.clone()
     }
 
     pub fn launch(path: &Path, stdout_replacement: Option<i32>) -> Result<Rc<Self>, SdbError> {
@@ -136,76 +128,95 @@ impl Target {
         self.main_elf.clone()
     }
 
-    pub fn notify_stop(&self, _reason: &StopReason) -> Result<(), SdbError> {
-        self.stack.borrow_mut().unwind()
+    pub fn notify_stop(&self, reason: &StopReason) -> Result<(), SdbError> {
+        self.threads
+            .borrow()
+            .get(&reason.tid)
+            .unwrap()
+            .frames
+            .borrow_mut()
+            .unwind()
     }
 
-    pub fn get_pc_file_address(&self) -> FileAddress {
+    pub fn get_pc_file_address(&self, otid: Option<Pid>) -> FileAddress {
         self.process
-            .get_pc(None)
+            .get_pc(otid)
             .to_file_addr_elves(&self.elves.borrow())
     }
 
-    pub fn step_in(&self) -> Result<StopReason, SdbError> {
-        if self.get_stack().inline_height() > 0 {
-            self.get_stack_mut().simulate_inlined_step_in();
-            return Ok(StopReason::builder()
+    pub fn step_in(&self, otid: Option<Pid>) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.process.current_thread());
+        let stack = self.get_stack(Some(tid));
+        let thread = self.threads.borrow();
+        let thread = thread.get(&tid).unwrap();
+        if stack.borrow().inline_height() > 0 {
+            stack.borrow_mut().simulate_inlined_step_in();
+            let reason = StopReason::builder()
+                .tid(tid)
                 .reason(ProcessState::Stopped)
                 .info(SIGTRAP)
                 .trap_reason(Some(TrapType::SingleStep))
-                .build());
+                .build();
+            thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+            return Ok(reason);
         }
-        let orig_line = self.line_entry_at_pc()?;
+        let orig_line = self.line_entry_at_pc(Some(tid))?;
         loop {
-            let reason = self.process.step_instruction(None)?;
+            let reason = self.process.step_instruction(Some(tid))?;
             if !reason.is_step() {
+                thread.state.upgrade().unwrap().borrow_mut().reason = reason;
                 return Ok(reason);
             }
-            if !((self.line_entry_at_pc()? == orig_line
-                || self.line_entry_at_pc()?.get_current().end_sequence)
-                && !self.line_entry_at_pc()?.is_end())
+            if !((self.line_entry_at_pc(Some(tid))? == orig_line
+                || self.line_entry_at_pc(Some(tid))?.get_current().end_sequence)
+                && !self.line_entry_at_pc(Some(tid))?.is_end())
             {
                 break;
             }
         }
-        let pc = self.get_pc_file_address();
+        let pc = self.get_pc_file_address(Some(tid));
         if pc.has_elf() {
             let dwarf = pc.rc_elf_file().get_dwarf();
             let func = dwarf.function_containing_address(&pc)?;
             if func.is_some() && func.as_ref().unwrap().low_pc()? == pc {
-                let mut line = self.line_entry_at_pc()?;
+                let mut line = self.line_entry_at_pc(Some(tid))?;
                 if !line.is_end() {
                     line.step()?;
-                    return self.run_until_address(line.get_current().address.to_virt_addr());
+                    return self
+                        .run_until_address(line.get_current().address.to_virt_addr(), Some(tid));
                 }
             }
         }
         Ok(StopReason::builder()
+            .tid(tid)
             .reason(ProcessState::Stopped)
             .info(SIGTRAP)
             .trap_reason(Some(TrapType::SingleStep))
             .build())
     }
 
-    pub fn step_out(&self) -> Result<StopReason, SdbError> {
-        let inline_stack = self.get_stack().inline_stack_at_pc()?;
+    pub fn step_out(&self, otid: Option<Pid>) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.process.current_thread());
+        let stack = self.get_stack(Some(tid));
+        let inline_stack = stack.borrow().inline_stack_at_pc()?;
         let has_inline_frames = inline_stack.len() > 1;
-        let at_inline_frame =
-            (self.get_stack().inline_height() as usize) < (inline_stack.len() - 1);
+        let at_inline_frame = (stack.borrow().inline_height() as usize) < (inline_stack.len() - 1);
         if has_inline_frames && at_inline_frame {
             let current_frame =
-                &inline_stack[inline_stack.len() - self.get_stack().inline_height() as usize - 1];
+                &inline_stack[inline_stack.len() - stack.borrow().inline_height() as usize - 1];
             let return_address = current_frame.high_pc()?.to_virt_addr();
-            return self.run_until_address(return_address);
+            return self.run_until_address(return_address, Some(tid));
         }
-        let stack = self.stack.borrow();
-        let regs = &stack.frames()[stack.current_frame_index() + 1].registers;
-        let return_address = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)?);
+
+        let return_address = VirtualAddress::new(
+            stack.borrow().frames()[stack.borrow().current_frame_index() + 1]
+                .registers
+                .read_by_id_as::<u64>(RegisterId::rip)?,
+        );
         let mut reason = StopReason::builder().build();
-        drop(stack);
-        let frames = self.stack.borrow().frames().len();
-        while self.stack.borrow().frames().len() >= frames {
-            reason = self.run_until_address(return_address)?;
+        let frames = stack.borrow().frames().len();
+        while stack.borrow().frames().len() >= frames {
+            reason = self.run_until_address(return_address, Some(tid))?;
             if !reason.is_breakpoint() || self.process.get_pc(None) != return_address {
                 return Ok(reason);
             }
@@ -213,39 +224,48 @@ impl Target {
         Ok(reason)
     }
 
-    pub fn step_over(&self) -> Result<StopReason, SdbError> {
-        let orig_line = self.line_entry_at_pc()?;
+    pub fn step_over(&self, otid: Option<Pid>) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.process.current_thread());
+        let thread = self.threads.borrow();
+        let thread = thread.get(&tid).unwrap();
+        let stack = self.get_stack(Some(tid));
+        let orig_line = self.line_entry_at_pc(Some(tid))?;
         let disas = Disassembler::new(&self.process);
         let mut reason;
         loop {
-            let inline_stack = self.get_stack().inline_stack_at_pc()?;
-            let at_start_of_inline_frame = self.get_stack().inline_height() > 0;
+            let inline_stack = stack.borrow().inline_stack_at_pc()?;
+            let at_start_of_inline_frame = stack.borrow().inline_height() > 0;
             if at_start_of_inline_frame {
                 let frame_to_skip =
-                    &inline_stack[inline_stack.len() - self.get_stack().inline_height() as usize];
+                    &inline_stack[inline_stack.len() - stack.borrow().inline_height() as usize];
                 let return_address = frame_to_skip.high_pc()?.to_virt_addr();
-                reason = self.run_until_address(return_address)?;
-                if !reason.is_step() || self.process.get_pc(None) != return_address {
+                reason = self.run_until_address(return_address, Some(tid))?;
+                if !reason.is_step() || self.process.get_pc(Some(tid)) != return_address {
+                    thread.state.upgrade().unwrap().borrow_mut().reason = reason;
                     return Ok(reason);
                 }
             } else {
-                let instructions = disas.disassemble(2, Some(self.process.get_pc(None)))?;
+                let instructions = disas.disassemble(2, Some(self.process.get_pc(Some(tid))))?;
                 if instructions[0].text.rfind("call") == Some(0) {
-                    reason = self.run_until_address(instructions[1].address)?;
-                    if !reason.is_step() || self.process.get_pc(None) != instructions[1].address {
+                    reason = self.run_until_address(instructions[1].address, Some(tid))?;
+                    if !reason.is_step()
+                        || self.process.get_pc(Some(tid)) != instructions[1].address
+                    {
+                        thread.state.upgrade().unwrap().borrow_mut().reason = reason;
                         return Ok(reason);
                     }
                 } else {
-                    reason = self.process.step_instruction(None)?;
+                    reason = self.process.step_instruction(Some(tid))?;
                     if !reason.is_step() {
+                        thread.state.upgrade().unwrap().borrow_mut().reason = reason;
                         return Ok(reason);
                     }
                 }
             }
 
-            if !((self.line_entry_at_pc()? == orig_line
-                || self.line_entry_at_pc()?.get_current().end_sequence)
-                && !self.line_entry_at_pc()?.is_end())
+            if !((self.line_entry_at_pc(Some(tid))? == orig_line
+                || self.line_entry_at_pc(Some(tid))?.get_current().end_sequence)
+                && !self.line_entry_at_pc(Some(tid))?.is_end())
             {
                 break;
             }
@@ -253,8 +273,8 @@ impl Target {
         Ok(reason)
     }
 
-    pub fn line_entry_at_pc(&self) -> Result<LineTableIter, SdbError> {
-        let pc = self.get_pc_file_address();
+    pub fn line_entry_at_pc(&self, otid: Option<Pid>) -> Result<LineTableIter, SdbError> {
+        let pc = self.get_pc_file_address(otid);
         if !pc.has_elf() {
             return Ok(LineTableIter::default());
         }
@@ -266,7 +286,12 @@ impl Target {
         cu.unwrap().lines().get_entry_by_address(&pc)
     }
 
-    fn run_until_address(&self, address: VirtualAddress) -> Result<StopReason, SdbError> {
+    fn run_until_address(
+        &self,
+        address: VirtualAddress,
+        otid: Option<Pid>,
+    ) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.process.current_thread());
         let mut breakpoint_to_remove = None;
         if !self
             .process
@@ -283,9 +308,9 @@ impl Target {
                 .borrow_mut()
                 .enable()?;
         }
-        self.process.resume(None)?;
-        let mut reason = self.process.wait_on_signal(Pid::from_raw(-1))?;
-        if reason.is_breakpoint() && self.process.get_pc(None) == address {
+        self.process.resume(Some(tid))?;
+        let mut reason = self.process.wait_on_signal(tid)?;
+        if reason.is_breakpoint() && self.process.get_pc(Some(tid)) == address {
             reason.trap_reason = Some(TrapType::SingleStep);
         }
         if breakpoint_to_remove.is_some() {
@@ -301,6 +326,15 @@ impl Target {
                         .address()
                 })?;
         }
+        self.threads
+            .borrow_mut()
+            .get_mut(&tid)
+            .unwrap()
+            .state
+            .upgrade()
+            .unwrap()
+            .borrow_mut()
+            .reason = reason;
         Ok(reason)
     }
 
@@ -487,9 +521,30 @@ pub trait TargetExt {
     ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
 
     fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError>;
+
+    fn notify_thread_lifecycle_event(&self, reason: &StopReason);
 }
 
 impl TargetExt for Rc<Target> {
+    fn notify_thread_lifecycle_event(&self, reason: &StopReason) {
+        let tid = reason.tid;
+        if reason.reason == ProcessState::Stopped {
+            let state = self
+                .process
+                .thread_states()
+                .borrow()
+                .get(&tid)
+                .unwrap()
+                .clone();
+            self.threads.borrow_mut().insert(
+                tid,
+                SdbThread::new(Rc::downgrade(&state), Stack::new(&Rc::downgrade(self), tid)),
+            );
+        } else {
+            self.threads.borrow_mut().remove(&tid);
+        }
+    }
+
     fn create_address_breakpoint(
         &self,
         address: VirtualAddress,
@@ -626,12 +681,15 @@ fn create_loaded_elf(proc: &Process, path: &Path) -> Result<Rc<Elf>, SdbError> {
 
 #[derive(TypedBuilder)]
 pub struct SdbThread {
-    state: Weak<ThreadState>,
-    frames: Stack,
+    pub state: Weak<RefCell<ThreadState>>,
+    pub frames: Rc<RefCell<Stack>>,
 }
 
 impl SdbThread {
-    pub fn new(state: Weak<ThreadState>, frames: Stack) -> Self {
-        Self { state, frames }
+    pub fn new(state: Weak<RefCell<ThreadState>>, frames: Stack) -> Self {
+        Self {
+            state,
+            frames: Rc::new(RefCell::new(frames)),
+        }
     }
 }

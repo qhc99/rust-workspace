@@ -34,7 +34,7 @@ impl Stack {
     pub fn reset_inline_height(&mut self) -> Result<(), SdbError> {
         let stack = self.inline_stack_at_pc()?;
         self.inline_height = 0;
-        let pc = self.get_target().get_pc_file_address();
+        let pc = self.get_target().get_pc_file_address(None);
         for it in stack.iter().rev() {
             if it.low_pc()? == pc {
                 self.inline_height += 1;
@@ -46,7 +46,7 @@ impl Stack {
     }
 
     pub fn inline_stack_at_pc(&self) -> Result<Vec<Rc<Die>>, SdbError> {
-        let pc = self.get_target().get_pc_file_address();
+        let pc = self.get_target().get_pc_file_address(Some(self.tid));
         if !pc.has_elf() {
             return Ok(vec![]);
         }
@@ -70,10 +70,10 @@ impl Stack {
         self.reset_inline_height()?;
         self.current_frame = self.inline_height as usize;
         let target = self.get_target();
-        let mut virt_pc = target.get_process().get_pc(None);
-        let mut file_pc = target.get_pc_file_address();
+        let mut virt_pc = target.get_process().get_pc(Some(self.tid));
+        let mut file_pc = target.get_pc_file_address(Some(self.tid));
         let proc = target.get_process();
-        let mut regs = proc.get_registers(None).borrow().clone();
+        let mut regs = proc.get_registers(Some(self.tid)).borrow().clone();
 
         self.frames.clear();
         if !file_pc.has_elf() {

@@ -108,7 +108,7 @@ fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String,
         sig_abbrev(reason.info),
         pc.addr()
     );
-    let line = target.line_entry_at_pc()?;
+    let line = target.line_entry_at_pc(None)?;
     if !line.is_end() {
         let file = line
             .get_current()
@@ -210,22 +210,22 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     } else if cmd == "catchpoint" {
         handle_catchpoint_command(process, &args)?;
     } else if cmd == "next" {
-        let reason = target.step_over()?;
+        let reason = target.step_over(None)?;
         handle_stop(target, reason)?;
     } else if cmd == "finish" {
-        let reason = target.step_out()?;
+        let reason = target.step_out(None)?;
         handle_stop(target, reason)?;
     } else if cmd == "step" {
-        let reason = target.step_in()?;
+        let reason = target.step_in(None)?;
         handle_stop(target, reason)?;
     } else if cmd == "stepi" {
         let reason = process.step_instruction(None)?;
         handle_stop(target, reason)?;
     } else if cmd == "up" {
-        target.get_stack_mut().up();
+        target.get_stack(None).borrow_mut().up();
         print_code_location(target)?;
     } else if cmd == "down" {
-        target.get_stack_mut().down();
+        target.get_stack(None).borrow_mut().down();
         print_code_location(target)?;
     } else if cmd == "backtrace" {
         print_backtrace(target)?;
@@ -236,14 +236,14 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
 }
 
 fn print_backtrace(target: &Rc<Target>) -> Result<(), SdbError> {
-    let stack = target.get_stack();
-    for (i, frame) in stack.frames().iter().enumerate() {
+    let stack = target.get_stack(None);
+    for (i, frame) in stack.borrow().frames().iter().enumerate() {
         let pc = frame.backtrace_report_address;
         let func_name = target.function_name_at_address(pc)?;
 
         let mut message = format!(
             "{}[{}]: {:#x} {}",
-            if i == stack.current_frame_index() {
+            if i == stack.borrow().current_frame_index() {
                 "*"
             } else {
                 " "
@@ -438,8 +438,9 @@ fn handle_stop(target: &Rc<Target>, reason: StopReason) -> Result<(), SdbError> 
 }
 
 fn print_code_location(target: &Rc<Target>) -> Result<(), SdbError> {
-    if target.get_stack().has_frames() {
-        let stack = target.get_stack();
+    if target.get_stack(None).borrow().has_frames() {
+        let stack = target.get_stack(None);
+        let stack = stack.borrow();
         let frame = stack.current_frame();
         print_source(&frame.location.file.path, frame.location.line, 3)?;
     } else {
@@ -730,7 +731,8 @@ fn handle_register_command(target: &Rc<Target>, args: &[&str]) -> Result<(), Sdb
 }
 
 fn handle_register_read(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
-    let stack = target.get_stack();
+    let stack = target.get_stack(None);
+    let stack = stack.borrow();
     let regs = stack.regs();
 
     let print_reg_info = |info: &RegisterInfo| -> Result<(), SdbError> {
