@@ -14,10 +14,10 @@ use bytemuck::Zeroable;
 use extended::Extended;
 use nix::libc::user;
 use nix::unistd::Pid;
-use typed_builder::TypedBuilder;
 use std::fmt::Display;
 use std::fmt::Write;
 use std::rc::Weak;
+use typed_builder::TypedBuilder;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
@@ -187,7 +187,7 @@ impl Registers {
             process: proc.clone(),
             undefined: Vec::new(),
             cfa: VirtualAddress::default(),
-            tid
+            tid,
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
@@ -252,7 +252,11 @@ impl Registers {
                 proc.write_fprs(&mut self.data.0.i387, Some(self.tid))?;
             } else {
                 let aligned_offset = info.offset & !0b111;
-                proc.write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]), Some(self.tid))?;
+                proc.write_user_area(
+                    info.offset,
+                    from_bytes::<u64>(&bytes[aligned_offset..]),
+                    Some(self.tid),
+                )?;
             }
         }
 

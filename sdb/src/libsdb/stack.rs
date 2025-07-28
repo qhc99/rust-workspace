@@ -13,7 +13,7 @@ pub struct Stack {
     inline_height: u32, // 0
     frames: Vec<StackFrame>,
     current_frame: usize, // 0
-    tid: Pid, // 0
+    tid: Pid,             // 0
 }
 
 impl Stack {

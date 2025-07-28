@@ -77,7 +77,10 @@ impl Target {
                 let threads = process.thread_states();
                 let mut ret = HashMap::new();
                 for (tid, state) in threads.borrow().iter() {
-                    ret.insert(*tid, SdbThread::new(Rc::downgrade(&state), Stack::new(weak_self)));
+                    ret.insert(
+                        *tid,
+                        SdbThread::new(Rc::downgrade(&state), Stack::new(weak_self)),
+                    );
                 }
                 ret
             }),

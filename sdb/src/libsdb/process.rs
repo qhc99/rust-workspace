@@ -211,7 +211,6 @@ pub struct Process {
 }
 
 impl Process {
-
     pub fn stop_running_threads(&self) -> Result<(), SdbError> {
         let threads = self.threads.borrow().clone();
         for (tid, thread) in threads.iter() {
@@ -228,12 +227,10 @@ impl Process {
                             return SdbError::errno("tgkill failed", Errno::last());
                         }
                     }
-                    
                 }
 
-                let wait_status = waitpid(*tid, None).map_err(|e| {
-                    SdbError::new_errno("Failed to waitpid", e)
-                })?;
+                let wait_status =
+                    waitpid(*tid, None).map_err(|e| SdbError::new_errno("Failed to waitpid", e))?;
                 let mut thread_reason = StopReason::new(*tid, wait_status)?;
 
                 if thread_reason.reason == ProcessState::Stopped {
