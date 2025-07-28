@@ -147,8 +147,6 @@ impl Target {
     pub fn step_in(&self, otid: Option<Pid>) -> Result<StopReason, SdbError> {
         let tid = otid.unwrap_or(self.process.current_thread());
         let stack = self.get_stack(Some(tid));
-        let thread = self.threads.borrow();
-        let thread = thread.get(&tid).unwrap();
         if stack.borrow().inline_height() > 0 {
             stack.borrow_mut().simulate_inlined_step_in();
             let reason = StopReason::builder()
@@ -157,14 +155,14 @@ impl Target {
                 .info(SIGTRAP)
                 .trap_reason(Some(TrapType::SingleStep))
                 .build();
-            thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+            self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
             return Ok(reason);
         }
         let orig_line = self.line_entry_at_pc(Some(tid))?;
         loop {
             let reason = self.process.step_instruction(Some(tid))?;
             if !reason.is_step() {
-                thread.state.upgrade().unwrap().borrow_mut().reason = reason;
+                self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
                 return Ok(reason);
             }
             if !((self.line_entry_at_pc(Some(tid))? == orig_line

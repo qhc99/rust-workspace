@@ -892,10 +892,9 @@ pub trait ProcessExt {
 
 impl ProcessExt for Rc<Process> {
     fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
-        let threads = self.threads.borrow();
         let mut to_remove = Vec::new();
         let mut to_report = None;
-        for (tid, thread) in threads.iter() {
+        for (tid, thread) in self.threads.borrow().iter() {
             if *tid != main_stop_tid
                 && (thread.borrow().state == ProcessState::Exited
                     || thread.borrow().state == ProcessState::Terminated)

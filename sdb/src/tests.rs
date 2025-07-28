@@ -1,12 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    cell::RefCell,
-    fs::{File, OpenOptions},
-    io::{BufRead, BufReader},
-    os::fd::AsRawFd,
-    path::PathBuf,
-    rc::Rc,
+    cell::RefCell, collections::HashSet, fs::{File, OpenOptions}, io::{BufRead, BufReader}, os::fd::AsRawFd, path::PathBuf, rc::Rc
 };
 
 use libsdb::target::{Target, TargetExt};
@@ -943,4 +938,42 @@ fn shared_library_tracing_works() {
             .unwrap(),
         &format!("libmeow_{file_num}.so")
     );
+}
+
+#[test]
+fn multi_threading() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let bin = BinBuilder::cpp("resource", &["multi_threaded.cpp"]);
+    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+
+    target.create_function_breakpoint("say_hi", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+
+    let mut tids = HashSet::new();
+    loop {
+        proc.resume_all_threads().unwrap();
+        proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+        
+        for (tid, thread) in proc.thread_states().borrow().iter() {
+            if thread.borrow().reason.reason == ProcessState::Stopped && *tid != proc.pid() {
+                tids.insert(*tid);
+            }
+        }
+        
+        if tids.len() >= 10 {
+            break;
+        }
+    }
+
+    assert_eq!(tids.len(), 10);
+
+    proc.resume_all_threads().unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+    assert_eq!(reason.reason, ProcessState::Exited);
 }
