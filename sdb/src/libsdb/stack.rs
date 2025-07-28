@@ -1,3 +1,5 @@
+use nix::unistd::Pid;
+
 use super::register_info::RegisterId;
 use super::types::FileAddress;
 use super::{dwarf::Die, sdb_error::SdbError};
@@ -10,16 +12,22 @@ pub struct Stack {
     target: Weak<Target>,
     inline_height: u32, // 0
     frames: Vec<StackFrame>,
-    current_frame: usize, /* 0 */
+    current_frame: usize, // 0
+    tid: Pid, // 0
 }
 
 impl Stack {
-    pub fn new(target: &Weak<Target>) -> Self {
+    pub fn tid(&self) -> Pid {
+        self.tid
+    }
+
+    pub fn new(target: &Weak<Target>, tid: Pid) -> Self {
         Self {
             target: target.clone(),
             inline_height: 0,
             frames: Vec::new(),
             current_frame: 0,
+            tid,
         }
     }
 
@@ -62,10 +70,10 @@ impl Stack {
         self.reset_inline_height()?;
         self.current_frame = self.inline_height as usize;
         let target = self.get_target();
-        let mut virt_pc = target.get_process().get_pc();
+        let mut virt_pc = target.get_process().get_pc(None);
         let mut file_pc = target.get_pc_file_address();
         let proc = target.get_process();
-        let mut regs = proc.get_registers().borrow().clone();
+        let mut regs = proc.get_registers(None).borrow().clone();
 
         self.frames.clear();
         if !file_pc.has_elf() {

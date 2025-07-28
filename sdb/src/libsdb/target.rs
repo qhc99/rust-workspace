@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
@@ -8,6 +9,9 @@ use elf::abi::STT_FUNC;
 use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
+use typed_builder::TypedBuilder;
+
+use super::process::ThreadState;
 
 use super::elf::SdbElf64Ehdr;
 
@@ -43,12 +47,20 @@ pub struct Target {
     process: Rc<Process>,
     main_elf: Weak<Elf>,
     elves: RefCell<ElfCollection>,
-    stack: RefCell<Stack>,
     breakpoints: RefCell<StoppointCollection>,
     dynamic_linker_rendezvous_address: RefCell<VirtualAddress>,
+    threads: RefCell<HashMap<Pid, SdbThread>>,
 }
 
 impl Target {
+    pub fn threads(&self) -> &RefCell<HashMap<Pid, SdbThread>> {
+        &self.threads
+    }
+
+    pub fn notify_thread_lifecycle_event(&self, reason: &StopReason) {
+        todo!()
+    }
+
     fn new(process: Rc<Process>, elf: Rc<Elf>) -> Rc<Self> {
         Rc::new_cyclic(|weak_self| Self {
             process: process.clone(),
@@ -58,9 +70,17 @@ impl Target {
                 t.push(elf.clone());
                 t
             }),
-            stack: RefCell::new(Stack::new(weak_self)),
             breakpoints: RefCell::new(StoppointCollection::default()),
             dynamic_linker_rendezvous_address: RefCell::new(VirtualAddress::default()),
+            threads: RefCell::new({
+                let pid = process.pid();
+                let threads = process.thread_states();
+                let mut ret = HashMap::new();
+                for (tid, state) in threads.borrow().iter() {
+                    ret.insert(*tid, SdbThread::new(Rc::downgrade(&state), Stack::new(weak_self)));
+                }
+                ret
+            }),
         })
     }
 
@@ -119,7 +139,7 @@ impl Target {
 
     pub fn get_pc_file_address(&self) -> FileAddress {
         self.process
-            .get_pc()
+            .get_pc(None)
             .to_file_addr_elves(&self.elves.borrow())
     }
 
@@ -134,7 +154,7 @@ impl Target {
         }
         let orig_line = self.line_entry_at_pc()?;
         loop {
-            let reason = self.process.step_instruction()?;
+            let reason = self.process.step_instruction(None)?;
             if !reason.is_step() {
                 return Ok(reason);
             }
@@ -178,12 +198,12 @@ impl Target {
         let stack = self.stack.borrow();
         let regs = &stack.frames()[stack.current_frame_index() + 1].registers;
         let return_address = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip)?);
-        let mut reason = StopReason::default();
+        let mut reason = StopReason::builder().build();
         drop(stack);
         let frames = self.stack.borrow().frames().len();
         while self.stack.borrow().frames().len() >= frames {
             reason = self.run_until_address(return_address)?;
-            if !reason.is_breakpoint() || self.process.get_pc() != return_address {
+            if !reason.is_breakpoint() || self.process.get_pc(None) != return_address {
                 return Ok(reason);
             }
         }
@@ -202,18 +222,18 @@ impl Target {
                     &inline_stack[inline_stack.len() - self.get_stack().inline_height() as usize];
                 let return_address = frame_to_skip.high_pc()?.to_virt_addr();
                 reason = self.run_until_address(return_address)?;
-                if !reason.is_step() || self.process.get_pc() != return_address {
+                if !reason.is_step() || self.process.get_pc(None) != return_address {
                     return Ok(reason);
                 }
             } else {
-                let instructions = disas.disassemble(2, Some(self.process.get_pc()))?;
+                let instructions = disas.disassemble(2, Some(self.process.get_pc(None)))?;
                 if instructions[0].text.rfind("call") == Some(0) {
                     reason = self.run_until_address(instructions[1].address)?;
-                    if !reason.is_step() || self.process.get_pc() != instructions[1].address {
+                    if !reason.is_step() || self.process.get_pc(None) != instructions[1].address {
                         return Ok(reason);
                     }
                 } else {
-                    reason = self.process.step_instruction()?;
+                    reason = self.process.step_instruction(None)?;
                     if !reason.is_step() {
                         return Ok(reason);
                     }
@@ -260,9 +280,9 @@ impl Target {
                 .borrow_mut()
                 .enable()?;
         }
-        self.process.resume()?;
-        let mut reason = self.process.wait_on_signal()?;
-        if reason.is_breakpoint() && self.process.get_pc() == address {
+        self.process.resume(None)?;
+        let mut reason = self.process.wait_on_signal(Pid::from_raw(-1))?;
+        if reason.is_breakpoint() && self.process.get_pc(None) == address {
             reason.trap_reason = Some(TrapType::SingleStep);
         }
         if breakpoint_to_remove.is_some() {
@@ -526,21 +546,6 @@ impl TargetExt for Rc<Target> {
         Ok(breakpoint)
     }
 
-    /*
-    void sdb::target::resolve_dynamic_linker_rendezvous() {
-        for (auto entry : dynamic_entries) {
-            if (entry.d_tag == DT_DEBUG) {
-                auto& debug_state_bp = create_address_breakpoint(
-                    debug_state_addr, false, true);
-                debug_state_bp.install_hit_handler([&] {
-                    reload_dynamic_libraries();
-                    return true;
-                });
-                debug_state_bp.enable();
-            }
-        }
-    }
-    */
     fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError> {
         if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
             return Ok(());
@@ -614,4 +619,16 @@ fn create_loaded_elf(proc: &Process, path: &Path) -> Result<Rc<Elf>, SdbError> {
         auxv[&(AT_ENTRY as i32)] - obj.get_header().0.e_entry,
     ));
     Ok(obj)
+}
+
+#[derive(TypedBuilder)]
+pub struct SdbThread {
+    state: Weak<ThreadState>,
+    frames: Stack,
+}
+
+impl SdbThread {
+    pub fn new(state: Weak<ThreadState>, frames: Stack) -> Self {
+        Self { state, frames }
+    }
 }

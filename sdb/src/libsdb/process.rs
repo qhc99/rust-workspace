@@ -20,6 +20,7 @@ use bytemuck::bytes_of_mut;
 use byteorder::NativeEndian;
 use byteorder::ReadBytesExt;
 use nix::libc::AT_NULL;
+use nix::libc::PTRACE_EVENT_CLONE;
 use nix::libc::PTRACE_GETFPREGS;
 use nix::libc::ptrace;
 use nix::sys::personality::Persona;
@@ -74,14 +75,18 @@ pub enum ProcessState {
     Terminated,
 }
 
-#[derive(Debug, Clone, Copy, TypedBuilder, Default)]
+#[derive(Debug, Clone, Copy, TypedBuilder)]
 pub struct StopReason {
+    #[builder(default)]
     pub reason: ProcessState,
+    #[builder(default)]
     pub info: i32,
     #[builder(default)]
     pub trap_reason: Option<TrapType>,
     #[builder(default)]
     pub syscall_info: Option<SyscallInfo>,
+    #[builder(default = Pid::from_raw(0))]
+    pub tid: Pid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,17 +95,19 @@ pub enum TrapType {
     SoftwareBreak,
     HardwareBreak,
     Syscall,
+    Clone,
     Unknown,
 }
 
 impl StopReason {
-    pub fn new(status: WaitStatus) -> Result<Self, SdbError> {
+    pub fn new(tid: Pid, status: WaitStatus) -> Result<Self, SdbError> {
         if let WaitStatus::Exited(_, info) = status {
             return Ok(StopReason {
                 reason: ProcessState::Exited,
                 info,
                 trap_reason: None,
                 syscall_info: None,
+                tid,
             });
         } else if let WaitStatus::Signaled(_, info, _) = status {
             return Ok(StopReason {
@@ -108,6 +115,7 @@ impl StopReason {
                 info: info as i32,
                 trap_reason: None,
                 syscall_info: None,
+                tid,
             });
         } else if let WaitStatus::Stopped(_, info) = status {
             return Ok(StopReason {
@@ -115,13 +123,20 @@ impl StopReason {
                 info: info as i32,
                 trap_reason: None,
                 syscall_info: None,
+                tid,
             });
-        } else if let WaitStatus::PtraceEvent(_, info, _) = status {
+        } else if let WaitStatus::PtraceEvent(_, info, event) = status {
             return Ok(StopReason {
                 reason: ProcessState::Stopped,
                 info: info as i32,
-                trap_reason: None,
+                // Implementation is different
+                trap_reason: if event == PTRACE_EVENT_CLONE {
+                    Some(TrapType::Clone)
+                } else {
+                    None
+                },
                 syscall_info: None,
+                tid,
             });
         } else if let WaitStatus::PtraceSyscall(_) = status {
             return Ok(StopReason {
@@ -129,6 +144,7 @@ impl StopReason {
                 info: SIGTRAP as i32,
                 trap_reason: Some(TrapType::Syscall),
                 syscall_info: None,
+                tid,
             });
         }
 
@@ -150,8 +166,13 @@ impl StopReason {
 }
 
 fn set_ptrace_options(pid: Pid) -> Result<(), SdbError> {
-    setoptions(pid, Options::PTRACE_O_TRACESYSGOOD | Options::PTRACE_O_TRACECLONE)
-        .map_err(|errno| SdbError::new_errno("Failed to set TRACESYSGOOD and TRACECLONE options", errno))
+    setoptions(
+        pid,
+        Options::PTRACE_O_TRACESYSGOOD | Options::PTRACE_O_TRACECLONE,
+    )
+    .map_err(|errno| {
+        SdbError::new_errno("Failed to set TRACESYSGOOD and TRACECLONE options", errno)
+    })
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -176,44 +197,94 @@ pub enum SyscallData {
 
 pub struct Process {
     pid: Pid,
-    terminate_on_end: bool, // Default true
-    // Use RefCell to avoid self mut borrow runtime error
-    state: RefCell<ProcessState>, // Default Stopped
-    is_attached: bool,            // Default true
+    terminate_on_end: bool,       // true
+    state: RefCell<ProcessState>, // Stopped
+    is_attached: bool,            // true
     registers: Rc<RefCell<Registers>>,
     breakpoint_sites: Rc<RefCell<StoppointCollection>>,
     watchpoints: Rc<RefCell<StoppointCollection>>,
     syscall_catch_policy: RefCell<SyscallCatchPolicy>,
     expecting_syscall_exit: RefCell<bool>,
     target: RefCell<Option<Weak<Target>>>,
+    threads: RefCell<HashMap<Pid, Rc<RefCell<ThreadState>>>>,
+    current_thread: RefCell<Pid>,
 }
 
 impl Process {
+    pub fn stop_running_threads(&self) {
+        todo!()
+    }
+
+    pub fn resume_all_threads(&self) {
+        todo!()
+    }
+
+    pub fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
+        todo!()
+    }
+
+    pub fn report_thread_lifecycle_event(&self, reason: &StopReason) {
+        todo!()
+    }
+
+    pub fn handle_signal(&self, reason: StopReason, is_main_stop: bool) -> Option<StopReason> {
+        todo!()
+    }
+
+    fn swallow_pending_sigstop(&self, tid: Pid) {
+        todo!()
+    }
+
+    fn send_continue(&self, tid: Pid) {
+        todo!()
+    }
+
+    fn step_over_breakpoint(&self, tid: Pid) {
+        todo!()
+    }
+    
+    pub fn set_current_thread(&self, tid: Pid) {
+        *self.current_thread.borrow_mut() = tid;
+    }
+
+    pub fn current_thread(&self) -> Pid {
+        *self.current_thread.borrow()
+    }
+
+    pub fn thread_states(&self) -> &RefCell<HashMap<Pid, Rc<RefCell<ThreadState>>>> {
+        &self.threads
+    }
+
     pub fn set_syscall_catch_policy(&self, info: SyscallCatchPolicy) {
         *self.syscall_catch_policy.borrow_mut() = info;
     }
 
     fn new(pid: Pid, terminate_on_end: bool, is_attached: bool) -> Rc<Self> {
-        Rc::new_cyclic(|weak_self| Self {
+        let ret = Rc::new_cyclic(|weak_self| Self {
             pid,
             terminate_on_end,
             state: RefCell::new(ProcessState::Stopped),
             is_attached,
-            registers: Rc::new(RefCell::new(Registers::new(weak_self))),
+            registers: Rc::new(RefCell::new(Registers::new(weak_self, pid))),
             breakpoint_sites: Rc::new(RefCell::new(StoppointCollection::default())),
             watchpoints: Rc::new(RefCell::new(StoppointCollection::default())),
             syscall_catch_policy: RefCell::new(SyscallCatchPolicy::default()),
             expecting_syscall_exit: RefCell::new(false),
             target: RefCell::new(None),
-        })
+            threads: RefCell::new(HashMap::new()),
+            current_thread: RefCell::new(pid),
+        });
+        ret.populate_existing_threads();
+        ret
     }
 
     pub fn pid(&self) -> Pid {
         self.pid
     }
 
-    pub fn resume(&self) -> Result<(), SdbError> {
-        let pc = self.get_pc();
+    pub fn resume(&self, otid: Option<Pid> /* None */) -> Result<(), SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
+        let pc = self.get_pc(Some(tid));
         if self
             .breakpoint_sites
             .borrow()
@@ -221,9 +292,9 @@ impl Process {
         {
             let bp = self.breakpoint_sites.borrow().get_by_address(pc)?;
             bp.borrow_mut().disable()?;
-            step(self.pid, None)
+            step(tid, None)
                 .map_err(|errno| SdbError::new_errno("Failed to single step", errno))?;
-            waitpid(self.pid, None)
+            waitpid(tid, None)
                 .map_err(|errno| SdbError::new_errno("Waitpid failed", errno))?;
             bp.borrow_mut().enable()?;
         }
@@ -233,9 +304,10 @@ impl Process {
             } else {
                 syscall::<Option<Signal>>
             };
-        if let Err(errno) = request(self.pid, None) {
+        if let Err(errno) = request(tid, None) {
             return SdbError::errno("Could not resume", errno);
         }
+        self.threads.borrow_mut().get_mut(&tid).unwrap().borrow_mut().state = ProcessState::Running;
         *self.state.borrow_mut() = ProcessState::Running;
         Ok(())
     }
@@ -244,7 +316,7 @@ impl Process {
         *self.state.borrow()
     }
 
-    pub fn wait_on_signal(&self) -> Result<StopReason, SdbError> {
+    pub fn wait_on_signal(&self, to_wait: Pid /* -1 */) -> Result<StopReason, SdbError> {
         let wait_status = waitpid(self.pid, WaitPidFlag::from_bits(0));
         return match wait_status {
             Err(errno) => SdbError::errno("waitpid failed", errno),
@@ -255,7 +327,7 @@ impl Process {
                 if self.is_attached && *self.state.borrow() == ProcessState::Stopped {
                     self.read_all_registers()?;
                     self.augment_stop_reason(&mut reason)?;
-                    let instr_begin = self.get_pc() - 1;
+                    let instr_begin = self.get_pc(None) - 1;
                     if reason.info == Signal::SIGTRAP as i32 {
                         if reason.trap_reason == Some(TrapType::SoftwareBreak)
                             && self.breakpoint_sites.borrow().contains_address(instr_begin)
@@ -266,7 +338,7 @@ impl Process {
                                 .borrow()
                                 .is_enabled()
                         {
-                            self.set_pc(instr_begin)?;
+                            self.set_pc(instr_begin, None)?;
                             let bp = self.breakpoint_sites.borrow().get_by_address(instr_begin)?;
                             let bp_borrow = bp.borrow() as Ref<'_, dyn Any>;
                             let bp = bp_borrow.downcast_ref::<BreakpointSite>().unwrap();
@@ -275,12 +347,12 @@ impl Process {
                                     bp.parent.upgrade().unwrap().borrow().notify_hit()?;
                                 drop(bp_borrow);
                                 if should_restart {
-                                    self.resume()?;
-                                    return self.wait_on_signal();
+                                    self.resume(None)?;
+                                    return self.wait_on_signal(Pid::from_raw(-1));
                                 }
                             }
                         } else if reason.trap_reason == Some(TrapType::HardwareBreak) {
-                            let id = self.get_current_hardware_stoppoint()?;
+                            let id = self.get_current_hardware_stoppoint(None)?;
                             if let StoppointId::Watchpoint(id) = id {
                                 (self.watchpoints.borrow().get_by_id(id)?.borrow_mut()
                                     as RefMut<'_, dyn Any>)
@@ -289,7 +361,7 @@ impl Process {
                                     .update_data()?;
                             }
                         } else if reason.trap_reason == Some(TrapType::Syscall) {
-                            reason = self.maybe_resume_from_syscall(&reason)?;
+                            reason = self.should_resume_from_syscall(&reason)?;
                         }
                     }
                     if let Some(target) = self.target.borrow().as_ref()
@@ -365,7 +437,7 @@ impl Process {
 
         let proc = Process::new(pid, true, debug);
         if debug {
-            proc.wait_on_signal()?;
+            proc.wait_on_signal(Pid::from_raw(-1))?;
             set_ptrace_options(pid)?;
         }
         return Ok(proc);
@@ -379,27 +451,34 @@ impl Process {
             return SdbError::errno("Could not attach", errno);
         }
         let proc = Process::new(pid, false, true);
-        proc.wait_on_signal()?;
+        proc.wait_on_signal(Pid::from_raw(-1))?;
         set_ptrace_options(pid)?;
         return Ok(proc);
     }
 
-    pub fn write_user_area(&self, offset: usize, data: u64) -> Result<(), SdbError> {
-        match write_user(self.pid, offset as AddressType, data.try_into().unwrap()) {
+    pub fn write_user_area(
+        &self,
+        offset: usize,
+        data: u64,
+        otid: Option<Pid>, /* None */
+    ) -> Result<(), SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
+        match write_user(tid, offset as AddressType, data.try_into().unwrap()) {
             Ok(_) => Ok(()),
             Err(errno) => SdbError::errno("Could not write user area", errno),
         }
     }
 
-    pub fn get_registers(&self) -> Rc<RefCell<Registers>> {
-        self.registers.clone()
+    pub fn get_registers(&self, otid: Option<Pid> /* None */) -> Rc<RefCell<Registers>> {
+        let tid = otid.unwrap_or(self.current_thread());
+        self.threads.borrow().get(&tid).unwrap().borrow().regs.clone()
     }
 
-    pub fn read_all_registers(&self) -> Result<(), SdbError> {
-        let regs = getregs(self.pid);
+    pub fn read_all_registers(&self, tid: Pid) -> Result<(), SdbError> {
+        let regs = getregs(tid);
         match regs {
             Ok(data) => {
-                self.registers.borrow_mut().data.0.regs = data;
+                self.get_registers(Some(tid)).borrow_mut().data.0.regs = data;
                 Ok(())
             }
             Err(errno) => SdbError::errno("Could not read GPR registers", errno),
@@ -408,9 +487,9 @@ impl Process {
         unsafe {
             if ptrace(
                 PTRACE_GETFPREGS,
-                self.pid,
+                tid,
                 std::ptr::null_mut::<c_void>(),
-                &mut self.registers.borrow_mut().data.0.i387 as *mut _ as *mut c_void,
+                &mut self.get_registers(Some(tid)).borrow_mut().data.0.i387 as *mut _ as *mut c_void,
             ) < 0
             {
                 return SdbError::errno("Could not read FPR registers", Errno::last());
@@ -420,9 +499,9 @@ impl Process {
             let id = RegisterId::dr0 as i32 + i;
             let info = register_info_by_id(RegisterId::try_from(id).unwrap())?;
 
-            match read_user(self.pid, info.offset as *mut c_void) {
+            match read_user(tid, info.offset as *mut c_void) {
                 Ok(data) => {
-                    self.registers.borrow_mut().data.0.u_debugreg[i as usize] = data as u64;
+                    self.get_registers(Some(tid)).borrow_mut().data.0.u_debugreg[i as usize] = data as u64;
                 }
                 Err(errno) => SdbError::errno("Could not read debug register", errno)?,
             };
@@ -431,11 +510,16 @@ impl Process {
         Ok(())
     }
 
-    pub fn write_gprs(&self, gprs: &mut user_regs_struct) -> Result<(), SdbError> {
+    pub fn write_gprs(
+        &self,
+        gprs: &mut user_regs_struct,
+        otid: Option<Pid>, /* None */
+    ) -> Result<(), SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
         unsafe {
             if ptrace(
                 PTRACE_SETREGS,
-                self.pid,
+                tid,
                 std::ptr::null_mut::<c_void>(),
                 gprs as *mut _ as *mut c_void,
             ) < 0
@@ -446,11 +530,16 @@ impl Process {
         }
     }
 
-    pub fn write_fprs(&self, fprs: &mut user_fpregs_struct) -> Result<(), SdbError> {
+    pub fn write_fprs(
+        &self,
+        fprs: &mut user_fpregs_struct,
+        otid: Option<Pid>, /* None */
+    ) -> Result<(), SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
         unsafe {
             if ptrace(
                 PTRACE_SETFPREGS,
-                self.pid,
+                tid,
                 std::ptr::null_mut::<c_void>(),
                 fprs as *mut _ as *mut c_void,
             ) < 0
@@ -461,8 +550,8 @@ impl Process {
         }
     }
 
-    pub fn get_pc(&self) -> VirtualAddress {
-        self.get_registers()
+    pub fn get_pc(&self, otid: Option<Pid> /* None */) -> VirtualAddress {
+        self.get_registers(otid)
             .borrow()
             .read_by_id_as::<u64>(RegisterId::rip)
             .unwrap()
@@ -473,25 +562,33 @@ impl Process {
         self.breakpoint_sites.clone()
     }
 
-    pub fn set_pc(&self, address: VirtualAddress) -> Result<(), SdbError> {
-        self.get_registers()
+    pub fn set_pc(
+        &self,
+        address: VirtualAddress,
+        otid: Option<Pid>, /* None */
+    ) -> Result<(), SdbError> {
+        self.get_registers(otid)
             .borrow_mut()
             .write_by_id(RegisterId::rip, address.addr(), true)?;
         Ok(())
     }
 
-    pub fn step_instruction(&self) -> Result<StopReason, SdbError> {
+    pub fn step_instruction(
+        &self,
+        otid: Option<Pid>, /* None */
+    ) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
         let mut to_reenable: Option<_> = None;
-        let pc = self.get_pc();
+        let pc = self.get_pc(Some(tid));
         let breakpoint_sites = &self.breakpoint_sites.borrow();
         if breakpoint_sites.enabled_breakpoint_at_address(pc) {
             let bp = breakpoint_sites.get_by_address(pc).unwrap();
             bp.borrow_mut().disable()?;
             to_reenable = Some(bp);
         }
-        step(self.pid, None)
+        step(tid, None)
             .map_err(|errno| SdbError::new_errno("Could not single step", errno))?;
-        let reason = self.wait_on_signal()?;
+        let reason = self.wait_on_signal(tid)?;
         if let Some(to_reenable) = to_reenable {
             to_reenable.borrow_mut().enable()?;
         }
@@ -586,7 +683,7 @@ impl Process {
         mode: StoppointMode,
         size: usize,
     ) -> Result<i32, SdbError> {
-        let owned_regs = self.get_registers();
+        let owned_regs = self.get_registers(None);
         let mut regs = owned_regs.borrow_mut();
         let control: u64 = regs.read_by_id_as(RegisterId::dr7)?;
 
@@ -604,12 +701,21 @@ impl Process {
         let mut masked = control & !clear_mask;
         masked |= enable_bit | mode_bits | size_bits;
         regs.write_by_id(RegisterId::dr7, masked, true)?;
+        for (tid, _) in self.threads.borrow().iter() {
+            if *tid == *self.current_thread.borrow() {
+                continue;
+            }
+            let other_regs = self.get_registers(Some(*tid));
+            let mut other_regs = other_regs.borrow_mut();
+            other_regs.write_by_id(RegisterId::try_from(id).unwrap(), address.addr(), true)?;
+            other_regs.write_by_id(RegisterId::dr7, masked, true)?;
+        }
         return Ok(free_space as i32);
     }
 
     pub fn clear_hardware_stoppoint(&self, index: i32) -> Result<(), SdbError> {
         let id = RegisterId::try_from(RegisterId::dr0 as i32 + index).unwrap();
-        let owned_registers = self.get_registers();
+        let owned_registers = self.get_registers(None);
         {
             let mut regs = owned_registers.borrow_mut();
             regs.write_by_id(id, 0, true)?;
@@ -623,6 +729,16 @@ impl Process {
         }
         let mut regs = owned_registers.borrow_mut();
         regs.write_by_id(RegisterId::dr7, masked, true)?;
+
+        for (tid, _) in self.threads.borrow().iter() {
+            if *tid == *self.current_thread.borrow() {
+                continue;
+            }
+            let other_regs = self.get_registers(Some(*tid));
+            let mut other_regs = other_regs.borrow_mut();
+            other_regs.write_by_id(id, 0, true)?;
+            other_regs.write_by_id(RegisterId::dr7, masked, true)?;
+        }
         Ok(())
     }
 
@@ -668,12 +784,13 @@ impl Process {
     }
 
     fn augment_stop_reason(&self, reason: &mut StopReason) -> Result<(), SdbError> {
-        let info = getsiginfo(self.pid)
+        let tid = reason.tid;
+        let info = getsiginfo(tid)
             .map_err(|errno| SdbError::new_errno("Failed to get signal info", errno))?;
 
         // Implementation is different
         if reason.trap_reason == Some(TrapType::Syscall) {
-            let regs = self.get_registers();
+            let regs = self.get_registers(Some(tid));
             let regs = regs.borrow();
             let expecting_syscall_exit = *self.expecting_syscall_exit.borrow();
             if expecting_syscall_exit {
@@ -720,7 +837,7 @@ impl Process {
         Ok(())
     }
 
-    fn maybe_resume_from_syscall(&self, reason: &StopReason) -> Result<StopReason, SdbError> {
+    fn should_resume_from_syscall(&self, reason: &StopReason) -> bool {
         if let SyscallCatchPolicy::Some(to_catch) = &*self.syscall_catch_policy.borrow() {
             if !to_catch.iter().any(|id| {
                 if let Some(info) = reason.syscall_info {
@@ -728,15 +845,17 @@ impl Process {
                 }
                 return false;
             }) {
-                self.resume()?;
-                return self.wait_on_signal();
+                return true;
             }
         }
-        Ok(*reason)
+        false
     }
 
-    pub fn get_current_hardware_stoppoint(&self) -> Result<StoppointId, SdbError> {
-        let regs = self.get_registers();
+    pub fn get_current_hardware_stoppoint(
+        &self,
+        otid: Option<Pid>, /* None */
+    ) -> Result<StoppointId, SdbError> {
+        let regs = self.get_registers(otid);
         let regs = regs.borrow();
         let status: u64 = regs.read_by_id_as(RegisterId::dr6)?;
         let index = status.trailing_zeros();
@@ -806,9 +925,40 @@ pub trait ProcessExt {
         hardware: bool,
         internal: bool,
     ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError>;
+
+    fn populate_existing_threads(&self);
 }
 
 impl ProcessExt for Rc<Process> {
+    fn populate_existing_threads(&self) {
+        let path = format!("/proc/{}/task", self.pid);
+        let entries = std::fs::read_dir(path).unwrap();
+        for entry in entries {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let tid = Pid::from_raw(
+                path.file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .parse::<i32>()
+                    .unwrap(),
+            );
+            self.threads.borrow_mut().insert(
+                tid,
+                Rc::new(RefCell::new(
+                    ThreadState::builder()
+                        .tid(tid)
+                        .regs(Rc::new(RefCell::new(Registers::new(
+                            &Rc::downgrade(&self),
+                            tid,
+                        ))))
+                        .build(),
+                )),
+            );
+        }
+    }
+
     fn create_breakpoint_site(
         &self,
         address: VirtualAddress,
@@ -884,6 +1034,18 @@ impl Drop for Process {
             }
         }
     }
+}
+
+#[derive(TypedBuilder)]
+pub struct ThreadState {
+    tid: Pid,
+    regs: Rc<RefCell<Registers>>,
+    #[builder(default = StopReason::builder().build())]
+    stop_reason: StopReason,
+    #[builder(default = ProcessState::Stopped)]
+    state: ProcessState,
+    #[builder(default = false)]
+    pending_sigstop: bool,
 }
 
 #[cfg(test)]

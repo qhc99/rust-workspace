@@ -26,7 +26,7 @@ impl<'this> Disassembler<'this> {
     ) -> Result<Vec<Instruction>, SdbError> {
         let mut ret = Vec::<Instruction>::with_capacity(n_instructions);
         if address.is_none() {
-            address = Some(self.process.get_pc());
+            address = Some(self.process.get_pc(None));
         }
         let mut address = address.unwrap();
         let code = self

@@ -13,6 +13,8 @@ use bytemuck::Pod;
 use bytemuck::Zeroable;
 use extended::Extended;
 use nix::libc::user;
+use nix::unistd::Pid;
+use typed_builder::TypedBuilder;
 use std::fmt::Display;
 use std::fmt::Write;
 use std::rc::Weak;
@@ -43,12 +45,16 @@ impl F80 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TypedBuilder)]
 pub struct Registers {
+    #[builder(default = User::zeroed())]
     pub data: User,
     process: Weak<Process>,
+    #[builder(default)]
     undefined: Vec<usize>,
+    #[builder(default)]
     cfa: VirtualAddress,
+    tid: Pid,
 }
 
 pub enum RegisterValue {
@@ -175,12 +181,13 @@ macro_rules! write_cases {
 }
 
 impl Registers {
-    pub fn new(proc: &Weak<Process>) -> Self {
+    pub fn new(proc: &Weak<Process>, tid: Pid) -> Self {
         Self {
             data: User::zeroed(),
             process: proc.clone(),
             undefined: Vec::new(),
             cfa: VirtualAddress::default(),
+            tid
         }
     }
     pub fn read(&self, info: &RegisterInfo) -> Result<RegisterValue, SdbError> {
@@ -242,10 +249,10 @@ impl Registers {
         let proc = self.process.upgrade().unwrap();
         if commit {
             if info.type_ == RegisterType::Fpr {
-                proc.write_fprs(&mut self.data.0.i387)?;
+                proc.write_fprs(&mut self.data.0.i387, Some(self.tid))?;
             } else {
                 let aligned_offset = info.offset & !0b111;
-                proc.write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]))?;
+                proc.write_user_area(info.offset, from_bytes::<u64>(&bytes[aligned_offset..]), Some(self.tid))?;
             }
         }
 
@@ -282,8 +289,8 @@ impl Registers {
 
     pub fn flush(&mut self) -> Result<(), SdbError> {
         let proc = self.process.upgrade().unwrap();
-        proc.write_fprs(&mut self.data.0.i387)?;
-        proc.write_gprs(&mut self.data.0.regs)?;
+        proc.write_fprs(&mut self.data.0.i387, Some(self.tid))?;
+        proc.write_gprs(&mut self.data.0.regs, Some(self.tid))?;
         let info = register_info_by_id(RegisterId::dr0)?;
         for i in 0..8 {
             if i == 4 || i == 5 {
@@ -291,7 +298,7 @@ impl Registers {
             }
             let reg_offset = info.offset + std::mem::size_of::<u64>() * i;
             let bytes = self.data.0.u_debugreg[i];
-            proc.write_user_area(reg_offset, bytes)?;
+            proc.write_user_area(reg_offset, bytes, Some(self.tid))?;
         }
         Ok(())
     }

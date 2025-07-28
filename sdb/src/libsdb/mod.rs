@@ -102,7 +102,7 @@ fn print_stop_reason(target: &Target, reason: StopReason) -> Result<(), SdbError
 
 fn get_signal_stop_reason(target: &Target, reason: StopReason) -> Result<String, SdbError> {
     let process = target.get_process();
-    let pc = process.get_pc();
+    let pc = process.get_pc(None);
     let mut msg = format!(
         "stopped with signal {} at {:#x}\n",
         sig_abbrev(reason.info),
@@ -137,11 +137,11 @@ fn get_sigtrap_info(process: &Process, reason: StopReason) -> Result<String, Sdb
         let site = process
             .breakpoint_sites()
             .borrow()
-            .get_by_address(process.get_pc())?;
+            .get_by_address(process.get_pc(None))?;
         return Ok(format!(" (breakpoint {})", site.borrow().id()));
     }
     if reason.trap_reason == Some(TrapType::HardwareBreak) {
-        let id = process.get_current_hardware_stoppoint()?;
+        let id = process.get_current_hardware_stoppoint(None)?;
 
         match id {
             StoppointId::BreakpointSite(id) => return Ok(format!(" (breakpoint {id})")),
@@ -193,8 +193,8 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
     let process = &target.get_process();
     let cmd = args[0];
     if cmd == "continue" {
-        process.resume()?;
-        let reason = process.wait_on_signal()?;
+        process.resume(None)?;
+        let reason = process.wait_on_signal(Pid::from_raw(-1))?;
         handle_stop(target, reason)?;
     } else if cmd == "help" {
         print_help(&args);
@@ -220,7 +220,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
         let reason = target.step_in()?;
         handle_stop(target, reason)?;
     } else if cmd == "stepi" {
-        let reason = process.step_instruction()?;
+        let reason = process.step_instruction(None)?;
         handle_stop(target, reason)?;
     } else if cmd == "up" {
         target.get_stack_mut().up();
@@ -401,7 +401,7 @@ fn handle_watchpoint_set(process: &Rc<Process>, args: &[&str]) -> Result<(), Sdb
 }
 
 fn handle_disassemble_command(process: &Process, args: &[&str]) -> Result<(), SdbError> {
-    let mut address = process.get_pc();
+    let mut address = process.get_pc(None);
     let mut n_instructions = 5usize;
     let mut args_iter = args.iter();
     args_iter.next();
@@ -444,7 +444,7 @@ fn print_code_location(target: &Rc<Target>) -> Result<(), SdbError> {
         let frame = stack.current_frame();
         print_source(&frame.location.file.path, frame.location.line, 3)?;
     } else {
-        print_disassembly(&target.get_process(), target.get_process().get_pc(), 5)?;
+        print_disassembly(&target.get_process(), target.get_process().get_pc(None), 5)?;
     }
 
     Ok(())
@@ -730,48 +730,6 @@ fn handle_register_command(target: &Rc<Target>, args: &[&str]) -> Result<(), Sdb
     Ok(())
 }
 
-/*
-void handle_register_read(
-       ➊ sdb::target& target,
-          const std::vector<std::string>& args) {
-        auto format = [](auto t) {
-            --snip--
-        };
-
-     ➋ auto& regs = target.get_stack().regs();
-        auto print_register_value = [&](auto info) {
-            if (regs.is_undefined(info.id)) {
-                fmt::print("{}:\tundefined\n", info.name);
-            }
-            else {
-                auto value = regs.read(info);
-                fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
-            }
-        };
-
-        if (args.size() == 2 or
-            (args.size() == 3 and args[2] == "all")) {
-            for (auto& info : sdb::g_register_infos) {
-                if (args.size() == 3 or info.type == sdb::register_type::gpr) {
-                    print_register_value(info);
-                }
-            }
-        }
-        else if (args.size() == 3) {
-            try {
-                auto info = sdb::register_info_by_name(args[2]);
-                print_register_value(info);
-            }
-            catch (sdb::error& err) {
-                std::cerr << "No such register\n";
-                return;
-            }
-        }
-        else {
-            print_help({ "help", "register" });
-        }
-    }
-*/
 fn handle_register_read(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
     let stack = target.get_stack();
     let regs = stack.regs();
@@ -816,7 +774,7 @@ fn handle_register_write(process: &Process, args: &[&str]) {
         let info = register_info_by_name(args[2])?;
         let value = parse_register_value(&info, args[3])?;
         process
-            .get_registers()
+            .get_registers(None)
             .borrow_mut()
             .write(&info, value, true)?;
         Ok(())

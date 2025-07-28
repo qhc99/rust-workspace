@@ -73,13 +73,13 @@ fn process_attach_invalid_pid() {
 fn process_resume_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
-    proc.resume().ok();
+    proc.resume(None).ok();
     let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 
     let target = Process::launch(bin.target_path(), false, None).unwrap();
     let proc = Process::attach(target.pid()).unwrap();
-    proc.resume().ok();
+    proc.resume(None).ok();
     let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 }
@@ -88,9 +88,9 @@ fn process_resume_success() {
 fn process_resume_terminated() {
     let bin = BinBuilder::rustc("resource", "just_exit.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
-    proc.resume().ok();
-    proc.wait_on_signal().ok();
-    assert!(proc.resume().is_err());
+    proc.resume(None).ok();
+    proc.wait_on_signal(Pid::from_raw(-1)).ok();
+    assert!(proc.resume(None).is_err());
 }
 
 #[test]
@@ -100,17 +100,17 @@ fn write_registers() {
     let target = BinBuilder::asm("resource", "reg_write.s");
     let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     {
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::rsi, 0xcafecafe_u64, true)
             .unwrap();
 
-        proc.resume().unwrap();
-        proc.wait_on_signal().unwrap();
+        proc.resume(None).unwrap();
+        proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -118,13 +118,13 @@ fn write_registers() {
     }
 
     {
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::mm0, 0xba5eba11_u64, true)
             .unwrap();
 
-        proc.resume().unwrap();
-        proc.wait_on_signal().unwrap();
+        proc.resume(None).unwrap();
+        proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -132,13 +132,13 @@ fn write_registers() {
     }
 
     {
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::xmm0, 42.24, true)
             .unwrap();
 
-        proc.resume().unwrap();
-        proc.wait_on_signal().unwrap();
+        proc.resume(None).unwrap();
+        proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -146,21 +146,21 @@ fn write_registers() {
     }
 
     {
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::st0, F80::new(42.24), true)
             .unwrap();
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::fsw, 0b0011100000000000_u16, true)
             .unwrap();
-        proc.get_registers()
+        proc.get_registers(None)
             .borrow_mut()
             .write_by_id(RegisterId::ftw, 0b0011111111111111_u16, true)
             .unwrap();
 
-        proc.resume().unwrap();
-        proc.wait_on_signal().unwrap();
+        proc.resume(None).unwrap();
+        proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
         let output = channel.read().unwrap();
         let str = String::from_utf8(output).unwrap();
@@ -174,19 +174,19 @@ fn read_registers() {
     let mut channel = Pipe::new(close_on_exec).unwrap();
     let target = BinBuilder::asm("resource", "reg_read.s");
     let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
-    let regs = proc.get_registers();
+    let regs = proc.get_registers(None);
     channel.close_write();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert!(regs.borrow().read_by_id_as::<u64>(RegisterId::r13).unwrap() == 0xcafecafe_u64);
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert!(regs.borrow().read_by_id_as::<u8>(RegisterId::r13b).unwrap() == 42);
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte64>(RegisterId::mm0)
@@ -194,8 +194,8 @@ fn read_registers() {
             == to_byte64(0xba5eba11_u64)
     );
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert!(
         regs.borrow()
             .read_by_id_as::<Byte128>(RegisterId::xmm0)
@@ -203,8 +203,8 @@ fn read_registers() {
             == to_byte128(64.125)
     );
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert!(regs.borrow().read_by_id_as::<F80>(RegisterId::st0).unwrap() == F80::new(64.125));
 }
 
@@ -415,14 +415,14 @@ fn breakpoint_on_address() {
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(ProcessState::Stopped, reason.reason);
     assert_eq!(Signal::SIGTRAP as i32, reason.info);
-    assert_eq!(load_address, proc.get_pc());
+    assert_eq!(load_address, proc.get_pc(None));
 
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(ProcessState::Exited, reason.reason);
     assert_eq!(0, reason.info);
 
@@ -457,21 +457,21 @@ fn read_and_write_memory() {
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     let a_pointer: u64 = from_bytes(&channel.read().unwrap());
     let data_vec = proc.read_memory(a_pointer.into(), 8).unwrap();
     let data: u64 = from_bytes(&data_vec);
     assert_eq!(0xcafecafe, data);
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     let b_pointer: u64 = from_bytes(&channel.read().unwrap());
     proc.write_memory(b_pointer.into(), "Hello, sdb!".as_bytes())
         .unwrap();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     let read = String::from_utf8(channel.read().unwrap()).unwrap();
     assert_eq!("Hello, sdb!", read);
@@ -485,15 +485,15 @@ fn hardware_breapoint_evade_memory_checksum() {
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     let func = VirtualAddress::from(from_bytes::<u64>(&channel.read().unwrap()));
     let soft = proc.create_breakpoint_site(func, false, false).unwrap();
     soft.upgrade().unwrap().borrow_mut().enable().unwrap();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(
         String::from_utf8(channel.read().unwrap()).unwrap(),
@@ -507,13 +507,13 @@ fn hardware_breapoint_evade_memory_checksum() {
     let hard = proc.create_breakpoint_site(func, true, false).unwrap();
     hard.upgrade().unwrap().borrow_mut().enable().unwrap();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    assert_eq!(func, proc.get_pc());
+    assert_eq!(func, proc.get_pc(None));
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(
         String::from_utf8(channel.read().unwrap()).unwrap(),
@@ -529,8 +529,8 @@ fn watchpoint_detect_read() {
     let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     let func = VirtualAddress::from(from_bytes::<u64>(&channel.read().unwrap()));
     let watch = proc
@@ -538,20 +538,20 @@ fn watchpoint_detect_read() {
         .unwrap();
     watch.upgrade().unwrap().borrow_mut().enable().unwrap();
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    proc.step_instruction().unwrap();
+    proc.step_instruction(None).unwrap();
     let soft = proc.create_breakpoint_site(func, false, false).unwrap();
     soft.upgrade().unwrap().borrow_mut().enable().unwrap();
 
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(Signal::SIGTRAP as i32, reason.info);
 
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(
         String::from_utf8(channel.read().unwrap()).unwrap(),
@@ -578,8 +578,8 @@ fn syscall_catchpoint() {
     let policy = SyscallCatchPolicy::Some(vec![write_syscall as i32]);
     proc.set_syscall_catch_policy(policy);
 
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(ProcessState::Stopped, reason.reason);
     assert_eq!(SIGTRAP as i32, reason.info);
@@ -590,8 +590,8 @@ fn syscall_catchpoint() {
         SyscallData::Args(_)
     ));
 
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(ProcessState::Stopped, reason.reason);
     assert_eq!(SIGTRAP as i32, reason.info);
@@ -759,8 +759,8 @@ fn source_level_breakpoint() {
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     let entry = target.line_entry_at_pc().unwrap();
     assert_eq!(
         entry
@@ -790,14 +790,14 @@ fn source_level_breakpoint() {
         }
     }
     lowest_bkpt.unwrap().borrow_mut().disable().unwrap();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 9);
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(target.line_entry_at_pc().unwrap().get_current().line, 13);
-    proc.resume().unwrap();
-    let reason = proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(reason.reason, ProcessState::Exited);
 }
 
@@ -816,40 +816,40 @@ fn source_level_stepping() {
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
-    let mut pc = proc.get_pc();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+    let mut pc = proc.get_pc(None);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`main")
     );
     target.step_over().unwrap();
-    let mut new_pc = proc.get_pc();
+    let mut new_pc = proc.get_pc(None);
     assert_ne!(new_pc, pc);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`main")
     );
     target.step_in().unwrap();
-    pc = proc.get_pc();
+    pc = proc.get_pc(None);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`find_happiness")
     );
     assert_eq!(target.get_stack().inline_height(), 2);
     target.step_in().unwrap();
-    new_pc = proc.get_pc();
+    new_pc = proc.get_pc(None);
     assert_eq!(new_pc, pc);
     assert_eq!(target.get_stack().inline_height(), 1);
     target.step_out().unwrap();
-    new_pc = proc.get_pc();
+    new_pc = proc.get_pc(None);
     assert_ne!(new_pc, pc);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`find_happiness")
     );
     target.step_out().unwrap();
-    pc = proc.get_pc();
+    pc = proc.get_pc(None);
     assert_eq!(
         target.function_name_at_address(pc).unwrap(),
         format!("{file_name}`main")
@@ -869,8 +869,8 @@ fn stack_unwinding() {
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     target.step_in().unwrap();
     target.step_in().unwrap();
     let stack = target.get_stack();
@@ -883,10 +883,6 @@ fn stack_unwinding() {
 
 #[test]
 fn shared_library_tracing_works() {
-    use super::test_utils::append_ld_dir;
-    use std::fs::OpenOptions;
-    use std::os::fd::AsRawFd;
-
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     append_ld_dir("resource");
     let bin = BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
@@ -910,8 +906,8 @@ fn shared_library_tracing_works() {
         .borrow_mut()
         .enable()
         .unwrap();
-    proc.resume().unwrap();
-    proc.wait_on_signal().unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
     assert_eq!(target.get_stack().frames().len(), 2);
     assert_eq!(
