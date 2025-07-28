@@ -239,7 +239,15 @@ impl Target {
                 let return_address = frame_to_skip.high_pc()?.to_virt_addr();
                 reason = self.run_until_address(return_address, Some(tid))?;
                 if !reason.is_step() || self.process.get_pc(Some(tid)) != return_address {
-                    self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
+                    self.threads
+                        .borrow()
+                        .get(&tid)
+                        .unwrap()
+                        .state
+                        .upgrade()
+                        .unwrap()
+                        .borrow_mut()
+                        .reason = reason;
                     return Ok(reason);
                 }
             } else {
@@ -249,13 +257,29 @@ impl Target {
                     if !reason.is_step()
                         || self.process.get_pc(Some(tid)) != instructions[1].address
                     {
-                        self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
+                        self.threads
+                            .borrow()
+                            .get(&tid)
+                            .unwrap()
+                            .state
+                            .upgrade()
+                            .unwrap()
+                            .borrow_mut()
+                            .reason = reason;
                         return Ok(reason);
                     }
                 } else {
                     reason = self.process.step_instruction(Some(tid))?;
                     if !reason.is_step() {
-                        self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
+                        self.threads
+                            .borrow()
+                            .get(&tid)
+                            .unwrap()
+                            .state
+                            .upgrade()
+                            .unwrap()
+                            .borrow_mut()
+                            .reason = reason;
                         return Ok(reason);
                     }
                 }
