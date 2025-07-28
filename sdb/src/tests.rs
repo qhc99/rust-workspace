@@ -797,7 +797,10 @@ fn source_level_breakpoint() {
     assert_eq!(target.line_entry_at_pc(None).unwrap().get_current().line, 9);
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-    assert_eq!(target.line_entry_at_pc(None).unwrap().get_current().line, 13);
+    assert_eq!(
+        target.line_entry_at_pc(None).unwrap().get_current().line,
+        13
+    );
     proc.resume(None).unwrap();
     let reason = proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
     assert_eq!(reason.reason, ProcessState::Exited);

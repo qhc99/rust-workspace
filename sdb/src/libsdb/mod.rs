@@ -91,8 +91,12 @@ fn print_stop_reason(target: &Target, reason: StopReason) -> Result<(), SdbError
         }
         ProcessState::Stopped => {
             get_signal_stop_reason(target, reason)?;
-            println!("Thread {} {}", reason.tid, get_signal_stop_reason(target, reason)?);
-        },
+            println!(
+                "Thread {} {}",
+                reason.tid,
+                get_signal_stop_reason(target, reason)?
+            );
+        }
         ProcessState::Running => {
             eprintln!("Incorrect state");
         }
@@ -249,7 +253,10 @@ fn handle_thread_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbEr
             } else {
                 " "
             };
-            println!("{prefix}Thread {tid}: {}", get_signal_stop_reason(target, thread.state.upgrade().unwrap().borrow().reason)?);
+            println!(
+                "{prefix}Thread {tid}: {}",
+                get_signal_stop_reason(target, thread.state.upgrade().unwrap().borrow().reason)?
+            );
         }
     } else if args[1] == "select" {
         if args.len() != 3 {

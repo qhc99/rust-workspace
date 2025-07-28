@@ -19,8 +19,8 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::{env, process::exit};
 
-use libsdb::process::StopReason;
 use libsdb::process::ProcessState;
+use libsdb::process::StopReason;
 mod libsdb;
 mod test_utils;
 mod tests;
