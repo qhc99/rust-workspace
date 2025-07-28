@@ -208,9 +208,14 @@ pub struct Process {
     target: RefCell<Option<Weak<Target>>>,
     threads: RefCell<HashMap<Pid, Rc<RefCell<ThreadState>>>>,
     current_thread: RefCell<Pid>,
+    thread_lifecycle_callback: RefCell<Option<Box<dyn Fn(&StopReason)>>>,
 }
 
 impl Process {
+    pub fn install_thread_lifecycle_callback<T: Fn(&StopReason) + 'static>(&self, callback: T) {
+        *self.thread_lifecycle_callback.borrow_mut() = Some(Box::new(callback));
+    }
+
     pub fn stop_running_threads(&self) -> Result<(), SdbError> {
         let threads = self.threads.borrow().clone();
         for (tid, thread) in threads.iter() {
@@ -266,11 +271,34 @@ impl Process {
     }
 
     pub fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
-        todo!()
+        let threads = self.threads.borrow();
+        let mut to_remove = Vec::new();
+        let mut to_report = None;
+        for (tid, thread) in threads.iter() {
+            if *tid != main_stop_tid
+                && (thread.borrow().state == ProcessState::Exited
+                    || thread.borrow().state == ProcessState::Terminated)
+            {
+                self.report_thread_lifecycle_event(&thread.borrow().stop_reason);
+                to_remove.push(*tid);
+                if *tid == self.pid {
+                    to_report = Some(thread.borrow().stop_reason);
+                }
+            }
+        }
+        for tid in to_remove {
+            self.threads.borrow_mut().remove(&tid);
+        }
+        to_report
     }
 
     pub fn report_thread_lifecycle_event(&self, reason: &StopReason) {
-        todo!()
+        if let Some(callback) = self.thread_lifecycle_callback.borrow().as_ref() {
+            callback(reason);
+        }
+        if let Some(target) = self.target.borrow().as_ref() {
+            target.upgrade().unwrap().notify_thread_lifecycle_event(reason);
+        }
     }
 
     pub fn handle_signal(&self, reason: StopReason, is_main_stop: bool) -> Option<StopReason> {
@@ -347,6 +375,7 @@ impl Process {
             target: RefCell::new(None),
             threads: RefCell::new(HashMap::new()),
             current_thread: RefCell::new(pid),
+            thread_lifecycle_callback: RefCell::new(None),
         });
         ret.populate_existing_threads();
         ret
