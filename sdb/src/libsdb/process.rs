@@ -222,11 +222,7 @@ impl Process {
     }
 
     pub fn resume_all_threads(&self) -> Result<(), SdbError> {
-        let tids = self
-            .threads
-            .borrow()
-            .keys().copied()
-            .collect::<Vec<_>>();
+        let tids = self.threads.borrow().keys().copied().collect::<Vec<_>>();
         for tid in tids.iter() {
             self.step_over_breakpoint(*tid)?;
         }
@@ -1017,9 +1013,9 @@ impl ProcessExt for Rc<Process> {
         }
 
         reason = final_reason.unwrap();
-
-        let thread = self.threads.borrow().get(&tid).unwrap().clone();
-        {
+        // Implementation difference: add empty check
+        if let Some(thread) = self.threads.borrow().get(&tid) {
+            let thread = thread.clone();
             let mut thread_state = thread.borrow_mut();
             thread_state.reason = reason;
             thread_state.state = reason.reason;

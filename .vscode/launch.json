@@ -4,6 +4,26 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "debug cargo tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "tests::source_level_breakpoint",
+                    "-p",
+                    "sdb",
+                    "--bin",
+                    "sdb"
+                ]
+            },
+            "cwd": "${workspaceFolder}/sdb",
+            "args": ["--test-threads=1"],
+            "env": {
+                "RUST_BACKTRACE": "1"
+              }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "debug marshmallow",
             "program": "${workspaceFolder}/target/debug/sdb",
             "args": ["${workspaceFolder}/sdb/resource/marshmallow_0"],

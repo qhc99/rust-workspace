@@ -1,5 +1,5 @@
 #![cfg(test)]
-
+use serial_test::serial;
 use std::{
     cell::RefCell, collections::HashSet, fs::{File, OpenOptions}, io::{BufRead, BufReader}, os::fd::AsRawFd, path::PathBuf, rc::Rc
 };
@@ -54,6 +54,7 @@ fn get_process_state(pid: Pid) -> String {
 }
 
 #[test]
+#[serial]
 fn process_attach_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let target = Process::launch(bin.target_path(), false, None).unwrap();
@@ -62,11 +63,13 @@ fn process_attach_success() {
 }
 
 #[test]
+#[serial]
 fn process_attach_invalid_pid() {
     assert!(Process::attach(Pid::from_raw(0)).is_err());
 }
 
 #[test]
+#[serial]
 fn process_resume_success() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -82,6 +85,7 @@ fn process_resume_success() {
 }
 
 #[test]
+#[serial]
 fn process_resume_terminated() {
     let bin = BinBuilder::rustc("resource", "just_exit.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -91,6 +95,7 @@ fn process_resume_terminated() {
 }
 
 #[test]
+#[serial]
 fn write_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -166,6 +171,7 @@ fn write_registers() {
 }
 
 #[test]
+#[serial]
 fn read_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -206,6 +212,7 @@ fn read_registers() {
 }
 
 #[test]
+#[serial]
 fn create_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -217,6 +224,7 @@ fn create_breakpoint_site() {
 }
 
 #[test]
+#[serial]
 fn create_breakpoint_site_id_increase() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -254,6 +262,7 @@ fn create_breakpoint_site_id_increase() {
 }
 
 #[test]
+#[serial]
 fn find_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -285,6 +294,7 @@ fn find_breakpoint_sites() {
 }
 
 #[test]
+#[serial]
 fn cannot_find_breakpoint_site() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -299,6 +309,7 @@ fn cannot_find_breakpoint_site() {
 }
 
 #[test]
+#[serial]
 fn breakpoint_sites_list_size() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -315,6 +326,7 @@ fn breakpoint_sites_list_size() {
 }
 
 #[test]
+#[serial]
 fn iterate_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -397,6 +409,7 @@ fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
 }
 
 #[test]
+#[serial]
 fn breakpoint_on_address() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -428,6 +441,7 @@ fn breakpoint_on_address() {
 }
 
 #[test]
+#[serial]
 fn remove_breakpoint_sites() {
     let bin = BinBuilder::rustc("resource", "loop_assign.rs");
     let proc = Process::launch(bin.target_path(), true, None).unwrap();
@@ -447,6 +461,7 @@ fn remove_breakpoint_sites() {
 }
 
 #[test]
+#[serial]
 fn read_and_write_memory() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -475,6 +490,7 @@ fn read_and_write_memory() {
 }
 
 #[test]
+#[serial]
 fn hardware_breapoint_evade_memory_checksum() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -519,6 +535,7 @@ fn hardware_breapoint_evade_memory_checksum() {
 }
 
 #[test]
+#[serial]
 fn watchpoint_detect_read() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
@@ -557,6 +574,7 @@ fn watchpoint_detect_read() {
 }
 
 #[test]
+#[serial]
 fn syscall_mapping() {
     assert_eq!("read", syscall_id_to_name(0).unwrap());
     assert_eq!(0, syscall_name_to_id("read").unwrap());
@@ -565,6 +583,7 @@ fn syscall_mapping() {
 }
 
 #[test]
+#[serial]
 fn syscall_catchpoint() {
     let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let fd = f.as_raw_fd();
@@ -601,6 +620,7 @@ fn syscall_catchpoint() {
 }
 
 #[test]
+#[serial]
 fn elf_parser() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
@@ -618,6 +638,7 @@ fn elf_parser() {
 }
 
 #[test]
+#[serial]
 fn correct_dwarf_language() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
@@ -636,6 +657,7 @@ fn correct_dwarf_language() {
 }
 
 #[test]
+#[serial]
 fn iterate_dwarf() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
@@ -656,6 +678,7 @@ fn iterate_dwarf() {
 }
 
 #[test]
+#[serial]
 fn find_main() {
     let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
     let path = bin.target_path();
@@ -673,6 +696,7 @@ fn find_main() {
 }
 
 #[test]
+#[serial]
 fn range_list() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
@@ -712,6 +736,7 @@ fn range_list() {
 }
 
 #[test]
+#[serial]
 fn line_table() {
     let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
     let path = bin.target_path();
@@ -743,6 +768,7 @@ fn line_table() {
 }
 
 #[test]
+#[serial]
 fn source_level_breakpoint() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let bin = BinBuilder::cpp("resource", &["overloaded.cpp"]);
@@ -802,6 +828,7 @@ fn source_level_breakpoint() {
 }
 
 #[test]
+#[serial]
 fn source_level_stepping() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let bin = BinBuilder::cpp("resource", &["step.cpp"]);
@@ -857,6 +884,7 @@ fn source_level_stepping() {
 }
 
 #[test]
+#[serial]
 fn stack_unwinding() {
     let bin = BinBuilder::cpp("resource", &["step.cpp"]);
     let target = Target::launch(bin.target_path(), None).unwrap();
@@ -883,6 +911,7 @@ fn stack_unwinding() {
 }
 
 #[test]
+#[serial]
 fn shared_library_tracing_works() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     append_ld_dir("resource");
@@ -941,6 +970,7 @@ fn shared_library_tracing_works() {
 }
 
 #[test]
+#[serial]
 fn multi_threading() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let bin = BinBuilder::cpp("resource", &["multi_threaded.cpp"]);
