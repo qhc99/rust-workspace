@@ -1,7 +1,13 @@
 #![cfg(test)]
 use serial_test::serial;
 use std::{
-    cell::RefCell, collections::HashSet, fs::{File, OpenOptions}, io::{BufRead, BufReader}, os::fd::AsRawFd, path::PathBuf, rc::Rc
+    cell::RefCell,
+    collections::HashSet,
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader},
+    os::fd::AsRawFd,
+    path::PathBuf,
+    rc::Rc,
 };
 
 use libsdb::target::{Target, TargetExt};
@@ -977,7 +983,8 @@ fn multi_threading() {
     let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
 
-    target.create_function_breakpoint("say_hi", false, false)
+    target
+        .create_function_breakpoint("say_hi", false, false)
         .unwrap()
         .upgrade()
         .unwrap()
@@ -989,13 +996,13 @@ fn multi_threading() {
     loop {
         proc.resume_all_threads().unwrap();
         proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-        
+
         for (tid, thread) in proc.thread_states().borrow().iter() {
             if thread.borrow().reason.reason == ProcessState::Stopped && *tid != proc.pid() {
                 tids.insert(*tid);
             }
         }
-        
+
         if tids.len() >= 10 {
             break;
         }

@@ -155,14 +155,30 @@ impl Target {
                 .info(SIGTRAP)
                 .trap_reason(Some(TrapType::SingleStep))
                 .build();
-            self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
+            self.threads
+                .borrow()
+                .get(&tid)
+                .unwrap()
+                .state
+                .upgrade()
+                .unwrap()
+                .borrow_mut()
+                .reason = reason;
             return Ok(reason);
         }
         let orig_line = self.line_entry_at_pc(Some(tid))?;
         loop {
             let reason = self.process.step_instruction(Some(tid))?;
             if !reason.is_step() {
-                self.threads.borrow().get(&tid).unwrap().state.upgrade().unwrap().borrow_mut().reason = reason;
+                self.threads
+                    .borrow()
+                    .get(&tid)
+                    .unwrap()
+                    .state
+                    .upgrade()
+                    .unwrap()
+                    .borrow_mut()
+                    .reason = reason;
                 return Ok(reason);
             }
             if !((self.line_entry_at_pc(Some(tid))? == orig_line
