@@ -1,7 +1,15 @@
 #![cfg(test)]
 use serial_test::serial;
 use std::{
-    cell::RefCell, collections::HashSet, env, fs::{File, OpenOptions}, io::{BufRead, BufReader}, os::fd::AsRawFd, path::PathBuf, rc::Rc, sync::{LazyLock, Mutex}
+    cell::RefCell,
+    collections::HashSet,
+    env,
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader},
+    os::fd::AsRawFd,
+    path::PathBuf,
+    rc::Rc,
+    sync::{LazyLock, Mutex},
 };
 
 use libsdb::target::{Target, TargetExt};
@@ -40,7 +48,6 @@ use elf::{ElfBytes, endian::AnyEndian};
 use regex::Regex;
 use std::process::Command;
 
-
 static LD_PATH_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn append_ld_dir(dir: &str) {
@@ -63,18 +70,20 @@ fn get_process_state(pid: Pid) -> String {
     return String::from_utf8_lossy(&line.as_bytes()[idx + 2..idx + 3]).to_string();
 }
 
-static LOOP_ASSIGN_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/loop_assign")});
-static JUST_EXIT_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/just_exit")});
-static REG_WRITE_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/reg_write")});
-static REG_READ_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/reg_read")});
-static HELLO_SDB_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/hello_sdb")});
-static MEMORY_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/memory")});
-static ANTI_DEBUGGER_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/anti_debugger")});
-static MULTI_THREAD_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/multi_threaded")});
-static STEP_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/step")});
-static MULTI_CU_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/multi_cu_main")});
-static OVERLOADED_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/overloaded")});
-static MARSHMALLOW_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/marshmallow")});
+static LOOP_ASSIGN_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/loop_assign"));
+static JUST_EXIT_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/just_exit"));
+static REG_WRITE_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/reg_write"));
+static REG_READ_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/reg_read"));
+static HELLO_SDB_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/hello_sdb"));
+static MEMORY_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/memory"));
+static ANTI_DEBUGGER_PATH: LazyLock<&Path> =
+    LazyLock::new(|| Path::new("resource/bin/anti_debugger"));
+static MULTI_THREAD_PATH: LazyLock<&Path> =
+    LazyLock::new(|| Path::new("resource/bin/multi_threaded"));
+static STEP_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/step"));
+static MULTI_CU_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/multi_cu_main"));
+static OVERLOADED_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/overloaded"));
+static MARSHMALLOW_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/marshmallow"));
 
 #[test]
 #[serial]
@@ -119,7 +128,8 @@ fn process_resume_terminated() {
 fn write_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let proc = Process::launch(REG_WRITE_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
+    let proc =
+        Process::launch(REG_WRITE_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
@@ -425,7 +435,8 @@ fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
 fn breakpoint_on_address() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let proc = Process::launch(HELLO_SDB_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
+    let proc =
+        Process::launch(HELLO_SDB_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     let offset = get_entry_point_offset(HELLO_SDB_PATH.as_ref()).unwrap();
     let load_address = get_load_address(proc.pid(), offset).unwrap();
@@ -503,7 +514,12 @@ fn read_and_write_memory() {
 fn hardware_breapoint_evade_memory_checksum() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let proc = Process::launch(ANTI_DEBUGGER_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(
+        ANTI_DEBUGGER_PATH.as_ref(),
+        true,
+        Some(channel.get_write_fd()),
+    )
+    .unwrap();
     channel.close_write();
 
     proc.resume(None).unwrap();
@@ -547,7 +563,12 @@ fn hardware_breapoint_evade_memory_checksum() {
 fn watchpoint_detect_read() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let proc = Process::launch(ANTI_DEBUGGER_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(
+        ANTI_DEBUGGER_PATH.as_ref(),
+        true,
+        Some(channel.get_write_fd()),
+    )
+    .unwrap();
     channel.close_write();
 
     proc.resume(None).unwrap();

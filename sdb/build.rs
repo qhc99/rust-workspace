@@ -3,9 +3,6 @@
 // * **Generates** `src/libsdb/bindings.rs` when `wrapper.h` is newer.
 // * **Pre‑builds** helper binaries / shared objects into `resource/bin/`,
 //   recompiling only when sources are newer.
-// * Commands run with `current_dir("resource")` to mimic the original
-//   `BinBuilder` behaviour, so relative includes and default debug paths stay
-//   identical to manual `rustc` / `g++` invocations inside `resource/`.
 // * `cargo:rerun-if-changed` is emitted for every tracked file.
 
 use std::fs;
@@ -60,13 +57,14 @@ fn generate_bindings() {
     let bindings = Path::new(BINDINGS_RS);
 
     if !bindings.exists() || newer(wrapper, bindings) {
-        println!("cargo:warning=Regenerating {:?} → {:?}", wrapper, bindings);
+        println!("cargo:warning=Regenerating {wrapper:?} → {bindings:?}");
         let out = bindgen::Builder::default()
             .header(WRAPPER_H)
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .generate()
             .expect("Unable to generate bindings");
-        out.write_to_file(bindings).expect("Couldn't write bindings!");
+        out.write_to_file(bindings)
+            .expect("Couldn't write bindings!");
     }
 }
 
@@ -77,7 +75,7 @@ fn compile_rust(src: &str) {
     let bin_rel = format!("{BIN_SUBDIR}/{stem}"); // relative to RESOURCE_DIR
 
     if !bin_path_full.exists() || newer(&src_path, &bin_path_full) {
-        println!("cargo:warning=Compiling {} → {}", src, bin_rel);
+        println!("cargo:warning=Compiling {src} → {bin_rel}");
         Command::new("rustc")
             .current_dir(RESOURCE_DIR)
             .args([src, "-o", &bin_rel])
@@ -94,7 +92,7 @@ fn compile_asm(src: &str) {
     let bin_rel = format!("{BIN_SUBDIR}/{stem}");
 
     if !bin_path_full.exists() || newer(&src_path, &bin_path_full) {
-        println!("cargo:warning=Compiling {} → {}", src, bin_rel);
+        println!("cargo:warning=Compiling {src} → {bin_rel}");
         Command::new("gcc")
             .current_dir(RESOURCE_DIR)
             .args(["-pie", "-o", &bin_rel, src])
@@ -136,18 +134,25 @@ fn compile_cpp(sources: &[&str], libs: &[&str]) {
     let exe_rel = format!("{BIN_SUBDIR}/{stem}");
 
     let needs_rebuild = !exe_path_full.exists()
-        || sources.iter().any(|s| newer(&Path::new(RESOURCE_DIR).join(s), &exe_path_full))
+        || sources
+            .iter()
+            .any(|s| newer(&Path::new(RESOURCE_DIR).join(s), &exe_path_full))
         || libs.iter().any(|l| {
-            let so_name = format!("lib{}.so", Path::new(l).file_stem().unwrap().to_string_lossy());
+            let so_name = format!(
+                "lib{}.so",
+                Path::new(l).file_stem().unwrap().to_string_lossy()
+            );
             newer(&bin_path(&so_name), &exe_path_full)
         });
 
     if needs_rebuild {
-        println!("cargo:warning=Compiling {:?} → {}", sources, exe_rel);
+        println!("cargo:warning=Compiling {sources:?} → {exe_rel}");
         let mut args: Vec<String> = sources.iter().map(|s| s.to_string()).collect(); // relative names
-        args.extend(["-pie", "-g", "-O0", "-gdwarf-4", "-L./bin", "-o", &exe_rel]
-            .iter()
-            .map(|s| s.to_string()));
+        args.extend(
+            ["-pie", "-g", "-O0", "-gdwarf-4", "-L./bin", "-o", &exe_rel]
+                .iter()
+                .map(|s| s.to_string()),
+        );
         for lib in libs {
             let stem = Path::new(lib).file_stem().unwrap().to_string_lossy();
             args.push(format!("-l{stem}"));
@@ -160,7 +165,7 @@ fn compile_cpp(sources: &[&str], libs: &[&str]) {
     }
 
     for s in sources {
-        println!("cargo:rerun-if-changed={}/{}", RESOURCE_DIR, s);
+        println!("cargo:rerun-if-changed={RESOURCE_DIR}/{s}");
     }
 }
 // -------------------------------------------------------------------------
