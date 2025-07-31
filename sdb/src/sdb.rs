@@ -22,7 +22,6 @@ use std::{env, process::exit};
 use libsdb::process::ProcessState;
 use libsdb::process::StopReason;
 mod libsdb;
-mod test_utils;
 mod tests;
 
 thread_local! {

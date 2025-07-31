@@ -1248,6 +1248,7 @@ pub struct ThreadState {
 mod tests {
     use nix::sys::signal::kill;
     use nix::unistd::Pid;
+    use serial_test::serial;
     use std::path::Path;
 
     fn process_exists(pid: Pid) -> bool {
@@ -1255,12 +1256,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn process_launch_success() {
         let proc = super::Process::launch(Path::new("yes"), true, None);
         assert!(process_exists(proc.unwrap().pid()));
     }
 
     #[test]
+    #[serial]
     fn process_launch_no_such_program() {
         let proc = super::Process::launch(Path::new("you_do_not_have_to_be_good"), true, None);
         assert!(proc.is_err());

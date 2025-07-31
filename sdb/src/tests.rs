@@ -1,20 +1,11 @@
 #![cfg(test)]
 use serial_test::serial;
 use std::{
-    cell::RefCell,
-    collections::HashSet,
-    fs::{File, OpenOptions},
-    io::{BufRead, BufReader},
-    os::fd::AsRawFd,
-    path::PathBuf,
-    rc::Rc,
+    cell::RefCell, collections::HashSet, env, fs::{File, OpenOptions}, io::{BufRead, BufReader}, os::fd::AsRawFd, path::PathBuf, rc::Rc, sync::{LazyLock, Mutex}
 };
 
 use libsdb::target::{Target, TargetExt};
 
-use crate::test_utils::append_ld_dir;
-
-use super::test_utils::BinBuilder;
 use bytes::Bytes;
 use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
 use libsdb::syscalls::syscall_name_to_id;
@@ -49,6 +40,19 @@ use elf::{ElfBytes, endian::AnyEndian};
 use regex::Regex;
 use std::process::Command;
 
+
+static LD_PATH_LOCK: Mutex<()> = Mutex::new(());
+
+pub fn append_ld_dir(dir: &str) {
+    let _guard = LD_PATH_LOCK.lock().unwrap();
+    let mut ld_path = env::var("LD_LIBRARY_PATH").unwrap_or_default();
+    if !ld_path.split(':').any(|p| p == dir) {
+        ld_path.push(':');
+        ld_path.push_str(dir);
+    }
+    unsafe { env::set_var("LD_LIBRARY_PATH", ld_path) };
+}
+
 fn get_process_state(pid: Pid) -> String {
     let pid_num = pid.as_raw();
     let file = File::open(format!("/proc/{pid_num}/stat")).unwrap();
@@ -59,11 +63,23 @@ fn get_process_state(pid: Pid) -> String {
     return String::from_utf8_lossy(&line.as_bytes()[idx + 2..idx + 3]).to_string();
 }
 
+static LOOP_ASSIGN_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/loop_assign")});
+static JUST_EXIT_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/just_exit")});
+static REG_WRITE_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/reg_write")});
+static REG_READ_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/reg_read")});
+static HELLO_SDB_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/hello_sdb")});
+static MEMORY_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/memory")});
+static ANTI_DEBUGGER_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/anti_debugger")});
+static MULTI_THREAD_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/multi_threaded")});
+static STEP_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/step")});
+static MULTI_CU_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/multi_cu_main")});
+static OVERLOADED_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/overloaded")});
+static MARSHMALLOW_PATH: LazyLock<&Path> = LazyLock::new(|| {Path::new("resource/bin/marshmallow")});
+
 #[test]
 #[serial]
 fn process_attach_success() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let target = Process::launch(bin.target_path(), false, None).unwrap();
+    let target = Process::launch(LOOP_ASSIGN_PATH.as_ref(), false, None).unwrap();
     let _proc = Process::attach(target.pid()).unwrap();
     assert!(get_process_state(target.pid()) == "t");
 }
@@ -77,13 +93,12 @@ fn process_attach_invalid_pid() {
 #[test]
 #[serial]
 fn process_resume_success() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     proc.resume(None).ok();
     let status = get_process_state(proc.pid());
     assert!(status == "R" || status == "S");
 
-    let target = Process::launch(bin.target_path(), false, None).unwrap();
+    let target = Process::launch(LOOP_ASSIGN_PATH.as_ref(), false, None).unwrap();
     let proc = Process::attach(target.pid()).unwrap();
     proc.resume(None).ok();
     let status = get_process_state(proc.pid());
@@ -93,8 +108,7 @@ fn process_resume_success() {
 #[test]
 #[serial]
 fn process_resume_terminated() {
-    let bin = BinBuilder::rustc("resource", "just_exit.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(JUST_EXIT_PATH.as_ref(), true, None).unwrap();
     proc.resume(None).ok();
     proc.wait_on_signal(Pid::from_raw(-1)).ok();
     assert!(proc.resume(None).is_err());
@@ -105,8 +119,7 @@ fn process_resume_terminated() {
 fn write_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let target = BinBuilder::asm("resource", "reg_write.s");
-    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(REG_WRITE_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
     proc.resume(None).unwrap();
     proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
@@ -181,8 +194,7 @@ fn write_registers() {
 fn read_registers() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let target = BinBuilder::asm("resource", "reg_read.s");
-    let proc = Process::launch(target.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(REG_READ_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     let regs = proc.get_registers(None);
     channel.close_write();
 
@@ -220,8 +232,7 @@ fn read_registers() {
 #[test]
 #[serial]
 fn create_breakpoint_site() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     let site = proc.create_breakpoint_site(42.into(), false, false);
     assert_eq!(
         VirtualAddress::from(42),
@@ -232,8 +243,7 @@ fn create_breakpoint_site() {
 #[test]
 #[serial]
 fn create_breakpoint_site_id_increase() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     let site1 = proc
         .create_breakpoint_site(42.into(), false, false)
         .unwrap();
@@ -270,8 +280,7 @@ fn create_breakpoint_site_id_increase() {
 #[test]
 #[serial]
 fn find_breakpoint_sites() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     let _ = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     let _ = proc.create_breakpoint_site(44.into(), false, false);
@@ -302,8 +311,7 @@ fn find_breakpoint_sites() {
 #[test]
 #[serial]
 fn cannot_find_breakpoint_site() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
 
     assert!(
         proc.breakpoint_sites()
@@ -317,8 +325,7 @@ fn cannot_find_breakpoint_site() {
 #[test]
 #[serial]
 fn breakpoint_sites_list_size() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     assert!(proc.breakpoint_sites().borrow().empty());
     assert!(proc.breakpoint_sites().borrow().size() == 0);
 
@@ -334,8 +341,7 @@ fn breakpoint_sites_list_size() {
 #[test]
 #[serial]
 fn iterate_breakpoint_sites() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     let _ = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     let _ = proc.create_breakpoint_site(44.into(), false, false);
@@ -419,10 +425,9 @@ fn get_load_address(pid: Pid, offset: i64) -> io::Result<VirtualAddress> {
 fn breakpoint_on_address() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(HELLO_SDB_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
-    let offset = get_entry_point_offset(bin.target_path()).unwrap();
+    let offset = get_entry_point_offset(HELLO_SDB_PATH.as_ref()).unwrap();
     let load_address = get_load_address(proc.pid(), offset).unwrap();
     proc.create_breakpoint_site(load_address, false, false)
         .unwrap()
@@ -449,8 +454,7 @@ fn breakpoint_on_address() {
 #[test]
 #[serial]
 fn remove_breakpoint_sites() {
-    let bin = BinBuilder::rustc("resource", "loop_assign.rs");
-    let proc = Process::launch(bin.target_path(), true, None).unwrap();
+    let proc = Process::launch(LOOP_ASSIGN_PATH.as_ref(), true, None).unwrap();
     let site = proc.create_breakpoint_site(42.into(), false, false);
     let _ = proc.create_breakpoint_site(43.into(), false, false);
     assert_eq!(2, proc.breakpoint_sites().borrow().size());
@@ -471,8 +475,7 @@ fn remove_breakpoint_sites() {
 fn read_and_write_memory() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", &["memory.cpp"]);
-    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(MEMORY_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
     proc.resume(None).unwrap();
@@ -500,8 +503,7 @@ fn read_and_write_memory() {
 fn hardware_breapoint_evade_memory_checksum() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
-    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(ANTI_DEBUGGER_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
     proc.resume(None).unwrap();
@@ -545,8 +547,7 @@ fn hardware_breapoint_evade_memory_checksum() {
 fn watchpoint_detect_read() {
     let close_on_exec = false;
     let mut channel = Pipe::new(close_on_exec).unwrap();
-    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
-    let proc = Process::launch(bin.target_path(), true, Some(channel.get_write_fd())).unwrap();
+    let proc = Process::launch(ANTI_DEBUGGER_PATH.as_ref(), true, Some(channel.get_write_fd())).unwrap();
     channel.close_write();
 
     proc.resume(None).unwrap();
@@ -593,9 +594,7 @@ fn syscall_mapping() {
 fn syscall_catchpoint() {
     let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
     let fd = f.as_raw_fd();
-    let bin = BinBuilder::cpp("resource", &["anti_debugger.cpp"]);
-
-    let proc = Process::launch(bin.target_path(), true, Some(fd)).unwrap();
+    let proc = Process::launch(ANTI_DEBUGGER_PATH.as_ref(), true, Some(fd)).unwrap();
     let write_syscall = syscall_name_to_id("write").unwrap();
     let policy = SyscallCatchPolicy::Some(vec![write_syscall as i32]);
     proc.set_syscall_catch_policy(policy);
@@ -628,8 +627,7 @@ fn syscall_catchpoint() {
 #[test]
 #[serial]
 fn elf_parser() {
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let path = bin.target_path();
+    let path = HELLO_SDB_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let entry = elf.get_header().0.e_entry;
     let sym = elf
@@ -646,8 +644,7 @@ fn elf_parser() {
 #[test]
 #[serial]
 fn correct_dwarf_language() {
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let path = bin.target_path();
+    let path = HELLO_SDB_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
@@ -665,8 +662,7 @@ fn correct_dwarf_language() {
 #[test]
 #[serial]
 fn iterate_dwarf() {
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let path = bin.target_path();
+    let path = HELLO_SDB_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
@@ -686,8 +682,7 @@ fn iterate_dwarf() {
 #[test]
 #[serial]
 fn find_main() {
-    let bin = BinBuilder::cpp("resource", &["multi_cu_main.cpp", "multi_cu_other.cpp"]);
-    let path = bin.target_path();
+    let path = MULTI_CU_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
     let found = dwarf.compile_units().iter().any(|cu| {
@@ -704,8 +699,7 @@ fn find_main() {
 #[test]
 #[serial]
 fn range_list() {
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let path = bin.target_path();
+    let path = HELLO_SDB_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
@@ -744,8 +738,7 @@ fn range_list() {
 #[test]
 #[serial]
 fn line_table() {
-    let bin = BinBuilder::cpp("resource", &["hello_sdb.cpp"]);
-    let path = bin.target_path();
+    let path = HELLO_SDB_PATH.as_ref();
     let elf = Elf::new(path).unwrap();
     let dwarf = elf.get_dwarf();
     let compile_units = dwarf.compile_units();
@@ -777,8 +770,7 @@ fn line_table() {
 #[serial]
 fn source_level_breakpoint() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
-    let bin = BinBuilder::cpp("resource", &["overloaded.cpp"]);
-    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let target = Target::launch(OVERLOADED_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
     target
         .create_line_breakpoint(Path::new("overloaded.cpp"), 17, false, false)
@@ -837,9 +829,8 @@ fn source_level_breakpoint() {
 #[serial]
 fn source_level_stepping() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
-    let bin = BinBuilder::cpp("resource", &["step.cpp"]);
-    let file_name = bin.target_path().file_stem().unwrap().to_str().unwrap();
-    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let file_name = STEP_PATH.file_stem().unwrap().to_str().unwrap();
+    let target = Target::launch(STEP_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
     target
         .create_function_breakpoint("main", false, false)
@@ -892,8 +883,7 @@ fn source_level_stepping() {
 #[test]
 #[serial]
 fn stack_unwinding() {
-    let bin = BinBuilder::cpp("resource", &["step.cpp"]);
-    let target = Target::launch(bin.target_path(), None).unwrap();
+    let target = Target::launch(STEP_PATH.as_ref(), None).unwrap();
     let proc = target.get_process();
     target
         .create_function_breakpoint("scratch_ears", false, false)
@@ -920,18 +910,8 @@ fn stack_unwinding() {
 #[serial]
 fn shared_library_tracing_works() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
-    append_ld_dir("resource");
-    let bin = BinBuilder::cpp_with_so("resource", &["marshmallow.cpp"], &["meow.cpp"]);
-    let file_num = bin
-        .target_path()
-        .file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split('_')
-        .last()
-        .unwrap();
-    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    append_ld_dir("resource/bin");
+    let target = Target::launch(MARSHMALLOW_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
 
     target
@@ -971,7 +951,7 @@ fn shared_library_tracing_works() {
             .unwrap()
             .to_str()
             .unwrap(),
-        &format!("libmeow_{file_num}.so")
+        "libmeow.so"
     );
 }
 
@@ -979,8 +959,7 @@ fn shared_library_tracing_works() {
 #[serial]
 fn multi_threading() {
     let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
-    let bin = BinBuilder::cpp("resource", &["multi_threaded.cpp"]);
-    let target = Target::launch(bin.target_path(), Some(dev_null.as_raw_fd())).unwrap();
+    let target = Target::launch(MULTI_THREAD_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
     let proc = target.get_process();
 
     target
