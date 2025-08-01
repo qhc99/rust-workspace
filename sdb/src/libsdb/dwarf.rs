@@ -8,17 +8,27 @@ use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
     DW_AT_abstract_origin, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_decl_file,
-    DW_AT_decl_line, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling,
-    DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block, DW_FORM_block1,
-    DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8,
-    DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref_addr,
-    DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_sdata,
-    DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_LNE_define_file,
-    DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator, DW_LNS_advance_line,
-    DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy, DW_LNS_fixed_advance_pc,
-    DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column, DW_LNS_set_epilogue_begin,
-    DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_TAG_inlined_subroutine,
-    DW_TAG_subprogram, DwForm, DwLne, DwLns,
+    DW_AT_decl_line, DW_AT_frame_base, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges,
+    DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
+    DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
+    DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
+    DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
+    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
+    DW_LNE_define_file, DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator,
+    DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy,
+    DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column,
+    DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_OP_abs,
+    DW_OP_addr, DW_OP_and, DW_OP_bit_piece, DW_OP_bra, DW_OP_breg0, DW_OP_breg31, DW_OP_bregx,
+    DW_OP_call_frame_cfa, DW_OP_call_ref, DW_OP_call2, DW_OP_call4, DW_OP_const1s, DW_OP_const1u,
+    DW_OP_const2s, DW_OP_const2u, DW_OP_const4s, DW_OP_const4u, DW_OP_const8s, DW_OP_const8u,
+    DW_OP_consts, DW_OP_constu, DW_OP_deref, DW_OP_deref_size, DW_OP_div, DW_OP_drop, DW_OP_dup,
+    DW_OP_eq, DW_OP_fbreg, DW_OP_form_tls_address, DW_OP_ge, DW_OP_gt, DW_OP_implicit_value,
+    DW_OP_le, DW_OP_lit0, DW_OP_lit31, DW_OP_lt, DW_OP_minus, DW_OP_mod, DW_OP_mul, DW_OP_ne,
+    DW_OP_neg, DW_OP_nop, DW_OP_not, DW_OP_or, DW_OP_over, DW_OP_pick, DW_OP_piece, DW_OP_plus,
+    DW_OP_plus_uconst, DW_OP_push_object_address, DW_OP_reg0, DW_OP_reg31, DW_OP_regx, DW_OP_rot,
+    DW_OP_shl, DW_OP_shr, DW_OP_shra, DW_OP_skip, DW_OP_stack_value, DW_OP_swap, DW_OP_xderef,
+    DW_OP_xderef_size, DW_OP_xor, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLne,
+    DwLns, DwOp,
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -27,9 +37,10 @@ use super::bit::from_bytes;
 use super::breakpoint::{CallFrameInformation, parse_eh_hdr};
 use super::elf::Elf;
 use super::process::Process;
-use super::registers::Registers;
+use super::register_info::{RegisterId, register_info_by_dwarf};
+use super::registers::{RegisterValue, Registers};
 use super::sdb_error::SdbError;
-use super::types::FileAddress;
+use super::types::{FileAddress, VirtualAddress};
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
 
@@ -695,6 +706,33 @@ impl DieAttr {
             FileAddress::default()
         };
         Ok(CompileUnitRangeList::new(&cu, &data, base_address))
+    }
+    /*
+       dwarf_expression as_expression(bool in_frame_info) const;
+
+       location_list as_location_list(bool in_frame_info) const;
+
+       dwarf_expression::result as_evaluated_location(
+           const sdb::process& proc,
+           const registers& regs,
+           bool in_frame_info) const;
+    */
+
+    pub fn as_expression(&self, in_frame_info: bool) -> DwarfExpression {
+        todo!()
+    }
+
+    // pub fn as_location_list(&self, in_frame_info: bool) -> LocationList {
+    //     todo!()
+    // }
+
+    pub fn as_evaluated_location(
+        &self,
+        proc: &Process,
+        regs: &Registers,
+        in_frame_info: bool,
+    ) -> DwarfExpressionResult {
+        todo!()
     }
 }
 
@@ -1498,7 +1536,7 @@ pub struct UnwindContext {
 }
 
 pub enum DwarfExpressionSimpleLocation {
-    Address { address: FileAddress },
+    Address { address: VirtualAddress },
     Register { reg_num: u64 },
     Data { data: Bytes },
     Literal { value: u64 },
@@ -1508,7 +1546,7 @@ pub enum DwarfExpressionSimpleLocation {
 pub struct DwarfExpressionPiece {
     pub location: DwarfExpressionSimpleLocation,
     pub bit_size: u64,
-    pub offset: u64,
+    pub offset: u64, /* 0 */
 }
 
 pub struct DwarfExpressionPiecesResult {
@@ -1527,332 +1565,6 @@ pub struct DwarfExpression {
     in_frame_info: bool,
 }
 
-/*
-#include <functional>
-
-sdb::dwarf_expression::result
-sdb::dwarf_expression::eval(
-      const sdb::process& proc, const registers& regs, bool push_cfa) const {
-    cursor cur({ expr_data_.begin(), expr_data_.end() });
-
-    std::vector<std::uint64_t> stack;
-    if (push_cfa) stack.push_back(regs.cfa().addr());
-
-    std::optional<simple_location> most_recent_location;
-    std::vector<pieces_result::piece> pieces;
-
-    bool result_is_address = true;
-    --snip--
-    auto binop = [&](auto op) {
-        auto rhs = stack.back();
-        stack.pop_back();
-        auto lhs = stack.back();
-        stack.pop_back();
-        stack.push_back(op(lhs, rhs));
-    };
-
-    auto relop = [&](auto op) {
-        auto rhs = static_cast<std::int64_t>(stack.back());
-        stack.pop_back();
-        auto lhs = static_cast<std::int64_t>(stack.back());
-        stack.pop_back();
-        stack.push_back(op(lhs, rhs) ? 1 : 0);
-    };
-    --snip--
-    auto virt_pc = virt_addr{
-        regs.read_by_id_as<std::uint64_t>(register_id::rip)
-    };
-    auto pc = virt_pc.to_file_addr(*parent_->elf_file());
-    auto func = parent_->function_containing_address(pc);
-    --snip--
-    auto get_current_location = [&]() {
-        simple_location loc;
-        if (stack.empty()) {
-            loc = most_recent_location.value_or(empty_result{});
-            most_recent_location.reset();
-        }
-        else if (result_is_address) {
-            loc = address_result{ virt_addr{stack.back()} };
-            stack.pop_back();
-        }
-        else {
-            loc = literal_result{ stack.back() };
-            stack.pop_back();
-            result_is_address = true;
-        }
-        return loc;
-    };
-    --snip--
-    while (!cur.finished()) {
-        auto opcode = cur.u8();
-
-        if (opcode >= DW_OP_lit0 and opcode <= DW_OP_lit31) {
-            stack.push_back(opcode - DW_OP_lit0);
-        }
-        else if (opcode >= DW_OP_breg0 and opcode <= DW_OP_breg31) {
-            auto reg = opcode - DW_OP_breg0;
-            auto reg_val = regs.read(sdb::register_info_by_dwarf(reg));
-            auto offset = cur.sleb128();
-            stack.push_back(std::get<std::uint64_t>(reg_val) + offset);
-        }
-        else if (opcode >= DW_OP_reg0 and opcode <= DW_OP_reg31) {
-            auto reg = opcode - DW_OP_reg0;
-            if (in_frame_info_) {
-                auto reg_val = regs.read(sdb::register_info_by_dwarf(reg));
-                stack.push_back(std::get<std::uint64_t>(reg_val));
-            }
-            else {
-                most_recent_location = register_result{
-                    static_cast<std::uint64_t>(reg)
-                };
-            }
-        }
-        --snip--
-        switch (opcode) {
-        case DW_OP_addr: {
-            auto addr = file_addr{
-                *parent_->elf_file(), cur.u64()
-            };
-            stack.push_back(addr.to_virt_addr().addr());
-            break;
-        }
-        case DW_OP_const1u:
-            stack.push_back(cur.u8());
-            break;
-        case DW_OP_const1s:
-            stack.push_back(cur.s8());
-            break;
-        case DW_OP_const2u:
-            stack.push_back(cur.u16());
-            break;
-        case DW_OP_const2s:
-            stack.push_back(cur.s16());
-            break;
-        case DW_OP_const4u:
-            stack.push_back(cur.u32());
-            break;
-        case DW_OP_const4s:
-            stack.push_back(cur.s32());
-            break;
-        case DW_OP_const8u:
-            stack.push_back(cur.u64());
-            break;
-        case DW_OP_const8s:
-            stack.push_back(cur.s64());
-            break;
-        case DW_OP_constu:
-            stack.push_back(cur.uleb128());
-            break;
-        case DW_OP_consts:
-            stack.push_back(cur.sleb128());
-            break;
-        --snip--
-        case DW_OP_bregx: {
-            auto reg_val = regs.read(
-                sdb::register_info_by_dwarf(cur.uleb128()));
-            stack.push_back(
-                std::get<std::uint64_t>(reg_val) + cur.sleb128());
-            break;
-        }
-        case DW_OP_fbreg: {
-            auto offset = cur.sleb128();
-            auto fb_loc = func.value()[DW_AT_frame_base]
-                .as_evaluated_location(proc, regs, /*in_frame_info=*/true);
-            auto fb_addr = read_frame_base_result(fb_loc, regs);
-            stack.push_back(fb_addr.addr() + offset);
-            break;
-        }
-        --snip--
-        case DW_OP_dup:
-            stack.push_back(stack.back());
-            break;
-        case DW_OP_drop:
-            stack.pop_back();
-            break;
-        case DW_OP_pick:
-            stack.push_back(stack.rbegin()[cur.u8()]);
-            break;
-        case DW_OP_over:
-            stack.push_back(stack.rbegin()[1]);
-            break;
-        case DW_OP_swap:
-            std::swap(stack.rbegin()[0], stack.rbegin()[1]);
-            break;
-        case DW_OP_rot:
-            std::rotate(
-                stack.rbegin(), stack.rbegin() + 1, stack.rbegin() + 3);
-            break;
-        --snip--
-        case DW_OP_deref: {
-            auto addr = virt_addr{ stack.back() };
-            stack.back() = proc.read_memory_as<std::uint64_t>(addr);
-            break;
-        }
-        case DW_OP_deref_size: {
-            auto addr = virt_addr{ stack.back() };
-            auto size_to_read = cur.u8();
-            auto mem = proc.read_memory(addr, size_to_read);
-            std::uint64_t res = 0;
-            std::copy(mem.data(), mem.data() + mem.size(),
-                reinterpret_cast<std::byte*>(&res));
-            stack.back() = res;
-            break;
-        }
-        case DW_OP_xderef:
-            sdb::error::send("DW_OP_xderef not supported");
-        case DW_OP_xderef_size:
-            sdb::error::send("DW_OP_xderef_size not supported");
-        --snip--
-        case DW_OP_push_object_address:
-            sdb::error::send("Unsupported opcode DW_OP_push_object_address");
-        case DW_OP_form_tls_address:
-            sdb::error::send("Unsupported opcode DW_OP_form_tls_address");
-        case DW_OP_call_frame_cfa:
-            stack.push_back(regs.cfa().addr());
-            break;
-        --snip--
-        case DW_OP_minus:
-            binop(std::minus{});
-            break;
-        case DW_OP_mod:
-            binop(std::modulus{});
-            break;
-        case DW_OP_mul:
-            binop(std::multiplies{});
-            break;
-        case DW_OP_and:
-            binop(std::bit_and{});
-            break;
-        case DW_OP_or:
-            binop(std::bit_or{});
-            break;
-        case DW_OP_plus:
-            binop(std::plus{});
-            break;
-        case DW_OP_shl:
-            binop([](auto lhs, auto rhs) { return lhs << rhs; });
-            break;
-     ➊ case DW_OP_shr:
-            binop([](auto lhs, auto rhs) { return lhs >> rhs; });
-            break;
-     ➋ case DW_OP_shra:
-            binop([](auto lhs, auto rhs) {
-                return static_cast<std::int64_t>(lhs) >> rhs; });
-            break;
-        case DW_OP_xor:
-            binop(std::bit_xor{});
-            break;
-        case DW_OP_div: {
-            auto rhs = static_cast<std::int64_t>(stack.back());
-            stack.pop_back();
-            auto lhs = static_cast<std::int64_t>(stack.back());
-            stack.pop_back();
-            stack.push_back(static_cast<std::uint64_t>(lhs / rhs));
-            break;
-        }
-        --snip--
-        case DW_OP_abs: {
-            auto sval = static_cast<std::int64_t>(stack.back());
-            sval = std::abs(sval);
-            stack.back() = static_cast<std::uint64_t>(sval);
-            break;
-        }
-        case DW_OP_neg: {
-            auto neg = -static_cast<std::int64_t>(stack.back());
-            stack.back() = static_cast<std::uint64_t>(neg);
-            break;
-        }
-        case DW_OP_plus_uconst:
-            stack.back() += cur.uleb128();
-            break;
-        case DW_OP_not:
-            stack.back() = ~stack.back();
-            break;
-        --snip--
-        case DW_OP_le:
-            relop(std::less_equal{});
-            break;
-        case DW_OP_ge:
-            relop(std::greater_equal{});
-            break;
-        case DW_OP_eq:
-            relop(std::equal_to{});
-            break;
-        case DW_OP_lt:
-            relop(std::less{});
-            break;
-        case DW_OP_gt:
-            relop(std::greater{});
-            break;
-        case DW_OP_ne:
-            relop(std::not_equal_to{});
-            break;
-        --snip--
-        case DW_OP_skip:
-            cur += cur.s16();
-            break;
-        case DW_OP_bra:
-            if (stack.back() != 0) {
-                cur += cur.s16();
-            }
-            stack.pop_back();
-            break;
-        case DW_OP_call2:
-            sdb::error::send("Unsupported opcode DW_OP_call2");
-        case DW_OP_call4:
-            sdb::error::send("Unsupported opcode DW_OP_call4");
-        case DW_OP_call_ref:
-            sdb::error::send("Unsupported opcode DW_OP_call_ref");
-        --snip--
-        case DW_OP_regx:
-            if (in_frame_info_) {
-                auto reg_val = regs.read(
-                    sdb::register_info_by_dwarf(cur.uleb128()));
-                stack.push_back(
-                    std::get<std::uint64_t>(reg_val));
-            }
-            else {
-                most_recent_location = register_result{
-                    cur.uleb128() };
-            }
-            break;
-
-        case DW_OP_implicit_value: {
-            auto length = cur.uleb128();
-            most_recent_location = data_result{
-                span<const std::byte>{cur.position(), length} };
-            break;
-        }
-        case DW_OP_stack_value:
-            result_is_address = false;
-            break;
-        --snip--
-        case DW_OP_nop:
-            break;
-        --snip--
-        case DW_OP_piece: {
-            auto byte_size = cur.uleb128();
-            simple_location loc = get_current_location();
-            pieces.push_back(pieces_result::piece{ loc, byte_size*8 });
-            break;
-        }
-        case DW_OP_bit_piece: {
-            auto bit_size = cur.uleb128();
-            auto offset = cur.uleb128();
-            simple_location loc = get_current_location();
-            pieces.push_back(pieces_result::piece{ loc, bit_size, offset });
-            break;
-        }
-        }
-    }
-    --snip--
-    if (!pieces.empty()) {
-        return pieces_result{ pieces };
-    }
-
-    return get_current_location();
-}
-*/
 impl DwarfExpression {
     pub fn eval(
         &self,
@@ -1860,14 +1572,361 @@ impl DwarfExpression {
         regs: &Registers,
         push_cfa: bool, /* false */
     ) -> Result<DwarfExpressionResult, SdbError> {
-        todo!()
+        let mut cursor = Cursor::new(&self.expr_data);
+        let mut stack = Vec::<u64>::new();
+
+        if push_cfa {
+            stack.push(regs.cfa().addr());
+        }
+
+        let mut most_recent_location: Option<DwarfExpressionSimpleLocation> = None;
+        let mut pieces = Vec::<DwarfExpressionPiece>::new();
+        let mut result_is_address = true;
+
+        // Get current program counter and function context
+        let virt_pc = VirtualAddress::from(regs.read_by_id_as::<u64>(RegisterId::rip)?);
+        let pc = virt_pc.to_file_addr_elf(&self.parent.upgrade().unwrap().elf_file());
+        let func = self
+            .parent
+            .upgrade()
+            .unwrap()
+            .function_containing_address(&pc)?;
+
+        // Binary operation helper
+        let binop = |stack: &mut Vec<u64>, op: fn(u64, u64) -> u64| {
+            let rhs = stack.pop().unwrap();
+            let lhs = stack.pop().unwrap();
+            stack.push(op(lhs, rhs));
+        };
+
+        // Relational operation helper
+        let relop = |stack: &mut Vec<u64>, op: fn(i64, i64) -> bool| {
+            let rhs = stack.pop().unwrap() as i64;
+            let lhs = stack.pop().unwrap() as i64;
+            stack.push(if op(lhs, rhs) { 1 } else { 0 });
+        };
+
+        // Get current location helper
+        let get_current_location =
+            |stack: &mut Vec<u64>,
+             most_recent_location: &mut Option<DwarfExpressionSimpleLocation>,
+             result_is_address: &mut bool|
+             -> DwarfExpressionSimpleLocation {
+                if stack.is_empty() {
+                    most_recent_location
+                        .take()
+                        .unwrap_or(DwarfExpressionSimpleLocation::Empty {})
+                } else if *result_is_address {
+                    DwarfExpressionSimpleLocation::Address {
+                        address: VirtualAddress::from(stack.pop().unwrap()),
+                    }
+                } else {
+                    let value = stack.pop().unwrap();
+                    *result_is_address = true;
+                    DwarfExpressionSimpleLocation::Literal { value }
+                }
+            };
+
+        while !cursor.finished() {
+            let opcode = cursor.u8();
+
+            // Handle DW_OP_lit0 to DW_OP_lit31
+            if opcode >= DW_OP_lit0.0 && opcode <= DW_OP_lit31.0 {
+                stack.push((opcode - DW_OP_lit0.0) as u64);
+            }
+            // Handle DW_OP_breg0 to DW_OP_breg31
+            else if opcode >= DW_OP_breg0.0 && opcode <= DW_OP_breg31.0 {
+                let reg = (opcode - DW_OP_breg0.0) as i32;
+                let reg_info = register_info_by_dwarf(reg)?;
+                let reg_val = regs.read(&reg_info)?;
+                let offset = cursor.sleb128();
+                let val = match reg_val {
+                    RegisterValue::U64(v) => v,
+                    _ => return SdbError::err("Invalid register value type for breg operation"),
+                };
+                stack.push((val as i64 + offset) as u64);
+            }
+            // Handle DW_OP_reg0 to DW_OP_reg31
+            else if opcode >= DW_OP_reg0.0 && opcode <= DW_OP_reg31.0 {
+                let reg = (opcode - DW_OP_reg0.0) as u64;
+                if self.in_frame_info {
+                    let reg_info = register_info_by_dwarf(reg as i32)?;
+                    let reg_val = regs.read(&reg_info)?;
+                    let val = match reg_val {
+                        RegisterValue::U64(v) => v,
+                        _ => return SdbError::err("Invalid register value type for reg operation"),
+                    };
+                    stack.push(val);
+                } else {
+                    most_recent_location =
+                        Some(DwarfExpressionSimpleLocation::Register { reg_num: reg });
+                }
+            }
+
+            #[allow(non_upper_case_globals)]
+            match DwOp(opcode) {
+                DW_OP_addr => {
+                    let addr =
+                        FileAddress::new(&self.parent.upgrade().unwrap().elf_file(), cursor.u64());
+                    let virt_addr = addr.to_virt_addr();
+                    stack.push(virt_addr.addr());
+                }
+                DW_OP_const1u => stack.push(cursor.u8() as u64),
+                DW_OP_const1s => stack.push(cursor.s8() as u64),
+                DW_OP_const2u => stack.push(cursor.u16() as u64),
+                DW_OP_const2s => stack.push(cursor.s16() as u64),
+                DW_OP_const4u => stack.push(cursor.u32() as u64),
+                DW_OP_const4s => stack.push(cursor.s32() as u64),
+                DW_OP_const8u => stack.push(cursor.u64()),
+                DW_OP_const8s => stack.push(cursor.s64() as u64),
+                DW_OP_constu => stack.push(cursor.uleb128()),
+                DW_OP_consts => stack.push(cursor.sleb128() as u64),
+
+                DW_OP_bregx => {
+                    let reg = cursor.uleb128() as i32;
+                    let reg_info = register_info_by_dwarf(reg)?;
+                    let reg_val = regs.read(&reg_info)?;
+                    let offset = cursor.sleb128();
+                    let val = match reg_val {
+                        RegisterValue::U64(v) => v,
+                        _ => {
+                            return SdbError::err(
+                                "Invalid register value type for bregx operation",
+                            );
+                        }
+                    };
+                    stack.push((val as i64 + offset) as u64);
+                }
+
+                DW_OP_fbreg => {
+                    let offset = cursor.sleb128();
+                    if let Some(func) = &func {
+                        let fb_loc = func
+                            .index(DW_AT_frame_base.0 as u64)?
+                            .as_evaluated_location(proc, regs, true);
+                        let fb_addr = read_frame_base_result(&fb_loc, regs)?;
+                        stack.push((fb_addr.addr() as i64 + offset) as u64);
+                    } else {
+                        return SdbError::err("No function context for DW_OP_fbreg");
+                    }
+                }
+
+                // Stack manipulation operations
+                DW_OP_dup => {
+                    let val = *stack.last().unwrap();
+                    stack.push(val);
+                }
+                DW_OP_drop => {
+                    stack.pop();
+                }
+                DW_OP_pick => {
+                    let idx = cursor.u8() as usize;
+                    let val = stack[stack.len() - 1 - idx];
+                    stack.push(val);
+                }
+                DW_OP_over => {
+                    let val = stack[stack.len() - 2];
+                    stack.push(val);
+                }
+                DW_OP_swap => {
+                    let len = stack.len();
+                    stack.swap(len - 1, len - 2);
+                }
+                DW_OP_rot => {
+                    let c = stack.pop().unwrap();
+                    let b = stack.pop().unwrap();
+                    let a = stack.pop().unwrap();
+                    stack.push(c);
+                    stack.push(a);
+                    stack.push(b);
+                }
+
+                // Memory operations
+                DW_OP_deref => {
+                    let addr = VirtualAddress::from(stack.pop().unwrap());
+                    let val = proc.read_memory_as::<u64>(addr)?;
+                    stack.push(val);
+                }
+                DW_OP_deref_size => {
+                    let addr = VirtualAddress::from(stack.pop().unwrap());
+                    let size = cursor.u8() as usize;
+                    let mem = proc.read_memory(addr, size)?;
+                    let mut val = 0u64;
+                    for (i, &byte) in mem.iter().enumerate().take(8) {
+                        val |= (byte as u64) << (i * 8);
+                    }
+                    stack.push(val);
+                }
+
+                // Unsupported operations
+                DW_OP_xderef => return SdbError::err("DW_OP_xderef not supported"),
+                DW_OP_xderef_size => return SdbError::err("DW_OP_xderef_size not supported"),
+                DW_OP_push_object_address => {
+                    return SdbError::err("Unsupported opcode DW_OP_push_object_address");
+                }
+                DW_OP_form_tls_address => {
+                    return SdbError::err("Unsupported opcode DW_OP_form_tls_address");
+                }
+
+                DW_OP_call_frame_cfa => {
+                    stack.push(regs.cfa().addr());
+                }
+
+                // Arithmetic operations
+                DW_OP_minus => binop(&mut stack, |lhs, rhs| lhs.wrapping_sub(rhs)),
+                DW_OP_mod => binop(&mut stack, |lhs, rhs| lhs % rhs),
+                DW_OP_mul => binop(&mut stack, |lhs, rhs| lhs.wrapping_mul(rhs)),
+                DW_OP_and => binop(&mut stack, |lhs, rhs| lhs & rhs),
+                DW_OP_or => binop(&mut stack, |lhs, rhs| lhs | rhs),
+                DW_OP_plus => binop(&mut stack, |lhs, rhs| lhs.wrapping_add(rhs)),
+                DW_OP_shl => binop(&mut stack, |lhs, rhs| lhs << rhs),
+                DW_OP_shr => binop(&mut stack, |lhs, rhs| lhs >> rhs),
+                DW_OP_shra => binop(&mut stack, |lhs, rhs| ((lhs as i64) >> rhs) as u64),
+                DW_OP_xor => binop(&mut stack, |lhs, rhs| lhs ^ rhs),
+
+                DW_OP_div => {
+                    let rhs = stack.pop().unwrap() as i64;
+                    let lhs = stack.pop().unwrap() as i64;
+                    stack.push((lhs / rhs) as u64);
+                }
+
+                // Unary operations
+                DW_OP_abs => {
+                    let val = stack.pop().unwrap() as i64;
+                    stack.push(val.abs() as u64);
+                }
+                DW_OP_neg => {
+                    let val = stack.pop().unwrap() as i64;
+                    stack.push((-val) as u64);
+                }
+                DW_OP_plus_uconst => {
+                    let val = stack.pop().unwrap();
+                    let const_val = cursor.uleb128();
+                    stack.push(val + const_val);
+                }
+                DW_OP_not => {
+                    let val = stack.pop().unwrap();
+                    stack.push(!val);
+                }
+
+                // Comparison operations
+                DW_OP_le => relop(&mut stack, |lhs, rhs| lhs <= rhs),
+                DW_OP_ge => relop(&mut stack, |lhs, rhs| lhs >= rhs),
+                DW_OP_eq => relop(&mut stack, |lhs, rhs| lhs == rhs),
+                DW_OP_lt => relop(&mut stack, |lhs, rhs| lhs < rhs),
+                DW_OP_gt => relop(&mut stack, |lhs, rhs| lhs > rhs),
+                DW_OP_ne => relop(&mut stack, |lhs, rhs| lhs != rhs),
+
+                // Control flow operations
+                DW_OP_skip => {
+                    let offset = cursor.s16();
+                    cursor += offset as usize;
+                }
+                DW_OP_bra => {
+                    let test_val = stack.pop().unwrap();
+                    let offset = cursor.s16();
+                    if test_val != 0 {
+                        cursor += offset as usize;
+                    }
+                }
+
+                // Unsupported call operations
+                DW_OP_call2 => return SdbError::err("Unsupported opcode DW_OP_call2"),
+                DW_OP_call4 => return SdbError::err("Unsupported opcode DW_OP_call4"),
+                DW_OP_call_ref => return SdbError::err("Unsupported opcode DW_OP_call_ref"),
+
+                DW_OP_regx => {
+                    let reg = cursor.uleb128();
+                    if self.in_frame_info {
+                        let reg_info = register_info_by_dwarf(reg as i32)?;
+                        let reg_val = regs.read(&reg_info)?;
+                        let val = match reg_val {
+                            RegisterValue::U64(v) => v,
+                            _ => {
+                                return SdbError::err(
+                                    "Invalid register value type for regx operation",
+                                );
+                            }
+                        };
+                        stack.push(val);
+                    } else {
+                        most_recent_location =
+                            Some(DwarfExpressionSimpleLocation::Register { reg_num: reg });
+                    }
+                }
+
+                DW_OP_implicit_value => {
+                    let length = cursor.uleb128() as usize;
+                    let data = cursor.position().slice(..length);
+                    most_recent_location = Some(DwarfExpressionSimpleLocation::Data { data });
+                }
+
+                DW_OP_stack_value => {
+                    result_is_address = false;
+                }
+
+                DW_OP_nop => {
+                    // Do nothing
+                }
+
+                // Piece operations
+                DW_OP_piece => {
+                    let byte_size = cursor.uleb128();
+                    let loc = get_current_location(
+                        &mut stack,
+                        &mut most_recent_location,
+                        &mut result_is_address,
+                    );
+                    pieces.push(DwarfExpressionPiece {
+                        location: loc,
+                        bit_size: byte_size * 8,
+                        offset: 0,
+                    });
+                }
+
+                DW_OP_bit_piece => {
+                    let bit_size = cursor.uleb128();
+                    let offset = cursor.uleb128();
+                    let loc = get_current_location(
+                        &mut stack,
+                        &mut most_recent_location,
+                        &mut result_is_address,
+                    );
+                    pieces.push(DwarfExpressionPiece {
+                        location: loc,
+                        bit_size,
+                        offset,
+                    });
+                }
+
+                _ => {
+                    return SdbError::err(&format!(
+                        "Unrecognized DWARF expression opcode: {:#x}",
+                        opcode
+                    ));
+                }
+            }
+        }
+
+        if !pieces.is_empty() {
+            return Ok(DwarfExpressionResult::Pieces(DwarfExpressionPiecesResult {
+                pieces,
+            }));
+        }
+
+        let final_location = get_current_location(
+            &mut stack,
+            &mut most_recent_location,
+            &mut result_is_address,
+        );
+        Ok(DwarfExpressionResult::SimpleLocation(final_location))
     }
 }
 
 fn read_frame_base_result(
     loc: &DwarfExpressionResult,
     _regs: &Registers,
-) -> Result<FileAddress, SdbError> {
+) -> Result<VirtualAddress, SdbError> {
     let simple_loc = match loc {
         DwarfExpressionResult::SimpleLocation(simple_loc) => simple_loc,
         _ => return SdbError::err("Unsupported frame base location"),
