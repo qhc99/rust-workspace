@@ -1864,17 +1864,17 @@ impl DwarfExpression {
     }
 }
 
-/*
-namespace {
-    sdb::virt_addr read_frame_base_result(
-          const sdb::dwarf_expression::result& loc,
-          const sdb::registers& regs) {
-        auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc);
-        if (!simple_loc) sdb::error::send("Unsupported frame base location");
-        if (auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(simple_loc)) {
-            return addr_res->address;
-        }
-        sdb::error::send("Unsupported frame base location");
-    }
+fn read_frame_base_result(
+    loc: &DwarfExpressionResult,
+    _regs: &Registers,
+) -> Result<FileAddress, SdbError> {
+    let simple_loc = match loc {
+        DwarfExpressionResult::SimpleLocation(simple_loc) => simple_loc,
+        _ => return SdbError::err("Unsupported frame base location"),
+    };
+    let addr_res = match simple_loc {
+        DwarfExpressionSimpleLocation::Address { address } => address,
+        _ => return SdbError::err("Unsupported frame base location"),
+    };
+    Ok(addr_res.clone())    
 }
-*/
