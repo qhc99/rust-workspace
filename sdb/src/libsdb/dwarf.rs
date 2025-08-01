@@ -707,25 +707,51 @@ impl DieAttr {
         };
         Ok(CompileUnitRangeList::new(&cu, &data, base_address))
     }
-    /*
-       dwarf_expression as_expression(bool in_frame_info) const;
-
-       location_list as_location_list(bool in_frame_info) const;
-
-       dwarf_expression::result as_evaluated_location(
-           const sdb::process& proc,
-           const registers& regs,
-           bool in_frame_info) const;
-    */
-
+/*
+sdb::dwarf_expression sdb::attr::as_expression(bool in_frame_info) const {
+    cursor cur({ location_, cu_->data().end() });
+    auto length = cur.uleb128();
+    span<const std::byte> data{ cur.position(), length };
+    return dwarf_expression{ *cu_->dwarf_info(), data, in_frame_info };
+}
+*/
     pub fn as_expression(&self, in_frame_info: bool) -> DwarfExpression {
         todo!()
     }
+/* 
+sdb::location_list sdb::attr::as_location_list(bool in_frame_info) const {
+    auto section = cu_->dwarf_info()->elf_file()->get_section_contents(
+        ".debug_loc");
 
-    // pub fn as_location_list(&self, in_frame_info: bool) -> LocationList {
-    //     todo!()
-    // }
+    cursor cur({ location_, cu_->data().end() });
+    auto offset = cur.u32();
 
+    span<const std::byte> data(section.begin() + offset, section.end());
+    return location_list{ *cu_->dwarf_info(), *cu_, data, in_frame_info };
+}
+*/
+    pub fn as_location_list(&self, in_frame_info: bool) -> LocationList {
+        todo!()
+    }
+/*
+sdb::dwarf_expression::result
+sdb::attr::as_evaluated_location(
+      const sdb::process& proc,
+      const registers& regs,
+      bool in_frame_info) const {
+    if (form_ == DW_FORM_exprloc) {
+        auto expr = as_expression(in_frame_info);
+        return expr.eval(proc, regs);
+    }
+    else if (form_ == DW_FORM_sec_offset) {
+        auto loc_list = as_location_list(in_frame_info);
+        return loc_list.eval(proc, regs);
+    }
+    else {
+        error::send("Invalid location type");
+    }
+}
+*/
     pub fn as_evaluated_location(
         &self,
         proc: &Process,
@@ -736,28 +762,71 @@ impl DieAttr {
     }
 }
 
-/*
-namespace sdb {
-    class location_list {
-    public:
-        location_list(
-            const dwarf& parent, const compile_unit& cu,
-            span<const std::byte> expr_data, bool in_frame_info)
-            : parent_(&parent)
-            , cu_(&cu)
-            , expr_data_(expr_data)
-            , in_frame_info_(in_frame_info) {}
-
-        dwarf_expression::result eval(
-            const sdb::process& proc, const registers& regs) const;
-    private:
-        const dwarf* parent_;
-        const compile_unit* cu_;
-        span<const std::byte> expr_data_;
-        bool in_frame_info_;
-    };
+pub struct LocationList {
+    parent: Weak<Dwarf>,
+    cu: Weak<CompileUnit>,
+    expr_data: Bytes,
+    in_frame_info: bool,
 }
+
+impl LocationList {
+    pub fn new(
+        parent: Weak<Dwarf>,
+        cu: Weak<CompileUnit>,
+        expr_data: Bytes,
+        in_frame_info: bool,
+    ) -> Self {
+        Self {
+            parent,
+            cu,
+            expr_data,
+            in_frame_info,
+        }
+    }
+/*
+sdb::dwarf_expression::result
+sdb::location_list::eval(
+      const sdb::process& proc, const registers& regs) const {
+    auto virt_pc = virt_addr{
+        regs.read_by_id_as<std::uint64_t>(register_id::rip)
+    };
+    auto pc = virt_pc.to_file_addr(*parent_->elf_file());
+    auto func = parent_->function_containing_address(pc);
+
+    cursor cur({ expr_data_.begin(), expr_data_.end() }); ➊
+    constexpr auto base_address_flag = ~static_cast<std::uint64_t>(0);
+    auto base_address = cu_->root()[DW_AT_low_pc].as_address().addr();
+
+    auto first = cur.u64();
+    auto second = cur.u64();
+    while (!(first == 0 and second == 0)) { ➋
+        if (first == base_address_flag) { ➌
+            base_address = second;
+        }
+
+        else { ➍
+            auto length = cur.u16();
+            if (pc.addr() >= base_address + first and ➎
+                pc.addr() < base_address + second) {
+                dwarf_expression expr(
+                    *parent_, { cur.position(), cur.position() + length }, in_frame_info_);
+                return expr.eval(proc, regs);
+            }
+            else { ➏
+                cur += length;
+            }
+        }
+        first = cur.u64();
+        second = cur.u64();
+    }
+    return dwarf_expression::empty_result{};
+}
+
 */
+    pub fn eval(&self, proc: &Process, regs: &Registers) -> DwarfExpressionResult {
+        todo!()
+    }
+}
 
 pub struct DieChildenIter {
     die: Option<Rc<Die>>,
