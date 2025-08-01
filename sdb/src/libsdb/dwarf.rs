@@ -1876,5 +1876,5 @@ fn read_frame_base_result(
         DwarfExpressionSimpleLocation::Address { address } => address,
         _ => return SdbError::err("Unsupported frame base location"),
     };
-    Ok(addr_res.clone())    
+    Ok(addr_res.clone())
 }
