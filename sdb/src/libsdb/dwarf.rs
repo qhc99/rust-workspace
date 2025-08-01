@@ -23,11 +23,11 @@ use gimli::{
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
 
+use super::bit::from_bytes;
+use super::breakpoint::{CallFrameInformation, parse_eh_hdr};
+use super::elf::Elf;
 use super::process::Process;
 use super::registers::Registers;
-use super::breakpoint::{CallFrameInformation, parse_eh_hdr};
-use super::bit::from_bytes;
-use super::elf::Elf;
 use super::sdb_error::SdbError;
 use super::types::FileAddress;
 
@@ -1497,7 +1497,6 @@ pub struct UnwindContext {
     pub rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
 }
 
-
 pub enum DwarfExpressionSimpleLocation {
     Address { address: FileAddress },
     Register { reg_num: u64 },
@@ -1520,7 +1519,6 @@ pub enum DwarfExpressionResult {
     SimpleLocation(DwarfExpressionSimpleLocation),
     Pieces(DwarfExpressionPiecesResult),
 }
-
 
 #[derive(TypedBuilder)]
 pub struct DwarfExpression {
@@ -1856,7 +1854,12 @@ sdb::dwarf_expression::eval(
 }
 */
 impl DwarfExpression {
-    pub fn eval(&self, proc: &Process, regs: &Registers, push_cfa: bool /* false */) -> Result<DwarfExpressionResult, SdbError> {
+    pub fn eval(
+        &self,
+        proc: &Process,
+        regs: &Registers,
+        push_cfa: bool, /* false */
+    ) -> Result<DwarfExpressionResult, SdbError> {
         todo!()
     }
 }
