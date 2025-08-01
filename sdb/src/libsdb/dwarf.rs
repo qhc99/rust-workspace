@@ -707,58 +707,59 @@ impl DieAttr {
         };
         Ok(CompileUnitRangeList::new(&cu, &data, base_address))
     }
-/*
-sdb::dwarf_expression sdb::attr::as_expression(bool in_frame_info) const {
-    cursor cur({ location_, cu_->data().end() });
-    auto length = cur.uleb128();
-    span<const std::byte> data{ cur.position(), length };
-    return dwarf_expression{ *cu_->dwarf_info(), data, in_frame_info };
-}
-*/
+
     pub fn as_expression(&self, in_frame_info: bool) -> DwarfExpression {
-        todo!()
+        let cu_data_end = {
+            let cu = self.cu.upgrade().unwrap();
+            cu.data.as_ptr() as usize + cu.data.len()
+        };
+        let slice = cu_data_end - self.location.as_ptr() as usize;
+        let mut cur = Cursor::new(&self.location.slice(..slice));
+        let length = cur.uleb128();
+        let data = cur.position().slice(..length as usize);
+        
+        DwarfExpression::builder()
+            .parent(Rc::downgrade(&self.cu.upgrade().unwrap().dwarf_info()))
+            .expr_data(data)
+            .in_frame_info(in_frame_info)
+            .build()
     }
-/* 
-sdb::location_list sdb::attr::as_location_list(bool in_frame_info) const {
-    auto section = cu_->dwarf_info()->elf_file()->get_section_contents(
-        ".debug_loc");
 
-    cursor cur({ location_, cu_->data().end() });
-    auto offset = cur.u32();
-
-    span<const std::byte> data(section.begin() + offset, section.end());
-    return location_list{ *cu_->dwarf_info(), *cu_, data, in_frame_info };
-}
-*/
     pub fn as_location_list(&self, in_frame_info: bool) -> LocationList {
-        todo!()
+        let section = self.cu.upgrade().unwrap().dwarf_info().elf_file().get_section_contents(".debug_loc");
+        let cu_data_end = {
+            let cu = self.cu.upgrade().unwrap();
+            cu.data.as_ptr() as usize + cu.data.len()
+        };
+        let slice = cu_data_end - self.location.as_ptr() as usize;
+        let mut cur = Cursor::new(&self.location.slice(..slice));
+        let offset = cur.u32();
+        
+        let data = section.slice(offset as usize..);
+        
+        LocationList::new(
+            Rc::downgrade(&self.cu.upgrade().unwrap().dwarf_info()),
+            self.cu.clone(),
+            data,
+            in_frame_info
+        )
     }
-/*
-sdb::dwarf_expression::result
-sdb::attr::as_evaluated_location(
-      const sdb::process& proc,
-      const registers& regs,
-      bool in_frame_info) const {
-    if (form_ == DW_FORM_exprloc) {
-        auto expr = as_expression(in_frame_info);
-        return expr.eval(proc, regs);
-    }
-    else if (form_ == DW_FORM_sec_offset) {
-        auto loc_list = as_location_list(in_frame_info);
-        return loc_list.eval(proc, regs);
-    }
-    else {
-        error::send("Invalid location type");
-    }
-}
-*/
+
     pub fn as_evaluated_location(
         &self,
         proc: &Process,
         regs: &Registers,
         in_frame_info: bool,
-    ) -> DwarfExpressionResult {
-        todo!()
+    ) -> Result<DwarfExpressionResult, SdbError> {
+        if self.form == DW_FORM_exprloc.0 as u64 {
+            let expr = self.as_expression(in_frame_info);
+            expr.eval(proc, regs, false)
+        } else if self.form == DW_FORM_sec_offset.0 as u64 {
+            let loc_list = self.as_location_list(in_frame_info);
+            Ok(loc_list.eval(proc, regs))
+        } else {
+            SdbError::err("Invalid location type")
+        }
     }
 }
 
@@ -783,48 +784,47 @@ impl LocationList {
             in_frame_info,
         }
     }
-/*
-sdb::dwarf_expression::result
-sdb::location_list::eval(
-      const sdb::process& proc, const registers& regs) const {
-    auto virt_pc = virt_addr{
-        regs.read_by_id_as<std::uint64_t>(register_id::rip)
-    };
-    auto pc = virt_pc.to_file_addr(*parent_->elf_file());
-    auto func = parent_->function_containing_address(pc);
 
-    cursor cur({ expr_data_.begin(), expr_data_.end() }); ➊
-    constexpr auto base_address_flag = ~static_cast<std::uint64_t>(0);
-    auto base_address = cu_->root()[DW_AT_low_pc].as_address().addr();
-
-    auto first = cur.u64();
-    auto second = cur.u64();
-    while (!(first == 0 and second == 0)) { ➋
-        if (first == base_address_flag) { ➌
-            base_address = second;
-        }
-
-        else { ➍
-            auto length = cur.u16();
-            if (pc.addr() >= base_address + first and ➎
-                pc.addr() < base_address + second) {
-                dwarf_expression expr(
-                    *parent_, { cur.position(), cur.position() + length }, in_frame_info_);
-                return expr.eval(proc, regs);
-            }
-            else { ➏
-                cur += length;
-            }
-        }
-        first = cur.u64();
-        second = cur.u64();
-    }
-    return dwarf_expression::empty_result{};
-}
-
-*/
     pub fn eval(&self, proc: &Process, regs: &Registers) -> DwarfExpressionResult {
-        todo!()
+        let virt_pc = VirtualAddress::new(
+            regs.read_by_id_as::<u64>(RegisterId::rip).unwrap()
+        );
+        let pc = virt_pc.to_file_addr_elf(&self.parent.upgrade().unwrap().elf_file());
+        
+        let mut cur = Cursor::new(&self.expr_data);
+        let base_address_flag = !0u64;
+        let mut base_address = self.cu.upgrade().unwrap()
+            .root()
+            .index(DW_AT_low_pc.0 as u64)
+            .unwrap()
+            .as_address()
+            .unwrap()
+            .addr();
+        
+        let mut first = cur.u64();
+        let mut second = cur.u64();
+        while !(first == 0 && second == 0) {
+            if first == base_address_flag {
+                base_address = second;
+            } else {
+                let length = cur.u16();
+                if pc.addr() >= base_address + first && pc.addr() < base_address + second {
+                    let expr_data = cur.position().slice(..length as usize);
+                    let expr = DwarfExpression::builder()
+                        .parent(self.parent.clone())
+                        .expr_data(expr_data)
+                        .in_frame_info(self.in_frame_info)
+                        .build();
+                    return expr.eval(proc, regs, false).unwrap();
+                } else {
+                    cur += length as usize;
+                }
+            }
+            first = cur.u64();
+            second = cur.u64();
+        }
+        
+        DwarfExpressionResult::SimpleLocation(DwarfExpressionSimpleLocation::Empty {})
     }
 }
 
@@ -1605,7 +1605,7 @@ pub struct CfaRegisterRule {
     pub offset: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Rule {
     Undefined(UndefinedRule),
     Same(SameRule),
@@ -1613,6 +1613,9 @@ pub enum Rule {
     ValOffset(ValOffsetRule),
     Register(RegisterRule),
     CfaRegister(CfaRegisterRule),
+    Expr(DwarfExpression),
+    ValExpr(DwarfExpression),
+    CfaExpr(DwarfExpression),
 }
 
 pub type RuleSet = HashMap<u32, Rule>;
@@ -1650,7 +1653,7 @@ pub enum DwarfExpressionResult {
     Pieces(DwarfExpressionPiecesResult),
 }
 
-#[derive(TypedBuilder)]
+#[derive(TypedBuilder, Clone)]
 pub struct DwarfExpression {
     parent: Weak<Dwarf>,
     expr_data: Bytes,
@@ -1795,7 +1798,7 @@ impl DwarfExpression {
                     if let Some(func) = &func {
                         let fb_loc = func
                             .index(DW_AT_frame_base.0 as u64)?
-                            .as_evaluated_location(proc, regs, true);
+                            .as_evaluated_location(proc, regs, true)?;
                         let fb_addr = read_frame_base_result(&fb_loc, regs)?;
                         stack.push((fb_addr.addr() as i64 + offset) as u64);
                     } else {
