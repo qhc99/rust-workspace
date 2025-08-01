@@ -736,6 +736,29 @@ impl DieAttr {
     }
 }
 
+/*
+namespace sdb {
+    class location_list {
+    public:
+        location_list(
+            const dwarf& parent, const compile_unit& cu,
+            span<const std::byte> expr_data, bool in_frame_info)
+            : parent_(&parent)
+            , cu_(&cu)
+            , expr_data_(expr_data)
+            , in_frame_info_(in_frame_info) {}
+
+        dwarf_expression::result eval(
+            const sdb::process& proc, const registers& regs) const;
+    private:
+        const dwarf* parent_;
+        const compile_unit* cu_;
+        span<const std::byte> expr_data_;
+        bool in_frame_info_;
+    };
+}
+*/
+
 pub struct DieChildenIter {
     die: Option<Rc<Die>>,
 }
