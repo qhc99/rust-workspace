@@ -16,8 +16,7 @@ use libsdb::target::{Target, TargetExt};
 
 use bytes::Bytes;
 use gimli::{
-    DW_AT_language, DW_AT_location, DW_AT_name, DW_LANG_C_plus_plus, DW_OP_bit_piece,
-    DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram,
+    DW_AT_language, DW_AT_location, DW_AT_name, DW_LANG_C_plus_plus, DW_OP_bit_piece, DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram
 };
 use libsdb::dwarf::{DwarfExpression, DwarfExpressionResult, DwarfExpressionSimpleLocation};
 use libsdb::syscalls::syscall_name_to_id;
@@ -1070,82 +1069,28 @@ fn read_global_integer_variable() {
     assert_eq!(val, 42);
 }
 
-/*
-TEST_CASE("DWARF expressions work", "[dwarf]") {
-    std::vector<std::uint8_t> piece_data = {
-        DW_OP_reg16, DW_OP_piece, 4, DW_OP_piece, 8, DW_OP_const4u,
-        0xff, 0xff, 0xff, 0xff, DW_OP_bit_piece, 5, 12
-    };
 
-    auto target = target::launch("targets/step");
-    auto& proc = target->get_process();
-    sdb::span<const std::byte> data {
-        reinterpret_cast<std::byte*>(piece_data.data()), piece_data.size() };
-    auto expr = sdb::dwarf_expression(target->get_main_elf().get_dwarf(), data, false);
-    auto res = expr.eval(proc, proc.get_registers());
 
-    auto& pieces = std::get<sdb::dwarf_expression::pieces_result>(res).pieces;
-    REQUIRE(pieces.size() == 3);
-    REQUIRE(pieces[0].bit_size == 4 * 8);
-    REQUIRE(pieces[1].bit_size == 8 * 8);
-    REQUIRE(pieces[2].bit_size == 5);
-    REQUIRE(std::get<dwarf_expression::register_result>(pieces[0].location).reg_num == 16);
-    REQUIRE(std::get_if<dwarf_expression::empty_result>(&pieces[1].location) != nullptr);
-    REQUIRE(std::get<dwarf_expression::address_result>(pieces[2].location)
-        .address.addr() == 0xffffffff);
-    REQUIRE(pieces[0].offset == 0);
-    REQUIRE(pieces[1].offset == 0);
-    REQUIRE(pieces[2].offset == 12);
-
-}
-*/
 #[test]
 #[serial]
 fn dwarf_expressions() {
     let piece_data: Vec<u8> = vec![
         DW_OP_reg16.0 as u8,
-        DW_OP_piece.0 as u8,
-        4,
-        DW_OP_piece.0 as u8,
-        8,
+        DW_OP_piece.0 as u8, 4,
+        DW_OP_piece.0 as u8, 8,
         DW_OP_const4u.0 as u8,
-        0xff,
-        0xff,
-        0xff,
-        0xff,
-        DW_OP_bit_piece.0 as u8,
-        5,
-        12,
+        0xff, 0xff, 0xff, 0xff,
+        DW_OP_bit_piece.0 as u8, 5, 12
     ];
-
-    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
-    let target = Target::launch(STEP_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
+    let target = Target::launch(STEP_PATH.as_ref(), None).unwrap();
     let proc = target.get_process();
-
-    // Start the process so registers are available
-    target
-        .create_function_breakpoint("main", false, false)
-        .unwrap()
-        .upgrade()
-        .unwrap()
-        .borrow_mut()
-        .enable()
-        .unwrap();
-    proc.resume(None).unwrap();
-    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
-
     let data = Bytes::from(piece_data);
     let expr = DwarfExpression::builder()
-        .parent(Rc::downgrade(
-            &target.get_main_elf().upgrade().unwrap().get_dwarf(),
-        ))
+        .parent(Rc::downgrade(&target.get_main_elf().upgrade().unwrap().get_dwarf()))
         .expr_data(data)
         .in_frame_info(false)
         .build();
-    let res = expr
-        .eval(&proc, &proc.get_registers(None).borrow(), false)
-        .unwrap();
-
+    let res = expr.eval(&proc, &proc.get_registers(None).borrow(), false).unwrap();
     match res {
         DwarfExpressionResult::Pieces(pieces_result) => {
             let pieces = pieces_result.pieces;
@@ -1153,28 +1098,24 @@ fn dwarf_expressions() {
             assert_eq!(pieces[0].bit_size, 4 * 8);
             assert_eq!(pieces[1].bit_size, 8 * 8);
             assert_eq!(pieces[2].bit_size, 5);
-
             match &pieces[0].location {
                 DwarfExpressionSimpleLocation::Register { reg_num } => {
                     assert_eq!(*reg_num, 16);
                 }
                 _ => panic!("Expected register location for piece 0"),
             }
-
             match &pieces[1].location {
                 DwarfExpressionSimpleLocation::Empty {} => {
                     // This is expected
                 }
                 _ => panic!("Expected empty location for piece 1"),
             }
-
             match &pieces[2].location {
                 DwarfExpressionSimpleLocation::Address { address } => {
                     assert_eq!(address.addr(), 0xffffffff);
                 }
                 _ => panic!("Expected address location for piece 2"),
             }
-
             assert_eq!(pieces[0].offset, 0);
             assert_eq!(pieces[1].offset, 0);
             assert_eq!(pieces[2].offset, 12);
