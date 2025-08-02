@@ -492,7 +492,7 @@ impl Die {
     }
 
     pub fn contains_address(&self, addr: &FileAddress) -> Result<bool, SdbError> {
-        if !Rc::ptr_eq(
+        if !addr.has_elf() || !Rc::ptr_eq(
             &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
             &addr.rc_elf_file(),
         ) {
@@ -2065,11 +2065,7 @@ impl DwarfExpression {
                     });
                 }
 
-                _ => {
-                    return SdbError::err(&format!(
-                        "Unrecognized DWARF expression opcode: {opcode:#x}",
-                    ));
-                }
+                _ => {}
             }
         }
 
