@@ -6,8 +6,10 @@ use std::{
 };
 
 use gimli::{
-    DW_AT_byte_size, DW_AT_type, DW_AT_upper_bound, DW_TAG_array_type, DW_TAG_pointer_type,
-    DW_TAG_ptr_to_member_type, DW_TAG_subrange_type, DW_TAG_subroutine_type,
+    DW_AT_byte_size, DW_AT_type, DW_AT_upper_bound, DW_TAG_array_type, DW_TAG_const_type,
+    DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type,
+    DW_TAG_rvalue_reference_type, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef,
+    DW_TAG_volatile_type,
 };
 
 use super::{dwarf::DieExt, sdb_error::SdbError};
@@ -20,6 +22,20 @@ use super::elf::Elf;
 
 pub type Byte64 = [u8; 8];
 pub type Byte128 = [u8; 16];
+
+#[macro_export]
+macro_rules! strip {
+    ($value:expr, $( $tag:expr ),+ $(,)?) => {{
+        use gimli::DW_AT_type;
+        let mut ret = $value.clone();
+        let mut tag = ret.get_die().abbrev_entry().tag as u16;
+        while false $(|| tag == $tag.0)+ {
+            ret = SdbType::new(ret.get_die().index(DW_AT_type.0 as u64)?.as_type().get_die());
+            tag = ret.get_die().abbrev_entry().tag as u16;
+        }
+        Ok(ret)
+    }};
+}
 
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
@@ -247,6 +263,7 @@ impl Display for StoppointMode {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SdbType {
     die: Rc<Die>,
     byte_size: RefCell<Option<usize>>,
@@ -307,5 +324,37 @@ impl SdbType {
         }
 
         return Ok(0);
+    }
+
+    pub fn strip_cv_typedef(&self) -> Result<Self, SdbError> {
+        strip!(
+            self,
+            DW_TAG_const_type,
+            DW_TAG_volatile_type,
+            DW_TAG_typedef
+        )
+    }
+
+    pub fn strip_cvref_typedef(&self) -> Result<Self, SdbError> {
+        strip!(
+            self,
+            DW_TAG_const_type,
+            DW_TAG_volatile_type,
+            DW_TAG_typedef,
+            DW_TAG_reference_type,
+            DW_TAG_rvalue_reference_type
+        )
+    }
+
+    pub fn strip_all(&self) -> Result<Self, SdbError> {
+        strip!(
+            self,
+            DW_TAG_const_type,
+            DW_TAG_volatile_type,
+            DW_TAG_typedef,
+            DW_TAG_reference_type,
+            DW_TAG_rvalue_reference_type,
+            DW_TAG_pointer_type
+        )
     }
 }
