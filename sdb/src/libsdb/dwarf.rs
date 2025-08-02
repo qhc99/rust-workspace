@@ -1604,6 +1604,18 @@ pub struct CfaRegisterRule {
     pub reg: u32,
     pub offset: i64,
 }
+#[derive(Clone)]
+pub struct ExprRule {
+    pub expr: DwarfExpression,
+}
+#[derive(Clone)]
+pub struct ValExprRule {
+    pub expr: DwarfExpression,
+}
+#[derive(Clone, Default)]
+pub struct CfaExprRule {
+    pub expr: DwarfExpression,
+}
 
 #[derive(Clone)]
 pub enum Rule {
@@ -1613,9 +1625,20 @@ pub enum Rule {
     ValOffset(ValOffsetRule),
     Register(RegisterRule),
     CfaRegister(CfaRegisterRule),
-    Expr(DwarfExpression),
-    ValExpr(DwarfExpression),
-    CfaExpr(DwarfExpression),
+    Expr(ExprRule),
+    ValExpr(ValExprRule),
+}
+
+#[derive(Clone)]
+pub enum CfaRuleType {
+    Register(CfaRegisterRule),
+    Expr(CfaExprRule),
+}
+
+impl Default for CfaRuleType {
+    fn default() -> Self {
+        Self::Register(CfaRegisterRule::default())
+    }
 }
 
 pub type RuleSet = HashMap<u32, Rule>;
@@ -1624,10 +1647,10 @@ pub type RuleSet = HashMap<u32, Rule>;
 pub struct UnwindContext {
     pub cursor: Cursor,
     pub location: FileAddress,
-    pub cfa_rule: CfaRegisterRule,
+    pub cfa_rule: CfaRuleType,
     pub cie_register_rules: RuleSet,
     pub register_rules: RuleSet,
-    pub rule_stack: Vec<(RuleSet, CfaRegisterRule)>,
+    pub rule_stack: Vec<(RuleSet, CfaRuleType)>,
 }
 
 pub enum DwarfExpressionSimpleLocation {
@@ -1653,7 +1676,7 @@ pub enum DwarfExpressionResult {
     Pieces(DwarfExpressionPiecesResult),
 }
 
-#[derive(TypedBuilder, Clone)]
+#[derive(TypedBuilder, Clone, Default)]
 pub struct DwarfExpression {
     parent: Weak<Dwarf>,
     expr_data: Bytes,
