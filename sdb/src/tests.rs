@@ -90,6 +90,8 @@ static OVERLOADED_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/b
 static MARSHMALLOW_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/marshmallow"));
 static GLOBAL_VARIABLE_PATH: LazyLock<&Path> =
     LazyLock::new(|| Path::new("resource/bin/global_variable"));
+static MEMBER_POINTER_PATH: LazyLock<&Path> =
+    LazyLock::new(|| Path::new("resource/bin/member_pointer"));
 
 #[test]
 #[serial]

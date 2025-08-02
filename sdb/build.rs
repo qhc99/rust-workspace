@@ -26,6 +26,7 @@ const CPP_TARGETS: &[(&[&str], &[&str])] = &[
     (&["overloaded.cpp"], &[]),
     (&["marshmallow.cpp"], &["meow.cpp"]),
     (&["global_variable.cpp"], &[]),
+    (&["member_pointer.cpp"], &[]),
 ];
 const WRAPPER_H: &str = "src/libsdb/wrapper.h";
 const BINDINGS_RS: &str = "src/libsdb/bindings.rs";
