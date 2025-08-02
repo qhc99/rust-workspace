@@ -67,52 +67,50 @@ impl Target {
         let tid = otid.unwrap_or(self.process.current_thread());
 
         match loc {
-            DwarfExpressionResult::SimpleLocation(simple_loc) => {
-                match simple_loc {
-                    DwarfExpressionSimpleLocation::Register { reg_num } => {
-                        let reg_info = register_info_by_dwarf(*reg_num as i32)?;
-                        let reg_value = self
-                            .threads
-                            .borrow()
-                            .get(&tid)
-                            .unwrap()
-                            .frames
-                            .borrow()
-                            .current_frame()
-                            .registers
-                            .read(&reg_info)?;
+            DwarfExpressionResult::SimpleLocation(simple_loc) => match simple_loc {
+                DwarfExpressionSimpleLocation::Register { reg_num } => {
+                    let reg_info = register_info_by_dwarf(*reg_num as i32)?;
+                    let reg_value = self
+                        .threads
+                        .borrow()
+                        .get(&tid)
+                        .unwrap()
+                        .frames
+                        .borrow()
+                        .current_frame()
+                        .registers
+                        .read(&reg_info)?;
 
-                        let get_bytes = |value: RegisterValue| -> Vec<u8> {
-                            match value {
-                                RegisterValue::U8(v) => vec![v],
-                                RegisterValue::U16(v) => v.to_le_bytes().to_vec(),
-                                RegisterValue::U32(v) => v.to_le_bytes().to_vec(),
-                                RegisterValue::U64(v) => v.to_le_bytes().to_vec(),
-                                RegisterValue::I8(v) => (v as u8).to_le_bytes().to_vec(),
-                                RegisterValue::I16(v) => (v as u16).to_le_bytes().to_vec(),
-                                RegisterValue::I32(v) => (v as u32).to_le_bytes().to_vec(),
-                                RegisterValue::I64(v) => (v as u64).to_le_bytes().to_vec(),
-                                RegisterValue::Float(v) => v.to_le_bytes().to_vec(),
-                                RegisterValue::Double(v) => v.to_le_bytes().to_vec(),
-                                RegisterValue::LongDouble(v) => v.0.to_le_bytes().to_vec(),
-                                RegisterValue::Byte64(b) => b.to_vec(),
-                                RegisterValue::Byte128(b) => b.to_vec(),
-                            }
-                        };
+                    let get_bytes = |value: RegisterValue| -> Vec<u8> {
+                        match value {
+                            RegisterValue::U8(v) => vec![v],
+                            RegisterValue::U16(v) => v.to_le_bytes().to_vec(),
+                            RegisterValue::U32(v) => v.to_le_bytes().to_vec(),
+                            RegisterValue::U64(v) => v.to_le_bytes().to_vec(),
+                            RegisterValue::I8(v) => (v as u8).to_le_bytes().to_vec(),
+                            RegisterValue::I16(v) => (v as u16).to_le_bytes().to_vec(),
+                            RegisterValue::I32(v) => (v as u32).to_le_bytes().to_vec(),
+                            RegisterValue::I64(v) => (v as u64).to_le_bytes().to_vec(),
+                            RegisterValue::Float(v) => v.to_le_bytes().to_vec(),
+                            RegisterValue::Double(v) => v.to_le_bytes().to_vec(),
+                            RegisterValue::LongDouble(v) => v.0.to_le_bytes().to_vec(),
+                            RegisterValue::Byte64(b) => b.to_vec(),
+                            RegisterValue::Byte128(b) => b.to_vec(),
+                        }
+                    };
 
-                        Ok(get_bytes(reg_value))
-                    }
-                    DwarfExpressionSimpleLocation::Address { address } => {
-                        Ok(self.process.read_memory(*address, size)?)
-                    }
-                    DwarfExpressionSimpleLocation::Data { data } => Ok(data.to_vec()),
-                    DwarfExpressionSimpleLocation::Literal { value } => {
-                        let bytes = value.to_le_bytes();
-                        Ok(bytes[..size].to_vec())
-                    }
-                    DwarfExpressionSimpleLocation::Empty {} => SdbError::err("Empty location"),
+                    Ok(get_bytes(reg_value))
                 }
-            }
+                DwarfExpressionSimpleLocation::Address { address } => {
+                    Ok(self.process.read_memory(*address, size)?)
+                }
+                DwarfExpressionSimpleLocation::Data { data } => Ok(data.to_vec()),
+                DwarfExpressionSimpleLocation::Literal { value } => {
+                    let bytes = value.to_le_bytes();
+                    Ok(bytes[..size].to_vec())
+                }
+                DwarfExpressionSimpleLocation::Empty {} => SdbError::err("Empty location"),
+            },
             DwarfExpressionResult::Pieces(pieces_res) => {
                 let mut data = vec![0u8; size];
                 let mut offset = 0usize;

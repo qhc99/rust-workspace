@@ -8,8 +8,8 @@ use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
     DW_AT_abstract_origin, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_decl_file,
-    DW_AT_decl_line, DW_AT_frame_base, DW_AT_high_pc, DW_AT_low_pc, DW_AT_name, DW_AT_ranges,
-    DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
+    DW_AT_decl_line, DW_AT_frame_base, DW_AT_high_pc, DW_AT_location, DW_AT_low_pc, DW_AT_name,
+    DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
     DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
     DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
     DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
@@ -27,8 +27,8 @@ use gimli::{
     DW_OP_neg, DW_OP_nop, DW_OP_not, DW_OP_or, DW_OP_over, DW_OP_pick, DW_OP_piece, DW_OP_plus,
     DW_OP_plus_uconst, DW_OP_push_object_address, DW_OP_reg0, DW_OP_reg31, DW_OP_regx, DW_OP_rot,
     DW_OP_shl, DW_OP_shr, DW_OP_shra, DW_OP_skip, DW_OP_stack_value, DW_OP_swap, DW_OP_xderef,
-    DW_OP_xderef_size, DW_OP_xor, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DwForm, DwLne,
-    DwLns, DwOp,
+    DW_OP_xderef_size, DW_OP_xor, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DW_TAG_variable,
+    DwForm, DwLne, DwLns, DwOp,
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -1167,6 +1167,7 @@ pub struct Dwarf {
     compile_units: OnceCell<Vec<Rc<CompileUnit>>>,
     function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
     cfi: OnceCell<Rc<RefCell<CallFrameInformation>>>,
+    global_variable_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
 }
 
 impl Dwarf {
@@ -1180,6 +1181,7 @@ impl Dwarf {
             abbrev_tables: RefCell::new(HashMap::default()),
             compile_units: OnceCell::new(),
             function_index: RefCell::new(MultiMap::default()),
+            global_variable_index: RefCell::new(MultiMap::default()),
             cfi: OnceCell::new(),
         });
         let t = parse_compile_units(&ret, &ret.elf_file())?;
@@ -1229,7 +1231,7 @@ impl Dwarf {
         self.index()?;
         for (_name, entry) in self.function_index.borrow().iter() {
             let cursor = Cursor::new(&entry.pos);
-            let die = parse_die(&entry.cu, cursor);
+            let die = parse_die(&entry.cu.upgrade().unwrap(), cursor);
             if die.contains_address(address)?
                 && die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
             {
@@ -1247,7 +1249,7 @@ impl Dwarf {
         if let Some(entrys) = entrys {
             for entry in entrys {
                 let cursor = Cursor::new(&entry.pos);
-                let die = parse_die(&entry.cu, cursor);
+                let die = parse_die(&entry.cu.upgrade().unwrap(), cursor);
                 found.push(die);
             }
         }
@@ -1259,27 +1261,48 @@ impl Dwarf {
             return Ok(());
         }
         for cu in self.compile_units().iter() {
-            self.index_die(&cu.root())?;
+            self.index_die(&cu.root(), false)?;
         }
         Ok(())
     }
 
-    fn index_die(&self, die: &Rc<Die>) -> Result<(), SdbError> {
-        let has_range = die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64);
-        let is_function = die.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
-            || die.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64;
+    fn index_die(
+        &self,
+        current: &Rc<Die>,
+        mut in_function: bool, /* false */
+    ) -> Result<(), SdbError> {
+        let has_range =
+            current.contains(DW_AT_low_pc.0 as u64) || current.contains(DW_AT_ranges.0 as u64);
+        let is_function = current.abbrev_entry().tag == DW_TAG_subprogram.0 as u64
+            || current.abbrev_entry().tag == DW_TAG_inlined_subroutine.0 as u64;
         if has_range
             && is_function
-            && let Some(name) = die.name()?
+            && let Some(name) = current.name()?
         {
             let entry = DwarfIndexEntry {
-                cu: die.cu.upgrade().unwrap(),
-                pos: die.pos.clone(),
+                cu: current.cu.clone(),
+                pos: current.pos.clone(),
             };
             self.function_index.borrow_mut().insert(name, entry);
         }
-        for child in die.children() {
-            self.index_die(&child)?;
+        let has_location = current.contains(DW_AT_location.0 as u64);
+        let is_variable = current.abbrev_entry().tag == DW_TAG_variable.0 as u64;
+        if has_location
+            && is_variable
+            && !in_function
+            && let Some(name) = current.name()?
+        {
+            let entry = DwarfIndexEntry {
+                cu: current.cu.clone(),
+                pos: current.position(),
+            };
+            self.global_variable_index.borrow_mut().insert(name, entry);
+        }
+        if is_function {
+            in_function = true;
+        }
+        for child in current.children() {
+            self.index_die(&child, in_function)?;
         }
         Ok(())
     }
@@ -1316,7 +1339,7 @@ impl Dwarf {
 
 #[derive(Debug)]
 pub struct DwarfIndexEntry {
-    cu: Rc<CompileUnit>,
+    cu: Weak<CompileUnit>,
     pos: Bytes,
 }
 
