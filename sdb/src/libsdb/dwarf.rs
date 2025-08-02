@@ -1660,6 +1660,7 @@ pub struct UnwindContext {
     pub rule_stack: Vec<(RuleSet, CfaRuleType)>,
 }
 
+#[derive(Clone)]
 pub enum DwarfExpressionSimpleLocation {
     Address { address: VirtualAddress },
     Register { reg_num: u64 },
@@ -1668,6 +1669,7 @@ pub enum DwarfExpressionSimpleLocation {
     Empty {},
 }
 
+#[derive(Clone)]
 pub struct DwarfExpressionPiece {
     pub location: DwarfExpressionSimpleLocation,
     pub bit_size: u64,

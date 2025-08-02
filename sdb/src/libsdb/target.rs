@@ -12,6 +12,9 @@ use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
 
 use super::dwarf::DwarfExpressionResult;
+use super::dwarf::DwarfExpressionSimpleLocation;
+use super::register_info::register_info_by_dwarf;
+use super::registers::RegisterValue;
 
 use super::process::ThreadState;
 
@@ -55,80 +58,93 @@ pub struct Target {
 }
 
 impl Target {
-/*
-std::vector<std::byte> sdb::target::read_location_data(
-      const dwarf_expression::result& loc, std::size_t size,
-      std::optional<pid_t> otid) const {
-    auto tid = otid.value_or(process_->current_thread());
-    --snip--
-    if (auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc)) {
-        if (auto reg_loc = std::get_if<sdb::dwarf_expression::register_result>(simple_loc)) {
-            auto reg_info = register_info_by_dwarf(reg_loc->reg_num);
-            auto reg_value = threads_.at(tid).frames.current_frame().regs.read(reg_info);
-            auto get_bytes = [](auto value) {
-                std::vector<std::byte> bytes(sizeof(value));
-                auto begin = reinterpret_cast<const std::byte*>(&value);
-                std::copy(begin, begin + sizeof(value), bytes.data());
-                return bytes;
-            };
-            return std::visit(get_bytes, reg_value);
-        }
-        --snip--
-        else if (
-            auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(simple_loc)) {
-            return process_->read_memory(addr_res->address, size);
-        }
-        --snip--
-        else if (auto data_res = std::get_if<sdb::dwarf_expression::data_result>(simple_loc)) {
-            return { data_res->data.begin(), data_res->data.end() };
-        }
-        --snip--
-        else if (auto literal_res =
-              std::get_if<sdb::dwarf_expression::literal_result>(simple_loc)) {
-            auto begin = reinterpret_cast<const std::byte*>(&literal_res->value);
-            return { begin, begin + size };
-        }
-    }
-    --snip--
-    else if (auto pieces_res = std::get_if<sdb::dwarf_expression::pieces_result>(&loc)) {
-        std::vector<std::byte> data(size);
-        std::size_t offset = 0;
-        for (auto& piece : pieces_res->pieces) {
-            auto byte_size = (piece.bit_size + 7) / 8;
-            auto piece_data = read_location_data(piece.location, byte_size, otid);
-            if (offset % 8 == 0 and piece.offset == 0 and piece.bit_size % 8 == 0) {
-                std::copy(piece_data.begin(), piece_data.end(), data.begin() + offset / 8);
-                offset += piece.bit_size;
-            }
-            --snip--
-            else {
-                auto dest = reinterpret_cast<std::uint8_t*>(data.data());
-                auto src = reinterpret_cast<const std::uint8_t*>(piece_data.data());
-                memcpy_bits(dest, 0, src, piece.offset, piece.bit_size);
-            }
-        }
-        return data;
-    }
-    sdb::error::send("Invalid location type");
-}
+    pub fn read_location_data(
+        &self,
+        loc: &DwarfExpressionResult,
+        size: usize,
+        otid: Option<Pid>, /* None */
+    ) -> Result<Vec<u8>, SdbError> {
+        let tid = otid.unwrap_or(self.process.current_thread());
 
-inline void memcpy_bits(std::uint8_t* dest, std::uint32_t dest_bit,
-      const std::uint8_t* src, std::uint32_t src_bit,
-      std::uint32_t n_bits) {
-    for (; n_bits; --n_bits, ++src_bit, ++dest_bit) {
-        std::uint8_t dest_mask = 1 << (dest_bit % 8);
-        dest[dest_bit / 8] &= ~dest_mask;
-        auto src_mask = 1 << (src_bit % 8);
-        auto corresponding_src_bit_set = src[src_bit / 8] & src_mask;
-        if (corresponding_src_bit_set) {
-            dest[dest_bit / 8] |= dest_mask;
-        }
-    }
-}
+        match loc {
+            DwarfExpressionResult::SimpleLocation(simple_loc) => {
+                match simple_loc {
+                    DwarfExpressionSimpleLocation::Register { reg_num } => {
+                        let reg_info = register_info_by_dwarf(*reg_num as i32)?;
+                        let reg_value = self
+                            .threads
+                            .borrow()
+                            .get(&tid)
+                            .unwrap()
+                            .frames
+                            .borrow()
+                            .current_frame()
+                            .registers
+                            .read(&reg_info)?;
 
-*/
-    pub fn read_location_data(&self, loc: &DwarfExpressionResult, size: usize, otid: Option<Pid> /* None */) -> Result<Vec<u8>, SdbError> {
-        todo!()
+                        let get_bytes = |value: RegisterValue| -> Vec<u8> {
+                            match value {
+                                RegisterValue::U8(v) => vec![v],
+                                RegisterValue::U16(v) => v.to_le_bytes().to_vec(),
+                                RegisterValue::U32(v) => v.to_le_bytes().to_vec(),
+                                RegisterValue::U64(v) => v.to_le_bytes().to_vec(),
+                                RegisterValue::I8(v) => (v as u8).to_le_bytes().to_vec(),
+                                RegisterValue::I16(v) => (v as u16).to_le_bytes().to_vec(),
+                                RegisterValue::I32(v) => (v as u32).to_le_bytes().to_vec(),
+                                RegisterValue::I64(v) => (v as u64).to_le_bytes().to_vec(),
+                                RegisterValue::Float(v) => v.to_le_bytes().to_vec(),
+                                RegisterValue::Double(v) => v.to_le_bytes().to_vec(),
+                                RegisterValue::LongDouble(v) => v.0.to_le_bytes().to_vec(),
+                                RegisterValue::Byte64(b) => b.to_vec(),
+                                RegisterValue::Byte128(b) => b.to_vec(),
+                            }
+                        };
+
+                        Ok(get_bytes(reg_value))
+                    }
+                    DwarfExpressionSimpleLocation::Address { address } => {
+                        Ok(self.process.read_memory(*address, size)?)
+                    }
+                    DwarfExpressionSimpleLocation::Data { data } => Ok(data.to_vec()),
+                    DwarfExpressionSimpleLocation::Literal { value } => {
+                        let bytes = value.to_le_bytes();
+                        Ok(bytes[..size].to_vec())
+                    }
+                    DwarfExpressionSimpleLocation::Empty {} => SdbError::err("Empty location"),
+                }
+            }
+            DwarfExpressionResult::Pieces(pieces_res) => {
+                let mut data = vec![0u8; size];
+                let mut offset = 0usize;
+
+                for piece in &pieces_res.pieces {
+                    let byte_size = piece.bit_size.div_ceil(8);
+                    let piece_data = self.read_location_data(
+                        &DwarfExpressionResult::SimpleLocation(piece.location.clone()),
+                        byte_size as usize,
+                        otid,
+                    )?;
+
+                    if offset % 8 == 0 && piece.offset == 0 && piece.bit_size % 8 == 0 {
+                        let dest_byte_offset = offset / 8;
+                        let copy_len = piece_data.len().min(data.len() - dest_byte_offset);
+                        data[dest_byte_offset..dest_byte_offset + copy_len]
+                            .copy_from_slice(&piece_data[..copy_len]);
+                        offset += piece.bit_size as usize;
+                    } else {
+                        memcpy_bits(
+                            &mut data,
+                            0,
+                            &piece_data,
+                            piece.offset as u32,
+                            piece.bit_size as u32,
+                        );
+                    }
+                }
+
+                Ok(data)
+            }
+        }
     }
 
     pub fn threads(&self) -> &RefCell<HashMap<Pid, SdbThread>> {
@@ -805,5 +821,23 @@ impl SdbThread {
             state,
             frames: Rc::new(RefCell::new(frames)),
         }
+    }
+}
+
+fn memcpy_bits(dest: &mut [u8], mut dest_bit: u32, src: &[u8], mut src_bit: u32, mut n_bits: u32) {
+    while n_bits > 0 {
+        let dest_mask = 1u8 << (dest_bit % 8);
+        dest[(dest_bit / 8) as usize] &= !dest_mask;
+
+        let src_mask = 1u8 << (src_bit % 8);
+        let corresponding_src_bit_set = src[(src_bit / 8) as usize] & src_mask;
+
+        if corresponding_src_bit_set != 0 {
+            dest[(dest_bit / 8) as usize] |= dest_mask;
+        }
+
+        n_bits -= 1;
+        src_bit += 1;
+        dest_bit += 1;
     }
 }
