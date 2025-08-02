@@ -16,7 +16,8 @@ use libsdb::target::{Target, TargetExt};
 
 use bytes::Bytes;
 use gimli::{
-    DW_AT_language, DW_AT_location, DW_AT_name, DW_LANG_C_plus_plus, DW_OP_bit_piece, DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram
+    DW_AT_language, DW_AT_location, DW_AT_name, DW_LANG_C_plus_plus, DW_OP_bit_piece,
+    DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram,
 };
 use libsdb::dwarf::{DwarfExpression, DwarfExpressionResult, DwarfExpressionSimpleLocation};
 use libsdb::syscalls::syscall_name_to_id;
@@ -1069,28 +1070,37 @@ fn read_global_integer_variable() {
     assert_eq!(val, 42);
 }
 
-
-
 #[test]
 #[serial]
 fn dwarf_expressions() {
     let piece_data: Vec<u8> = vec![
         DW_OP_reg16.0 as u8,
-        DW_OP_piece.0 as u8, 4,
-        DW_OP_piece.0 as u8, 8,
+        DW_OP_piece.0 as u8,
+        4,
+        DW_OP_piece.0 as u8,
+        8,
         DW_OP_const4u.0 as u8,
-        0xff, 0xff, 0xff, 0xff,
-        DW_OP_bit_piece.0 as u8, 5, 12
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        DW_OP_bit_piece.0 as u8,
+        5,
+        12,
     ];
     let target = Target::launch(STEP_PATH.as_ref(), None).unwrap();
     let proc = target.get_process();
     let data = Bytes::from(piece_data);
     let expr = DwarfExpression::builder()
-        .parent(Rc::downgrade(&target.get_main_elf().upgrade().unwrap().get_dwarf()))
+        .parent(Rc::downgrade(
+            &target.get_main_elf().upgrade().unwrap().get_dwarf(),
+        ))
         .expr_data(data)
         .in_frame_info(false)
         .build();
-    let res = expr.eval(&proc, &proc.get_registers(None).borrow(), false).unwrap();
+    let res = expr
+        .eval(&proc, &proc.get_registers(None).borrow(), false)
+        .unwrap();
     match res {
         DwarfExpressionResult::Pieces(pieces_result) => {
             let pieces = pieces_result.pieces;

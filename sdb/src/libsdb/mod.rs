@@ -250,11 +250,29 @@ fn handle_variable_command(target: &Rc<Target>, args: &[&str]) -> Result<(), Sdb
         return Ok(());
     }
     if args[1] == "read" {
-        let die = target.get_main_elf().upgrade().unwrap().get_dwarf().find_global_variable(args[2])?;
-        let loc = die.unwrap().index(DW_AT_location.0 as u64)?.as_evaluated_location(
-            &target.get_process(), &target.get_stack(None).borrow().current_frame().registers, false)?;
+        let die = target
+            .get_main_elf()
+            .upgrade()
+            .unwrap()
+            .get_dwarf()
+            .find_global_variable(args[2])?;
+        let loc = die
+            .unwrap()
+            .index(DW_AT_location.0 as u64)?
+            .as_evaluated_location(
+                &target.get_process(),
+                &target.get_stack(None).borrow().current_frame().registers,
+                false,
+            )?;
         let value = target.read_location_data(&loc, 8, None)?;
-        let res = u64::from_le_bytes(value.into_iter().take(8).collect::<Vec<_>>().try_into().unwrap());
+        let res = u64::from_le_bytes(
+            value
+                .into_iter()
+                .take(8)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        );
         println!("Value: {res}");
     }
     Ok(())
