@@ -1174,15 +1174,15 @@ impl Dwarf {
     pub fn find_global_variable(&self, name: &str) -> Result<Option<Rc<Die>>, SdbError> {
         self.index()?;
         let global_variable_index = self.global_variable_index.borrow();
-        let entrys = global_variable_index.get_vec(name);
-        if let Some(entrys) = entrys {
-            for entry in entrys {
-                let cu = entry.cu.upgrade().unwrap();
-                let cu_data_end = cu.data().as_ptr() as usize + cu.data().len();
-                let len = cu_data_end - entry.pos.as_ptr() as usize;
-                let cursor = Cursor::new(&entry.pos.slice(0..len));
-                return Ok(Some(parse_die(&cu, cursor)));
-            }
+        let indices = global_variable_index.get_vec(name);
+        if let Some(entrys) = indices
+            && let Some(entry) = entrys.iter().next()
+        {
+            let cu = entry.cu.upgrade().unwrap();
+            let cu_data_end = cu.data().as_ptr() as usize + cu.data().len();
+            let len = cu_data_end - entry.pos.as_ptr() as usize;
+            let cursor = Cursor::new(&entry.pos.slice(0..len));
+            return Ok(Some(parse_die(&cu, cursor)));
         }
         Ok(None)
     }
