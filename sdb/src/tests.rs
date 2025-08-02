@@ -15,7 +15,11 @@ use std::{
 use libsdb::target::{Target, TargetExt};
 
 use bytes::Bytes;
-use gimli::{DW_AT_language, DW_AT_name, DW_LANG_C_plus_plus, DW_TAG_subprogram};
+use gimli::{
+    DW_AT_language, DW_AT_location, DW_AT_name, DW_LANG_C_plus_plus, DW_OP_bit_piece,
+    DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram,
+};
+use libsdb::dwarf::{DwarfExpression, DwarfExpressionResult, DwarfExpressionSimpleLocation};
 use libsdb::syscalls::syscall_name_to_id;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
@@ -84,6 +88,8 @@ static STEP_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/ste
 static MULTI_CU_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/multi_cu_main"));
 static OVERLOADED_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/overloaded"));
 static MARSHMALLOW_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/marshmallow"));
+static GLOBAL_VARIABLE_PATH: LazyLock<&Path> =
+    LazyLock::new(|| Path::new("resource/bin/global_variable"));
 
 #[test]
 #[serial]
@@ -1015,36 +1021,54 @@ fn multi_threading() {
     assert_eq!(reason.reason, ProcessState::Exited);
 }
 
-/*
-TEST_CASE("Can read global integer variable", "[variable]") {
-    auto target = target::launch("targets/global_variable");
-    auto& proc = target->get_process();
+#[test]
+#[serial]
+fn read_global_integer_variable() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let target = Target::launch(GLOBAL_VARIABLE_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
 
-    target->create_function_breakpoint("main").enable();
-    proc.resume();
-    proc.wait_on_signal();
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    auto var_die = target->get_main_elf().get_dwarf().find_global_variable("g_int");
-    auto var_loc = var_die.value()[DW_AT_location]
-        .as_evaluated_location(proc, proc.get_registers(), false);
-    auto res = target->read_location_data(var_loc, 8);
-    auto val = from_bytes<std::uint64_t>(res.data());
+    let var_die = target
+        .get_main_elf()
+        .upgrade()
+        .unwrap()
+        .get_dwarf()
+        .find_global_variable("g_int")
+        .unwrap()
+        .unwrap();
+    let var_loc = var_die
+        .index(DW_AT_location.0 as u64)
+        .unwrap()
+        .as_evaluated_location(&proc, &proc.get_registers(None).borrow(), false)
+        .unwrap();
+    let res = target.read_location_data(&var_loc, 8, None).unwrap();
+    let val: u64 = from_bytes(&res);
 
-    REQUIRE(val == 0);
+    assert_eq!(val, 0);
 
-    target->step_over();
-    res = target->read_location_data(var_loc, 8);
-    val = from_bytes<std::uint64_t>(res.data());
+    target.step_over(None).unwrap();
+    let res = target.read_location_data(&var_loc, 8, None).unwrap();
+    let val: u64 = from_bytes(&res);
 
-    REQUIRE(val == 1);
+    assert_eq!(val, 1);
 
-    target->step_over();
-    res = target->read_location_data(var_loc, 8);
-    val = from_bytes<std::uint64_t>(res.data());
+    target.step_over(None).unwrap();
+    let res = target.read_location_data(&var_loc, 8, None).unwrap();
+    let val: u64 = from_bytes(&res);
 
-    REQUIRE(val == 42);
+    assert_eq!(val, 42);
 }
-*/
 
 /*
 TEST_CASE("DWARF expressions work", "[dwarf]") {
@@ -1075,3 +1099,86 @@ TEST_CASE("DWARF expressions work", "[dwarf]") {
 
 }
 */
+#[test]
+#[serial]
+fn dwarf_expressions() {
+    let piece_data: Vec<u8> = vec![
+        DW_OP_reg16.0 as u8,
+        DW_OP_piece.0 as u8,
+        4,
+        DW_OP_piece.0 as u8,
+        8,
+        DW_OP_const4u.0 as u8,
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        DW_OP_bit_piece.0 as u8,
+        5,
+        12,
+    ];
+
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let target = Target::launch(STEP_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+
+    // Start the process so registers are available
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+
+    let data = Bytes::from(piece_data);
+    let expr = DwarfExpression::builder()
+        .parent(Rc::downgrade(
+            &target.get_main_elf().upgrade().unwrap().get_dwarf(),
+        ))
+        .expr_data(data)
+        .in_frame_info(false)
+        .build();
+    let res = expr
+        .eval(&proc, &proc.get_registers(None).borrow(), false)
+        .unwrap();
+
+    match res {
+        DwarfExpressionResult::Pieces(pieces_result) => {
+            let pieces = pieces_result.pieces;
+            assert_eq!(pieces.len(), 3);
+            assert_eq!(pieces[0].bit_size, 4 * 8);
+            assert_eq!(pieces[1].bit_size, 8 * 8);
+            assert_eq!(pieces[2].bit_size, 5);
+
+            match &pieces[0].location {
+                DwarfExpressionSimpleLocation::Register { reg_num } => {
+                    assert_eq!(*reg_num, 16);
+                }
+                _ => panic!("Expected register location for piece 0"),
+            }
+
+            match &pieces[1].location {
+                DwarfExpressionSimpleLocation::Empty {} => {
+                    // This is expected
+                }
+                _ => panic!("Expected empty location for piece 1"),
+            }
+
+            match &pieces[2].location {
+                DwarfExpressionSimpleLocation::Address { address } => {
+                    assert_eq!(address.addr(), 0xffffffff);
+                }
+                _ => panic!("Expected address location for piece 2"),
+            }
+
+            assert_eq!(pieces[0].offset, 0);
+            assert_eq!(pieces[1].offset, 0);
+            assert_eq!(pieces[2].offset, 12);
+        }
+        _ => panic!("Expected pieces result from DWARF expression"),
+    }
+}
