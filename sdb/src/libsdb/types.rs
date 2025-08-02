@@ -1,8 +1,18 @@
 use std::{
+    cell::RefCell,
     fmt::{Display, LowerHex},
     ops::{Add, AddAssign, Sub, SubAssign},
     rc::{Rc, Weak},
 };
+
+use gimli::{
+    DW_AT_byte_size, DW_AT_type, DW_AT_upper_bound, DW_TAG_array_type, DW_TAG_pointer_type,
+    DW_TAG_ptr_to_member_type, DW_TAG_subrange_type, DW_TAG_subroutine_type,
+};
+
+use super::{dwarf::DieExt, sdb_error::SdbError};
+
+use super::dwarf::Die;
 
 use super::elf::ElfCollection;
 
@@ -234,5 +244,68 @@ impl Display for StoppointMode {
             StoppointMode::ReadWrite => write!(f, "read_write"),
             StoppointMode::Execute => write!(f, "execute"),
         }
+    }
+}
+
+pub struct SdbType {
+    die: Rc<Die>,
+    byte_size: RefCell<Option<usize>>,
+}
+
+impl SdbType {
+    pub fn new(die: Rc<Die>) -> Self {
+        Self {
+            die,
+            byte_size: RefCell::new(None),
+        }
+    }
+
+    pub fn get_die(&self) -> Rc<Die> {
+        self.die.clone()
+    }
+
+    pub fn byte_size(&self) -> Result<usize, SdbError> {
+        if self.byte_size.borrow().is_none() {
+            self.byte_size
+                .borrow_mut()
+                .replace(self.compute_byte_size()?);
+        }
+        return Ok(self.byte_size.borrow().unwrap());
+    }
+
+    pub fn is_char_type(&self) -> bool {
+        todo!()
+    }
+
+    fn compute_byte_size(&self) -> Result<usize, SdbError> {
+        let tag = self.die.abbrev_entry().tag;
+
+        if tag as u16 == DW_TAG_pointer_type.0 {
+            return Ok(8);
+        }
+        if tag as u16 == DW_TAG_ptr_to_member_type.0 {
+            let member_type = self.die.index(DW_AT_type.0 as u64)?.as_type();
+            if member_type.get_die().abbrev_entry().tag as u16 == DW_TAG_subroutine_type.0 {
+                return Ok(16);
+            }
+            return Ok(8);
+        }
+        if tag as u16 == DW_TAG_array_type.0 {
+            let mut value_size = self.die.index(DW_AT_type.0 as u64)?.as_type().byte_size()?;
+            for child in self.die.children() {
+                if child.abbrev_entry().tag as u16 == DW_TAG_subrange_type.0 {
+                    value_size *= (child.index(DW_AT_upper_bound.0 as u64)?.as_int()? + 1) as usize;
+                }
+            }
+            return Ok(value_size);
+        }
+        if self.die.contains(DW_AT_byte_size.0 as u64) {
+            return Ok(self.die.index(DW_AT_byte_size.0 as u64)?.as_int()? as usize);
+        }
+        if self.die.contains(DW_AT_type.0 as u64) {
+            return self.die.index(DW_AT_type.0 as u64)?.as_type().byte_size();
+        }
+
+        return Ok(0);
     }
 }

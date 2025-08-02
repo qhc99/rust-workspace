@@ -40,6 +40,7 @@ use super::process::Process;
 use super::register_info::{RegisterId, register_info_by_dwarf};
 use super::registers::{RegisterValue, Registers};
 use super::sdb_error::SdbError;
+use super::types::SdbType;
 use super::types::{FileAddress, VirtualAddress};
 
 type AbbrevTable = HashMap<u64, Rc<Abbrev>>;
@@ -492,10 +493,12 @@ impl Die {
     }
 
     pub fn contains_address(&self, addr: &FileAddress) -> Result<bool, SdbError> {
-        if !addr.has_elf() || !Rc::ptr_eq(
-            &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
-            &addr.rc_elf_file(),
-        ) {
+        if !addr.has_elf()
+            || !Rc::ptr_eq(
+                &self.cu.upgrade().unwrap().dwarf_info().elf_file(),
+                &addr.rc_elf_file(),
+            )
+        {
             return Ok(false);
         }
         if self.contains(DW_AT_ranges.0 as u64) {
@@ -766,6 +769,10 @@ impl DieAttr {
         } else {
             SdbError::err("Invalid location type")
         }
+    }
+
+    pub fn as_type(&self) -> SdbType {
+        return SdbType::new(self.as_reference());
     }
 }
 
