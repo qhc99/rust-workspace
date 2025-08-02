@@ -6,6 +6,7 @@ compile_error!("Not x86_64 arch");
 use breakpoint_site::IdType;
 use disassembler::print_disassembly;
 use ffi::sig_abbrev;
+use gimli::DW_AT_location;
 use indoc::indoc;
 use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
@@ -235,8 +236,26 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
         print_backtrace(target)?;
     } else if cmd == "thread" {
         handle_thread_command(target, &args)?;
+    } else if cmd == "variable" {
+        handle_variable_command(target, &args)?;
     } else {
         eprintln!("Unknown command");
+    }
+    Ok(())
+}
+
+fn handle_variable_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() < 3 {
+        print_help(&["help", "variable"]);
+        return Ok(());
+    }
+    if args[1] == "read" {
+        let die = target.get_main_elf().upgrade().unwrap().get_dwarf().find_global_variable(args[2])?;
+        let loc = die.unwrap().index(DW_AT_location.0 as u64)?.as_evaluated_location(
+            &target.get_process(), &target.get_stack(None).borrow().current_frame().registers, false)?;
+        let value = target.read_location_data(&loc, 8, None)?;
+        let res = u64::from_le_bytes(value.into_iter().take(8).collect::<Vec<_>>().try_into().unwrap());
+        println!("Value: {res}");
     }
     Ok(())
 }
@@ -836,6 +855,7 @@ fn print_help(args: &[&str]) {
             down        - Select the stack frame below the current one
             up          - Select the stack frame above the current one
             thread      - Commands for operating on threads
+            variable    - Commands for operating on variables
         "
         });
     } else if args[1] == "register" {
@@ -890,6 +910,11 @@ fn print_help(args: &[&str]) {
             Available commands:
             list
             select <thread ID>
+        "})
+    } else if args[1] == "variable" {
+        eprintln!(indoc! {"
+            Available commands:
+            read <variable>
         "})
     }
 }
