@@ -717,7 +717,7 @@ impl DieAttr {
         let mut cur = Cursor::new(&self.location.slice(..slice));
         let length = cur.uleb128();
         let data = cur.position().slice(..length as usize);
-        
+
         DwarfExpression::builder()
             .parent(Rc::downgrade(&self.cu.upgrade().unwrap().dwarf_info()))
             .expr_data(data)
@@ -726,7 +726,13 @@ impl DieAttr {
     }
 
     pub fn as_location_list(&self, in_frame_info: bool) -> LocationList {
-        let section = self.cu.upgrade().unwrap().dwarf_info().elf_file().get_section_contents(".debug_loc");
+        let section = self
+            .cu
+            .upgrade()
+            .unwrap()
+            .dwarf_info()
+            .elf_file()
+            .get_section_contents(".debug_loc");
         let cu_data_end = {
             let cu = self.cu.upgrade().unwrap();
             cu.data.as_ptr() as usize + cu.data.len()
@@ -734,14 +740,14 @@ impl DieAttr {
         let slice = cu_data_end - self.location.as_ptr() as usize;
         let mut cur = Cursor::new(&self.location.slice(..slice));
         let offset = cur.u32();
-        
+
         let data = section.slice(offset as usize..);
-        
+
         LocationList::new(
             Rc::downgrade(&self.cu.upgrade().unwrap().dwarf_info()),
             self.cu.clone(),
             data,
-            in_frame_info
+            in_frame_info,
         )
     }
 
@@ -786,21 +792,22 @@ impl LocationList {
     }
 
     pub fn eval(&self, proc: &Process, regs: &Registers) -> DwarfExpressionResult {
-        let virt_pc = VirtualAddress::new(
-            regs.read_by_id_as::<u64>(RegisterId::rip).unwrap()
-        );
+        let virt_pc = VirtualAddress::new(regs.read_by_id_as::<u64>(RegisterId::rip).unwrap());
         let pc = virt_pc.to_file_addr_elf(&self.parent.upgrade().unwrap().elf_file());
-        
+
         let mut cur = Cursor::new(&self.expr_data);
         let base_address_flag = !0u64;
-        let mut base_address = self.cu.upgrade().unwrap()
+        let mut base_address = self
+            .cu
+            .upgrade()
+            .unwrap()
             .root()
             .index(DW_AT_low_pc.0 as u64)
             .unwrap()
             .as_address()
             .unwrap()
             .addr();
-        
+
         let mut first = cur.u64();
         let mut second = cur.u64();
         while !(first == 0 && second == 0) {
@@ -823,7 +830,7 @@ impl LocationList {
             first = cur.u64();
             second = cur.u64();
         }
-        
+
         DwarfExpressionResult::SimpleLocation(DwarfExpressionSimpleLocation::Empty {})
     }
 }
@@ -1749,11 +1756,11 @@ impl DwarfExpression {
             let opcode = cursor.u8();
 
             // Handle DW_OP_lit0 to DW_OP_lit31
-            if opcode >= DW_OP_lit0.0 && opcode <= DW_OP_lit31.0 {
+            if (DW_OP_lit0.0..=DW_OP_lit31.0).contains(&opcode) {
                 stack.push((opcode - DW_OP_lit0.0) as u64);
             }
             // Handle DW_OP_breg0 to DW_OP_breg31
-            else if opcode >= DW_OP_breg0.0 && opcode <= DW_OP_breg31.0 {
+            else if (DW_OP_breg0.0..=DW_OP_breg31.0).contains(&opcode) {
                 let reg = (opcode - DW_OP_breg0.0) as i32;
                 let reg_info = register_info_by_dwarf(reg)?;
                 let reg_val = regs.read(&reg_info)?;
@@ -1765,7 +1772,7 @@ impl DwarfExpression {
                 stack.push((val as i64 + offset) as u64);
             }
             // Handle DW_OP_reg0 to DW_OP_reg31
-            else if opcode >= DW_OP_reg0.0 && opcode <= DW_OP_reg31.0 {
+            else if (DW_OP_reg0.0..=DW_OP_reg31.0).contains(&opcode) {
                 let reg = (opcode - DW_OP_reg0.0) as u64;
                 if self.in_frame_info {
                     let reg_info = register_info_by_dwarf(reg as i32)?;
@@ -1911,7 +1918,7 @@ impl DwarfExpression {
                 // Unary operations
                 DW_OP_abs => {
                     let val = stack.pop().unwrap() as i64;
-                    stack.push(val.abs() as u64);
+                    stack.push(val.unsigned_abs());
                 }
                 DW_OP_neg => {
                     let val = stack.pop().unwrap() as i64;
@@ -2019,8 +2026,7 @@ impl DwarfExpression {
 
                 _ => {
                     return SdbError::err(&format!(
-                        "Unrecognized DWARF expression opcode: {:#x}",
-                        opcode
+                        "Unrecognized DWARF expression opcode: {opcode:#x}",
                     ));
                 }
             }
@@ -2053,5 +2059,5 @@ fn read_frame_base_result(
         DwarfExpressionSimpleLocation::Address { address } => address,
         _ => return SdbError::err("Unsupported frame base location"),
     };
-    Ok(addr_res.clone())
+    Ok(*addr_res)
 }

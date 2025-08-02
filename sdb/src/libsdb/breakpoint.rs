@@ -27,6 +27,8 @@ use super::dwarf::ExprRule;
 use super::dwarf::CfaExprRule;
 
 use super::dwarf::DwarfExpression;
+use super::dwarf::DwarfExpressionResult;
+use super::dwarf::DwarfExpressionSimpleLocation;
 
 use super::dwarf::{CfaRegisterRule, CfaRuleType};
 
@@ -722,24 +724,21 @@ fn execute_cfi_instruction(
             DW_CFA_def_cfa_register => {
                 if let CfaRuleType::Register(rule) = &mut ctx.cfa_rule {
                     rule.reg = cur.uleb128() as u32;
-                }
-                else{
+                } else {
                     return SdbError::err("Invalid CFA rule type");
                 }
             }
             DW_CFA_def_cfa_offset => {
                 if let CfaRuleType::Register(rule) = &mut ctx.cfa_rule {
                     rule.offset = cur.uleb128() as i64;
-                }
-                else{
+                } else {
                     return SdbError::err("Invalid CFA rule type");
                 }
             }
             DW_CFA_def_cfa_offset_sf => {
                 if let CfaRuleType::Register(rule) = &mut ctx.cfa_rule {
                     rule.offset = cur.sleb128() * cie.data_alignment_factor;
-                }
-                else{
+                } else {
                     return SdbError::err("Invalid CFA rule type");
                 }
             }
@@ -810,7 +809,8 @@ fn execute_cfi_instruction(
                     .expr_data(cur.position().slice(..length as usize))
                     .in_frame_info(true)
                     .build();
-                ctx.register_rules.insert(reg as u32, Rule::Expr(ExprRule { expr }));
+                ctx.register_rules
+                    .insert(reg as u32, Rule::Expr(ExprRule { expr }));
             }
             DW_CFA_val_expression => {
                 let reg = cur.uleb128();
@@ -820,7 +820,8 @@ fn execute_cfi_instruction(
                     .expr_data(cur.position().slice(..length as usize))
                     .in_frame_info(true)
                     .build();
-                ctx.register_rules.insert(reg as u32, Rule::ValExpr(ValExprRule { expr }));
+                ctx.register_rules
+                    .insert(reg as u32, Rule::ValExpr(ValExprRule { expr }));
             }
             DW_CFA_restore_extended => {
                 let reg = cur.uleb128();
@@ -842,95 +843,51 @@ fn execute_cfi_instruction(
     Ok(())
 }
 
-/*
-    sdb::registers execute_unwind_rules(
-        unwind_context& ctx, sdb::registers& old_regs,
-        const sdb::process& proc) {
-        auto unwound_regs = old_regs;
-
-        auto dwexp_addr_result = [&](const auto& res) {
-            auto& loc = std::get<sdb::dwarf_expression::simple_location>(res);
-            auto& addr_res = std::get<sdb::dwarf_expression::address_result>(loc);
-            return sdb::virt_addr{ addr_res.address.addr() };
-            };
-
-        std::uint64_t cfa;
-        if (auto reg_rule = std::get_if<cfa_register_rule>(&ctx.cfa_rule)) {
-            auto reg_info = sdb::register_info_by_dwarf(reg_rule->reg);
-            cfa = std::get<std::uint64_t>(old_regs.read(reg_info)) +
-                reg_rule->offset;
-        }
-        else if (auto expr = std::get_if<cfa_expr_rule>(&ctx.cfa_rule)) {
-            auto res = expr->expr.eval(proc, old_regs);
-            cfa = dwexp_addr_result(res).addr();
-        }
-        old_regs.set_cfa(sdb::virt_addr{ cfa });
-        unwound_regs.write_by_id(sdb::register_id::rsp, { cfa }, false);
-
-        for (auto [reg, rule] : ctx.register_rules) {
-            auto reg_info = sdb::register_info_by_dwarf(reg);
-
-            if (auto undef = std::get_if<undefined_rule>(&rule)) {
-                unwound_regs.undefine(reg_info.id);
-            }
-            else if (auto same = std::get_if<same_rule>(&rule)) {
-                // Do nothing
-            }
-            else if (auto reg = std::get_if<register_rule>(&rule)) {
-                auto other_reg = sdb::register_info_by_dwarf(reg->reg);
-                unwound_regs.write(reg_info, old_regs.read(other_reg), false);
-            }
-            else if (auto offset = std::get_if<offset_rule>(&rule)) {
-                auto addr = sdb::virt_addr{ cfa + offset->offset };
-                auto value = sdb::from_bytes<std::uint64_t>(
-                    proc.read_memory(addr, 8).data());
-                unwound_regs.write(reg_info, { value }, false);
-            }
-            else if (auto val_offset = std::get_if<val_offset_rule>(&rule)) {
-                auto addr = cfa + val_offset->offset;
-                unwound_regs.write(reg_info, { addr }, false);
-            }
-            else if (auto expr = std::get_if<expr_rule>(&rule)) {
-                auto res = expr->expr.eval(proc, old_regs, true);
-                auto addr = dwexp_addr_result(res);
-                auto value = proc.read_memory_as<std::uint64_t>(addr);
-                unwound_regs.write(reg_info, { value }, false);
-            }
-            else if (auto val_expr = std::get_if<val_expr_rule>(&rule)) {
-                auto res = val_expr->expr.eval(proc, old_regs, true);
-                auto addr = dwexp_addr_result(res);
-                unwound_regs.write(reg_info, { addr.addr() }, false);
-            }
-        }
-        return unwound_regs;
-    }
-}
-
-*/
 fn execute_unwind_rules(
     ctx: &mut UnwindContext,
     old_regs: &mut Registers,
     proc: &Process,
 ) -> Result<Registers, SdbError> {
     let mut unwound_regs = old_regs.clone();
-    let cfa_reg_info = register_info_by_dwarf(ctx.cfa_rule.reg as i32)?;
-    let cfa = match old_regs.read(&cfa_reg_info)? {
-        RegisterValue::U64(v) => v,
-        _ => return SdbError::err("Unexpected register value type"),
-    } + ctx.cfa_rule.offset as u64;
+    let dwexp_addr_result = |res: &DwarfExpressionResult| -> Result<VirtualAddress, SdbError> {
+        match res {
+            DwarfExpressionResult::SimpleLocation(loc) => match loc {
+                DwarfExpressionSimpleLocation::Address { address } => Ok(*address),
+                _ => SdbError::err("Expected address result from DWARF expression"),
+            },
+            _ => SdbError::err("Expected simple location from DWARF expression"),
+        }
+    };
+    let cfa = match &ctx.cfa_rule {
+        CfaRuleType::Register(reg_rule) => {
+            let reg_info = register_info_by_dwarf(reg_rule.reg as i32)?;
+            let reg_value = match old_regs.read(&reg_info)? {
+                RegisterValue::U64(v) => v,
+                _ => return SdbError::err("Unexpected register value type"),
+            };
+            reg_value.wrapping_add(reg_rule.offset as u64)
+        }
+        CfaRuleType::Expr(expr_rule) => {
+            let res = expr_rule.expr.eval(proc, old_regs, false)?;
+            dwexp_addr_result(&res)?.addr()
+        }
+    };
+
     old_regs.set_cfa(VirtualAddress::new(cfa));
     unwound_regs.write_by_id(RegisterId::rsp, cfa, false)?;
+
     for (reg, rule) in &ctx.register_rules {
         let reg_info = register_info_by_dwarf(*reg as i32)?;
-        match &rule {
+
+        match rule {
             Rule::Undefined(_) => {
                 unwound_regs.undefine(reg_info.id)?;
             }
             Rule::Same(_) => {
-                // Do nothing.
+                // Do nothing
             }
-            Rule::Register(reg) => {
-                let other_reg = register_info_by_dwarf(reg.reg as i32)?;
+            Rule::Register(reg_rule) => {
+                let other_reg = register_info_by_dwarf(reg_rule.reg as i32)?;
                 unwound_regs.write(&reg_info, old_regs.read(&other_reg)?, false)?;
             }
             Rule::Offset(offset) => {
@@ -939,12 +896,26 @@ fn execute_unwind_rules(
                 unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
             }
             Rule::ValOffset(val_offset) => {
-                let addr = cfa + val_offset.offset as u64;
+                let addr = cfa.wrapping_add(val_offset.offset as u64);
                 unwound_regs.write(&reg_info, RegisterValue::U64(addr), false)?;
             }
-            _ => {}
+            Rule::Expr(expr) => {
+                let res = expr.expr.eval(proc, old_regs, true)?;
+                let addr = dwexp_addr_result(&res)?;
+                let value = from_bytes::<u64>(&proc.read_memory(addr, 8)?);
+                unwound_regs.write(&reg_info, RegisterValue::U64(value), false)?;
+            }
+            Rule::ValExpr(val_expr) => {
+                let res = val_expr.expr.eval(proc, old_regs, true)?;
+                let addr = dwexp_addr_result(&res)?;
+                unwound_regs.write(&reg_info, RegisterValue::U64(addr.addr()), false)?;
+            }
+            Rule::CfaRegister(_) => {
+                // CfaRegister rules are not used in register_rules, only in cfa_rule
+            }
         }
     }
+
     Ok(unwound_regs)
 }
 
