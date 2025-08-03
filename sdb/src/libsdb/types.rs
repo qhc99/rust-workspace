@@ -440,64 +440,72 @@ impl TypedData {
             .build())
     }
 
-    /*
-sdb::typed_data sdb::typed_data::read_member(
-      const sdb::process& proc, std::string_view member_name) const {
-    auto die = type_.get_die();
-    auto children = die.children();
-    auto it = std::find_if(children.begin(), children.end(),
-        [&](auto& child) { return child.name().value_or("") == member_name; });
-    if (it == children.end()) {
-        sdb::error::send("No such member");
-    }
-    auto var = *it;
-    auto value_type = var[DW_AT_type].as_type();
-
-    auto byte_offset = var.contains(DW_AT_data_member_location) ?
-        var[DW_AT_data_member_location].as_int() :
-        var[DW_AT_data_bit_offset].as_int() / 8;
-    auto data_start = data_.begin() + byte_offset;
-    std::vector<std::byte> member_data{ data_start, data_start + value_type.byte_size() };
-
-    auto data = address_ ?
-        typed_data{ std::move(member_data), value_type, *address_ + byte_offset } :
-        typed_data{ std::move(member_data), value_type };
-    return data.fixup_bitfield(proc, var);
-}
-     */
     pub fn read_member(&self, proc: &Process, member_name: &str) -> Result<TypedData, SdbError> {
-        todo!()
+        let die = self.type_.get_die();
+        let mut children = die.children();
+        let it = children.find(|child| {
+            child
+                .name()
+                .map(|v| v.unwrap_or_default())
+                .unwrap_or_default()
+                == member_name
+        });
+        if it.is_none() {
+            return SdbError::err("No such member");
+        }
+        let var = it.unwrap();
+        let value_type = var.index(DW_AT_type.0 as u64)?.as_type();
+        let byte_offset = if var.contains(DW_AT_data_member_location.0 as u64) {
+            var.index(DW_AT_data_member_location.0 as u64)?.as_int()? as usize
+        } else {
+            var.index(DW_AT_data_bit_offset.0 as u64)?.as_int()? as usize / 8
+        };
+        let data_start = &self.data.as_slice()[byte_offset..];
+        let member_data = &data_start[..value_type.byte_size()?];
+        let data = if self.address.is_some() {
+            TypedData::builder()
+                .data(member_data.to_vec())
+                .type_(value_type.clone())
+                .address(Some(self.address.unwrap() + byte_offset as i64))
+                .build()
+        } else {
+            TypedData::builder()
+                .data(member_data.to_vec())
+                .type_(value_type)
+                .build()
+        };
+        return data.fixup_bitfield(proc, &var);
     }
 
     /*
-sdb::typed_data sdb::typed_data::index(
-      const sdb::process& proc, std::size_t index) const {
-    auto parent_type = type_.strip_cv_typedef().get_die();
-    auto tag = parent_type.abbrev_entry()->tag;
-    if (tag != DW_TAG_array_type and tag != DW_TAG_pointer_type) {
-        sdb::error::send("Not an array or pointer type");
-    }
-    auto value_type = parent_type[DW_AT_type].as_type();
-    auto element_size = value_type.byte_size();
-    auto offset = index * element_size;
-    if (tag == DW_TAG_pointer_type) {
-        sdb::virt_addr address{ sdb::from_bytes<std::uint64_t>(data_.data()) };
-        address += offset;
-        auto data_vec = proc.read_memory(
-            address, element_size);
-        return { std::move(data_vec), value_type, address };
-    }
-    else {
-        std::vector<std::byte> data_vec{
-            data_.begin() + offset,
-            data_.begin() + offset + element_size };
-        if (address_) {
-            return { std::move(data_vec), value_type, *address_ + offset };
+    sdb::typed_data sdb::typed_data::index(
+          const sdb::process& proc, std::size_t index) const {
+        auto parent_type = type_.strip_cv_typedef().get_die();
+        auto tag = parent_type.abbrev_entry()->tag;
+        if (tag != DW_TAG_array_type and tag != DW_TAG_pointer_type) {
+            sdb::error::send("Not an array or pointer type");
         }
-        return { std::move(data_vec), value_type };
+        auto value_type = parent_type[DW_AT_type].as_type();
+        auto element_size = value_type.byte_size();
+        auto offset = index * element_size;
+        if (tag == DW_TAG_pointer_type) {
+            sdb::virt_addr address{ sdb::from_bytes<std::uint64_t>(data_.data()) };
+            address += offset;
+            auto data_vec = proc.read_memory(
+                address, element_size);
+            return { std::move(data_vec), value_type, address };
+        }
+        else {
+            std::vector<std::byte> data_vec{
+                data_.begin() + offset,
+                data_.begin() + offset + element_size };
+            if (address_) {
+                return { std::move(data_vec), value_type, *address_ + offset };
+            }
+            return { std::move(data_vec), value_type };
+        }
     }
-}
-     */
+         */
     pub fn index(&self, _proc: &Process, index: usize) -> Result<TypedData, SdbError> {
         todo!()
     }
