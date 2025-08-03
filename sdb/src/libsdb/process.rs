@@ -217,6 +217,19 @@ pub struct Process {
 }
 
 impl Process {
+    pub fn read_string(&self, address: VirtualAddress) -> Result<String, SdbError> {
+        let mut ret = String::new();
+        loop {
+            let data = self.read_memory(address, 1024)?;
+            for c in data {
+                if c == 0 {
+                    return Ok(ret);
+                }
+                ret.push(c as char);
+            }
+        }
+    }
+
     pub fn install_thread_lifecycle_callback<T: Fn(&StopReason) + 'static>(&self, callback: T) {
         *self.thread_lifecycle_callback.borrow_mut() = Some(Box::new(callback));
     }

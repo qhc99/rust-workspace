@@ -6,12 +6,18 @@ use std::{
 };
 
 use gimli::{
-    DW_AT_byte_size, DW_AT_encoding, DW_AT_type, DW_AT_upper_bound, DW_ATE_signed_char,
-    DW_ATE_unsigned_char, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_const_type,
+    DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_encoding, DW_AT_type,
+    DW_AT_upper_bound, DW_ATE_signed_char, DW_ATE_unsigned_char, DW_TAG_array_type,
+    DW_TAG_base_type, DW_TAG_class_type, DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_member,
     DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type,
-    DW_TAG_rvalue_reference_type, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef,
-    DW_TAG_volatile_type,
+    DW_TAG_rvalue_reference_type, DW_TAG_structure_type, DW_TAG_subrange_type,
+    DW_TAG_subroutine_type, DW_TAG_typedef, DW_TAG_union_type, DW_TAG_volatile_type, DwTag,
 };
+use typed_builder::TypedBuilder;
+
+use super::bit::from_bytes;
+
+use super::process::Process;
 
 use super::{dwarf::DieExt, sdb_error::SdbError};
 
@@ -365,4 +371,119 @@ impl SdbType {
             DW_TAG_pointer_type
         )
     }
+}
+
+#[derive(Debug, Clone, TypedBuilder)]
+pub struct TypedData {
+    data: Vec<u8>,
+    type_: SdbType,
+    #[builder(default)]
+    address: Option<VirtualAddress>,
+}
+
+impl TypedData {
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
+
+    pub fn data_ptr(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    pub fn value_type(&self) -> &SdbType {
+        &self.type_
+    }
+
+    pub fn address(&self) -> Option<VirtualAddress> {
+        self.address.clone()
+    }
+
+    pub fn fixup_bitfield(&self, proc: &Process, member_die: &Die) -> Self {
+        todo!()
+    }
+
+    pub fn visualize(&self, proc: &Process, depth: i32 /* 0 */) -> Result<String, SdbError> {
+        let die = self.type_.get_die();
+        #[allow(non_upper_case_globals)]
+        match DwTag(die.abbrev_entry().tag as u16) {
+            DW_TAG_base_type => Ok(visualize_base_type(self)?),
+            DW_TAG_pointer_type => Ok(visualize_pointer_type(proc, self)?),
+            DW_TAG_ptr_to_member_type => Ok(visualize_member_pointer_type(self)?),
+            DW_TAG_array_type => Ok(visualize_array_type(proc, self)?),
+            DW_TAG_class_type | DW_TAG_structure_type | DW_TAG_union_type => {
+                Ok(visualize_class_type(proc, self, depth)?)
+            }
+            DW_TAG_enumeration_type | DW_TAG_typedef | DW_TAG_const_type | DW_TAG_volatile_type => {
+                Ok(TypedData::builder()
+                    .data(self.data.clone())
+                    .type_(die.index(DW_AT_type.0 as u64)?.as_type())
+                    .build()
+                    .visualize(proc, 0)?)
+            }
+            _ => SdbError::err("Unsupported type"),
+        }
+    }
+}
+
+fn visualize_base_type(data: &TypedData) -> Result<String, SdbError> {
+    todo!()
+}
+
+fn visualize_pointer_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
+    let ptr = data.data_ptr().as_ptr() as u64;
+    if ptr == 0 {
+        return Ok("0x0".to_string());
+    }
+    if data
+        .value_type()
+        .get_die()
+        .index(DW_AT_type.0 as u64)?
+        .as_type()
+        .is_char_type()?
+    {
+        return Ok(format!(
+            "\"{}\"",
+            proc.read_string(VirtualAddress::new(ptr))?
+        ));
+    }
+    Ok(format!("0x{:x}", ptr))
+}
+
+fn visualize_member_pointer_type(data: &TypedData) -> Result<String, SdbError> {
+    Ok(format!("0x{:x}", data.data_ptr().as_ptr() as usize))
+}
+
+fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
+    todo!()
+}
+
+fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<String, SdbError> {
+    let mut ret = "{\n".to_string();
+    for child in data.value_type().get_die().children() {
+        if child.abbrev_entry().tag as u16 == DW_TAG_member.0
+            && child.contains(DW_AT_data_member_location.0 as u64)
+            || child.contains(DW_AT_data_bit_offset.0 as u64)
+        {
+            let indent = "\t".repeat(depth as usize + 1);
+            let byte_offset = if child.contains(DW_AT_data_member_location.0 as u64) {
+                child.index(DW_AT_data_member_location.0 as u64)?.as_int()? as usize
+            } else {
+                child.index(DW_AT_data_bit_offset.0 as u64)?.as_int()? as usize / 8
+            };
+            let pos = &data.data_ptr()[byte_offset..];
+            let subtype = child.index(DW_AT_type.0 as u64)?.as_type();
+            let member_data = &pos[..subtype.byte_size()?];
+            let data = TypedData::builder()
+                .data(member_data.to_vec())
+                .type_(subtype)
+                .build()
+                .fixup_bitfield(proc, &child);
+            let member_str = data.visualize(proc, depth + 1)?;
+            let name = child.name()?.unwrap_or("<unnamed>".to_string());
+            ret.push_str(&format!("{indent}{name}: {member_str}\n"));
+        }
+    }
+    let indent = "\t".repeat(depth as usize);
+    ret.push_str(&format!("{indent}}}"));
+    Ok(ret)
 }
