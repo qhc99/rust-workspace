@@ -12,6 +12,7 @@ use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
 
+use super::traits::FromLowerHexStr;
 use super::types::TypedData;
 
 use super::bit::memcpy_bits;
@@ -94,63 +95,67 @@ fn get_initial_variable_data(
 }
 
 impl Target {
-    /*
-    sdb::typed_data sdb::target::resolve_indirect_name(
-          std::string name, sdb::file_addr pc) const {
-        auto op_pos = name.find_first_of(".-[");
-
-        auto var_name = name.substr(0, op_pos);
-        auto& dwarf = pc.elf_file()->get_dwarf();
-
-        auto data = get_initial_variable_data(*this, var_name, pc);
-
-        while (op_pos != std::string::npos) {
-         ➊ if (name[op_pos] == '-') {
-                if (name[op_pos + 1] != '>') {
-                    sdb::error::send("Invalid operator");
-                }
-                data = data.deref_pointer(get_process());
-                op_pos++;
-            }
-         ➋ if (name[op_pos] == '.' or name[op_pos] == '>') {
-                auto member_name_start = op_pos + 1;
-                op_pos = name.find_first_of(".-[", member_name_start);
-                auto member_name = name.substr(
-                    member_name_start, op_pos - member_name_start);
-                data = data.read_member(get_process(), member_name);
-                name = name.substr(member_name_start);
-            }
-         ➌ else if (name[op_pos] == '[') {
-                auto int_end = name.find(']', op_pos);
-                auto index_str = name.substr(op_pos + 1, int_end - op_pos - 1);
-                auto index = to_integral<std::size_t>(index_str);
-                if (!index) {
-                    sdb::error::send("Invalid index");
-                }
-                data = data.index(get_process(), *index);
-                name = name.substr(int_end + 1);
-            }
-            op_pos = name.find_first_of(".-[");
-        }
-
-        return data;
-    }
-
-         */
     pub fn resolve_indirect_name(
         &self,
-        name: &str,
+        mut name: &str,
         pc: &FileAddress,
-    ) -> Result<Option<TypedData>, SdbError> {
-        let op_pos = name
+    ) -> Result<TypedData, SdbError> {
+        let mut op_pos = name
             .chars()
             .enumerate()
             .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
-            .map(|(i, _)| i)
-            .unwrap_or(0);
-        let var_name = &name[..op_pos];
-        let dwarf = pc.rc_elf_file().get_dwarf();
-        todo!()
+            .map(|(i, _)| i);
+
+        let var_name = if let Some(pos) = op_pos {
+            &name[..pos]
+        } else {
+            name
+        };
+
+        let mut data = get_initial_variable_data(self, var_name, pc)?;
+
+        while let Some(pos) = op_pos {
+            if name.chars().nth(pos).unwrap() == '-' {
+                if let Some(p) = name.chars().nth(pos + 1)
+                    && p != '>'
+                {
+                    return SdbError::err("Invalid operator");
+                }
+                data = data.deref_pointer(&self.get_process())?;
+                op_pos = Some(pos + 1);
+            }
+            if name.chars().nth(op_pos.unwrap()).unwrap() == '.'
+                || name.chars().nth(op_pos.unwrap()).unwrap() == '>'
+            {
+                let member_name_start = op_pos.unwrap() + 1;
+                op_pos = name
+                    .chars()
+                    .enumerate()
+                    .skip(member_name_start)
+                    .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
+                    .map(|(i, _)| i);
+                let member_name = &name[member_name_start..op_pos.unwrap()];
+                data = data.read_member(&self.get_process(), member_name)?;
+                name = &name[member_name_start..];
+            } else if name.chars().nth(op_pos.unwrap()).unwrap() == '[' {
+                let int_end = name[op_pos.unwrap()..].find(']').unwrap_or(name.len());
+                let index_str = &name[op_pos.unwrap() + 1..int_end];
+                let index = usize::from_integral(index_str);
+                if index.is_err() {
+                    return SdbError::err("Invalid index");
+                }
+                data = data.index(&self.get_process(), index.unwrap())?;
+                name = &name[int_end + 1..];
+            }
+
+            op_pos = name
+                .chars()
+                .enumerate()
+                .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
+                .map(|(i, _)| i);
+        }
+
+        Ok(data)
     }
 
     pub fn find_variable(&self, name: &str, pc: &FileAddress) -> Result<Option<Rc<Die>>, SdbError> {

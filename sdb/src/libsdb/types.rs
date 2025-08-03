@@ -424,6 +424,18 @@ impl TypedData {
         Ok(self.clone())
     }
 
+    pub fn deref_pointer(&self, proc: &Process) -> Result<TypedData, SdbError> {
+        todo!()
+    }
+
+    pub fn read_member(&self, proc: &Process, member_name: &str) -> Result<TypedData, SdbError> {
+        todo!()
+    }
+
+    pub fn index(&self, _proc: &Process, index: usize) -> Result<TypedData, SdbError> {
+        todo!()
+    }
+
     pub fn visualize(&self, proc: &Process, depth: i32 /* 0 */) -> Result<String, SdbError> {
         let die = self.type_.get_die();
         #[allow(non_upper_case_globals)]
