@@ -663,10 +663,10 @@ std::array<sdb::parameter_class, 2> sdb::type::get_parameter_classes() const {
 
 #[derive(Debug, Clone, TypedBuilder)]
 pub struct TypedData {
-    data: Vec<u8>,
-    type_: SdbType,
+    pub data: Vec<u8>,
+    pub type_: SdbType,
     #[builder(default)]
-    address: Option<VirtualAddress>,
+    pub address: Option<VirtualAddress>,
 }
 
 impl TypedData {

@@ -1157,13 +1157,13 @@ fn global_variables() {
     let name = target
         .resolve_indirect_name("sy.pets[0].name", &target.get_pc_file_address(None))
         .unwrap();
-    let name_vis = name.visualize(&target.get_process(), 0).unwrap();
+    let name_vis = name.variable.unwrap().visualize(&target.get_process(), 0).unwrap();
     assert_eq!(name_vis, "\"Marshmallow\"");
 
     let cats = target
         .resolve_indirect_name("cats[1].age", &target.get_pc_file_address(None))
         .unwrap();
-    let cats_vis = cats.visualize(&target.get_process(), 0).unwrap();
+    let cats_vis = cats.variable.unwrap().visualize(&target.get_process(), 0).unwrap();
     assert_eq!(cats_vis, "8");
 }
 
@@ -1189,7 +1189,7 @@ fn local_variables() {
     let var_data = target
         .resolve_indirect_name("i", &target.get_pc_file_address(None))
         .unwrap();
-    let val: u32 = from_bytes(&var_data.data_ptr());
+    let val: u32 = from_bytes(&var_data.variable.unwrap().data_ptr());
     assert_eq!(val, 1);
 
     target.step_over(None).unwrap();
@@ -1198,7 +1198,7 @@ fn local_variables() {
     let var_data = target
         .resolve_indirect_name("i", &target.get_pc_file_address(None))
         .unwrap();
-    let val: u32 = from_bytes(&var_data.data_ptr());
+    let val: u32 = from_bytes(&var_data.variable.unwrap().data_ptr());
     assert_eq!(val, 2);
 
     target.step_over(None).unwrap();
@@ -1207,7 +1207,7 @@ fn local_variables() {
     let var_data = target
         .resolve_indirect_name("i", &target.get_pc_file_address(None))
         .unwrap();
-    let val: u32 = from_bytes(&var_data.data_ptr());
+    let val: u32 = from_bytes(&var_data.variable.unwrap().data_ptr());
     assert_eq!(val, 3);
 }
 
@@ -1230,12 +1230,12 @@ fn member_pointers() {
     let data_ptr = target
         .resolve_indirect_name("data_ptr", &target.get_pc_file_address(None))
         .unwrap();
-    let data_vis = data_ptr.visualize(&proc, 0).unwrap();
+    let data_vis = data_ptr.variable.unwrap().visualize(&proc, 0).unwrap();
     assert_eq!(data_vis, "0x0");
 
     let func_ptr = target
         .resolve_indirect_name("func_ptr", &target.get_pc_file_address(None))
         .unwrap();
-    let func_vis = func_ptr.visualize(&proc, 0).unwrap();
+    let func_vis = func_ptr.variable.unwrap().visualize(&proc, 0).unwrap();
     assert_ne!(func_vis, "0x0");
 }

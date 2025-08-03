@@ -248,6 +248,13 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
         handle_thread_command(target, &args)?;
     } else if cmd == "variable" {
         handle_variable_command(target, &args)?;
+    } else if cmd == "expression" {
+        let expr = &line[line.find(' ').unwrap() + 1..];
+        let ret = target.evaluate_expression(expr, None)?;
+        if let Some(ret) = ret {
+            let str = ret.return_value.visualize(&target.get_process(),0)?;
+            println!("${}: {}", ret.id, str);
+        }
     } else {
         eprintln!("Unknown command");
     }

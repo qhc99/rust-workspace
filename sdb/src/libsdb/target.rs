@@ -56,6 +56,26 @@ use super::traits::StoppointTrait;
 use super::types::FileAddress;
 use super::types::VirtualAddress;
 
+/*
+    class target {
+    public:
+        --snip--
+        std::optional<evaluate_expression_result> evaluate_expression(
+            std::string_view expr,
+            std::optional<pid_t> otid = std::nullopt);
+
+        const typed_data& get_expression_result(std::size_t i) const;
+
+    private:
+        --snip--
+        mutable std::vector<typed_data> expression_results_;
+    }
+*/
+pub struct EvaluateExpressionResult {
+    pub return_value: TypedData,
+    pub id: u64,
+}
+
 pub struct Target {
     process: Rc<Process>,
     main_elf: Weak<Elf>,
@@ -63,6 +83,7 @@ pub struct Target {
     breakpoints: RefCell<StoppointCollection>,
     dynamic_linker_rendezvous_address: RefCell<VirtualAddress>,
     threads: RefCell<HashMap<Pid, SdbThread>>,
+    expression_results: RefCell<Vec<TypedData>>,
 }
 
 fn get_initial_variable_data(
@@ -110,8 +131,61 @@ pub struct ResolveIndirectNameResult {
 }
 
 impl Target {
-    pub fn get_expression_result(&self, index: usize) -> Result<TypedData, SdbError> {
+// TODO
+/*
+std::optional<sdb::target::evaluate_expression_result>
+sdb::target::evaluate_expression(
+      std::string_view expr, std::optional<pid_t> otid) {
+    auto tid = otid.value_or(process_->current_thread());
+    auto pc = get_pc_file_address(tid);
+
+    auto paren_pos = expr.find('(');
+    if (paren_pos == std::string::npos) {
+        sdb::error::send("Invalid expression");
+    }
+
+    std::string name{ expr.substr(0, paren_pos + 1) };
+    auto [variable, funcs] = resolve_indirect_name(name, pc);
+    if (funcs.empty()) {
+        sdb::error::send("Invalid expression");
+    }
+
+    auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
+    breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
+        return false;
+    });
+
+    auto arg_string = expr.substr(paren_pos);
+    auto args = collect_arguments(
+        *this, tid, arg_string, funcs, variable);
+    auto func = resolve_overload(funcs, args);
+    auto ret = inferior_call_from_dwarf(
+        *this, func, args, entry_point, tid);
+    if (ret) {
+        expression_results_.push_back(*ret);
+        return evaluate_expression_result{
+            std::move(*ret), expression_results_.size() - 1
+        };
+    }
+    return std::nullopt;
+}
+*/
+    pub fn evaluate_expression(
+        &self,
+        expr: &str,
+        otid: Option<Pid>, /* None */
+    ) -> Result<Option<EvaluateExpressionResult>, SdbError> {
         todo!()
+    }
+    
+    pub fn get_expression_result(&self, index: usize) -> Result<TypedData, SdbError> {
+        let res = &self.expression_results.borrow()[index];
+        let new_data = self.process.read_memory(res.address().unwrap(), res.value_type().byte_size()?)?;
+        Ok(TypedData::builder()
+            .data(new_data)
+            .type_(res.value_type().clone())
+            .address(res.address())
+            .build())
     }
 
     pub fn resolve_indirect_name(
@@ -339,6 +413,7 @@ impl Target {
                 }
                 ret
             }),
+            expression_results: RefCell::new(Vec::new()),
         })
     }
 
