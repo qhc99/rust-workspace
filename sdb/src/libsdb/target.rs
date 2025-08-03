@@ -105,14 +105,15 @@ impl Target {
             .enumerate()
             .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
             .map(|(i, _)| i)
-            .or_else(|| Some(name.len()));
+            .or(Some(name.len()));
 
         let var_name = &name[..op_pos.unwrap()];
         let mut data = get_initial_variable_data(self, var_name, pc)?;
-        while let Some(pos) = op_pos && pos < name.len() {
+        while let Some(pos) = op_pos
+            && pos < name.len()
+        {
             if name.chars().nth(pos).unwrap() == '-' {
-                if name.chars().nth(pos + 1).map(|c| c != '>').unwrap_or(true)
-                {
+                if name.chars().nth(pos + 1).map(|c| c != '>').unwrap_or(true) {
                     return SdbError::err("Invalid operator");
                 }
                 data = data.deref_pointer(&self.get_process())?;
@@ -128,7 +129,7 @@ impl Target {
                     .skip(member_name_start)
                     .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
                     .map(|(i, _)| i)
-                    .or_else(|| Some(name.len()));
+                    .or(Some(name.len()));
                 let member_name = &name[member_name_start..op_pos.unwrap()];
                 data = data.read_member(&self.get_process(), member_name)?;
                 name = &name[member_name_start..];
@@ -148,7 +149,7 @@ impl Target {
                 .enumerate()
                 .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
                 .map(|(i, _)| i)
-                .or_else(|| Some(name.len()));
+                .or(Some(name.len()));
         }
 
         Ok(data)
