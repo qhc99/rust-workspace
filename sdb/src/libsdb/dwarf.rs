@@ -7,28 +7,7 @@ use std::{collections::HashMap, ops::AddAssign, rc::Rc};
 use bytemuck::Pod;
 use bytes::Bytes;
 use gimli::{
-    DW_AT_abstract_origin, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_decl_file,
-    DW_AT_decl_line, DW_AT_frame_base, DW_AT_high_pc, DW_AT_location, DW_AT_low_pc, DW_AT_name,
-    DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
-    DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
-    DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
-    DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
-    DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata,
-    DW_LNE_define_file, DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator,
-    DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy,
-    DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column,
-    DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_OP_abs,
-    DW_OP_addr, DW_OP_and, DW_OP_bit_piece, DW_OP_bra, DW_OP_breg0, DW_OP_breg31, DW_OP_bregx,
-    DW_OP_call_frame_cfa, DW_OP_call_ref, DW_OP_call2, DW_OP_call4, DW_OP_const1s, DW_OP_const1u,
-    DW_OP_const2s, DW_OP_const2u, DW_OP_const4s, DW_OP_const4u, DW_OP_const8s, DW_OP_const8u,
-    DW_OP_consts, DW_OP_constu, DW_OP_deref, DW_OP_deref_size, DW_OP_div, DW_OP_drop, DW_OP_dup,
-    DW_OP_eq, DW_OP_fbreg, DW_OP_form_tls_address, DW_OP_ge, DW_OP_gt, DW_OP_implicit_value,
-    DW_OP_le, DW_OP_lit0, DW_OP_lit31, DW_OP_lt, DW_OP_minus, DW_OP_mod, DW_OP_mul, DW_OP_ne,
-    DW_OP_neg, DW_OP_nop, DW_OP_not, DW_OP_or, DW_OP_over, DW_OP_pick, DW_OP_piece, DW_OP_plus,
-    DW_OP_plus_uconst, DW_OP_push_object_address, DW_OP_reg0, DW_OP_reg31, DW_OP_regx, DW_OP_rot,
-    DW_OP_shl, DW_OP_shr, DW_OP_shra, DW_OP_skip, DW_OP_stack_value, DW_OP_swap, DW_OP_xderef,
-    DW_OP_xderef_size, DW_OP_xor, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DW_TAG_variable,
-    DwForm, DwLne, DwLns, DwOp,
+    DW_AT_abstract_origin, DW_AT_bit_offset, DW_AT_bit_size, DW_AT_byte_size, DW_AT_call_file, DW_AT_call_line, DW_AT_comp_dir, DW_AT_data_bit_offset, DW_AT_decl_file, DW_AT_decl_line, DW_AT_frame_base, DW_AT_high_pc, DW_AT_location, DW_AT_low_pc, DW_AT_name, DW_AT_ranges, DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block, DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4, DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8, DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_sdata, DW_FORM_sec_offset, DW_FORM_string, DW_FORM_strp, DW_FORM_udata, DW_LNE_define_file, DW_LNE_end_sequence, DW_LNE_set_address, DW_LNE_set_discriminator, DW_LNS_advance_line, DW_LNS_advance_pc, DW_LNS_const_add_pc, DW_LNS_copy, DW_LNS_fixed_advance_pc, DW_LNS_negate_stmt, DW_LNS_set_basic_block, DW_LNS_set_column, DW_LNS_set_epilogue_begin, DW_LNS_set_file, DW_LNS_set_isa, DW_LNS_set_prologue_end, DW_OP_abs, DW_OP_addr, DW_OP_and, DW_OP_bit_piece, DW_OP_bra, DW_OP_breg0, DW_OP_breg31, DW_OP_bregx, DW_OP_call2, DW_OP_call4, DW_OP_call_frame_cfa, DW_OP_call_ref, DW_OP_const1s, DW_OP_const1u, DW_OP_const2s, DW_OP_const2u, DW_OP_const4s, DW_OP_const4u, DW_OP_const8s, DW_OP_const8u, DW_OP_consts, DW_OP_constu, DW_OP_deref, DW_OP_deref_size, DW_OP_div, DW_OP_drop, DW_OP_dup, DW_OP_eq, DW_OP_fbreg, DW_OP_form_tls_address, DW_OP_ge, DW_OP_gt, DW_OP_implicit_value, DW_OP_le, DW_OP_lit0, DW_OP_lit31, DW_OP_lt, DW_OP_minus, DW_OP_mod, DW_OP_mul, DW_OP_ne, DW_OP_neg, DW_OP_nop, DW_OP_not, DW_OP_or, DW_OP_over, DW_OP_pick, DW_OP_piece, DW_OP_plus, DW_OP_plus_uconst, DW_OP_push_object_address, DW_OP_reg0, DW_OP_reg31, DW_OP_regx, DW_OP_rot, DW_OP_shl, DW_OP_shr, DW_OP_shra, DW_OP_skip, DW_OP_stack_value, DW_OP_swap, DW_OP_xderef, DW_OP_xderef_size, DW_OP_xor, DW_TAG_inlined_subroutine, DW_TAG_subprogram, DW_TAG_variable, DwForm, DwLne, DwLns, DwOp
 };
 use multimap::MultiMap;
 use typed_builder::TypedBuilder;
@@ -385,7 +364,40 @@ pub struct Die {
     attr_locs: Vec<Bytes>,
 }
 
+
+#[derive(Debug, Clone)]
+pub struct BitfieldInformation {
+    bit_size: u64,
+    storage_byte_size: u64,
+    bit_offset: u8,
+}
+
 impl Die {
+    pub fn get_bitfield_information(&self, class_byte_size: u64) -> Result<Option<BitfieldInformation>, SdbError> {
+        if !self.contains(DW_AT_bit_offset.0 as u64) && !self.contains(DW_AT_data_bit_offset.0 as u64) {
+            return Ok(None);
+        }
+        let bit_size = self.index(DW_AT_bit_size.0 as u64)?.as_int()?;
+        let storage_byte_size = if self.contains(DW_AT_byte_size.0 as u64) {
+            self.index(DW_AT_byte_size.0 as u64)?.as_int()? as u64
+        } else {
+            class_byte_size
+        };
+        let storage_bit_size = storage_byte_size * 8;
+        let mut bit_offset = 0u8;
+        if self.contains(DW_AT_bit_offset.0 as u64) {
+            let offset_field = self.index(DW_AT_bit_offset.0 as u64)?.as_int()?;
+            bit_offset = (storage_bit_size - offset_field - bit_size) as u8;
+        }
+        if self.contains(DW_AT_data_bit_offset.0 as u64) {
+            bit_offset = self.index(DW_AT_data_bit_offset.0 as u64)?.as_int()? as u8 % 8;
+        }
+        Ok(Some(BitfieldInformation {
+            bit_size,
+            storage_byte_size,
+            bit_offset,
+        }))
+    }
     pub fn new(
         pos: Bytes,
         cu: &Rc<CompileUnit>,
