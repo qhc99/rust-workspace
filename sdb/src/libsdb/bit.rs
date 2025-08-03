@@ -45,3 +45,27 @@ pub fn cstr_view(data: &[u8]) -> &str {
     let ptr = data.as_ptr() as *const c_char;
     unsafe { CStr::from_ptr(ptr).to_str().unwrap() }
 }
+
+pub fn memcpy_bits(
+    dest: &mut [u8],
+    mut dest_bit: u32,
+    src: &[u8],
+    mut src_bit: u32,
+    mut n_bits: u32,
+) {
+    while n_bits > 0 {
+        let dest_mask = 1u8 << (dest_bit % 8);
+        dest[(dest_bit / 8) as usize] &= !dest_mask;
+
+        let src_mask = 1u8 << (src_bit % 8);
+        let corresponding_src_bit_set = src[(src_bit / 8) as usize] & src_mask;
+
+        if corresponding_src_bit_set != 0 {
+            dest[(dest_bit / 8) as usize] |= dest_mask;
+        }
+
+        n_bits -= 1;
+        src_bit += 1;
+        dest_bit += 1;
+    }
+}

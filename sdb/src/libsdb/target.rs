@@ -11,6 +11,8 @@ use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
 
+use super::bit::memcpy_bits;
+
 use super::dwarf::DwarfExpressionResult;
 use super::dwarf::DwarfExpressionSimpleLocation;
 use super::register_info::register_info_by_dwarf;
@@ -819,23 +821,5 @@ impl SdbThread {
             state,
             frames: Rc::new(RefCell::new(frames)),
         }
-    }
-}
-
-fn memcpy_bits(dest: &mut [u8], mut dest_bit: u32, src: &[u8], mut src_bit: u32, mut n_bits: u32) {
-    while n_bits > 0 {
-        let dest_mask = 1u8 << (dest_bit % 8);
-        dest[(dest_bit / 8) as usize] &= !dest_mask;
-
-        let src_mask = 1u8 << (src_bit % 8);
-        let corresponding_src_bit_set = src[(src_bit / 8) as usize] & src_mask;
-
-        if corresponding_src_bit_set != 0 {
-            dest[(dest_bit / 8) as usize] |= dest_mask;
-        }
-
-        n_bits -= 1;
-        src_bit += 1;
-        dest_bit += 1;
     }
 }

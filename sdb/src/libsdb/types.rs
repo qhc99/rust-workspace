@@ -15,7 +15,9 @@ use gimli::{
 };
 use typed_builder::TypedBuilder;
 
-use super::bit::from_bytes;
+use super::bit::memcpy_bits;
+
+use super::dwarf::BitfieldInformation;
 
 use super::process::Process;
 
@@ -398,8 +400,25 @@ impl TypedData {
         self.address.clone()
     }
 
-    pub fn fixup_bitfield(&self, proc: &Process, member_die: &Die) -> Self {
-        todo!()
+    pub fn fixup_bitfield(&self, proc: &Process, member_die: &Die) -> Result<Self, SdbError> {
+        let stripped = self.type_.strip_cv_typedef()?;
+        let bitfield_info = member_die.get_bitfield_information(stripped.byte_size()? as u64)?;
+        if let Some(bitfield_info) = bitfield_info {
+            let BitfieldInformation {
+                bit_size,
+                storage_byte_size,
+                bit_offset,
+            } = bitfield_info;
+            let mut fixed_data = vec![0u8; storage_byte_size as usize];
+            let dest = fixed_data.as_mut_slice();
+            let src = self.data().as_slice();
+            memcpy_bits(dest, 0, src, bit_offset as u32, bit_size as u32);
+            return Ok(TypedData::builder()
+                .data(fixed_data)
+                .type_(self.type_.clone())
+                .build());
+        }
+        Ok(self.clone())
     }
 
     pub fn visualize(&self, proc: &Process, depth: i32 /* 0 */) -> Result<String, SdbError> {
@@ -477,7 +496,7 @@ fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<
                 .data(member_data.to_vec())
                 .type_(subtype)
                 .build()
-                .fixup_bitfield(proc, &child);
+                .fixup_bitfield(proc, &child)?;
             let member_str = data.visualize(proc, depth + 1)?;
             let name = child.name()?.unwrap_or("<unnamed>".to_string());
             ret.push_str(&format!("{indent}{name}: {member_str}\n"));
