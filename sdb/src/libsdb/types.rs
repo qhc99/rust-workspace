@@ -287,6 +287,68 @@ pub enum SdbTypeInfo {
     BuiltinType(BuiltinType),
 }
 
+
+// TODO
+/*
+bool sdb::type::operator==(const type& rhs) const {
+    if (!is_from_dwarf() and !rhs.is_from_dwarf()) {
+        return get_builtin_type() == rhs.get_builtin_type();
+    }
+    const sdb::type* from_dwarf = nullptr;
+    const sdb::type* builtin = nullptr;
+    if (!is_from_dwarf()) {
+        from_dwarf = &rhs;
+        builtin = this;
+    }
+    else if (!rhs.is_from_dwarf()) {
+        from_dwarf = this;
+        builtin = &rhs;
+    }
+    if (from_dwarf and builtin) {
+        auto die = from_dwarf->strip_cvref_typedef().get_die();
+        auto tag = die.abbrev_entry()->tag;
+        if (tag == DW_TAG_base_type) {
+            switch (die[DW_AT_encoding].as_int()) {
+            case DW_ATE_boolean:
+                return builtin->get_builtin_type() == builtin_type::boolean;
+            case DW_ATE_float:
+                return builtin->get_builtin_type() == builtin_type::floating_point;
+            case DW_ATE_signed:
+            case DW_ATE_unsigned:
+                return builtin->get_builtin_type() == builtin_type::integer;
+            case DW_ATE_signed_char:
+            case DW_ATE_unsigned_char:
+                return builtin->get_builtin_type() == builtin_type::character;
+            default:
+                return false;
+            }
+        }
+        if (tag == DW_TAG_pointer_type) {
+            return die[DW_AT_type].as_type().is_char_type() and
+                builtin->get_builtin_type() == builtin_type::string;
+        }
+        return false;
+    }
+    auto lhs_stripped = strip_all();
+    auto rhs_stripped = rhs.strip_all();
+
+    auto lhs_name = lhs_stripped.get_die().name();
+    auto rhs_name = rhs_stripped.get_die().name();
+    if (lhs_name and rhs_name and *lhs_name == *rhs_name)
+        return true;
+
+    return false;
+}
+*/
+impl PartialEq for SdbTypeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        todo!()
+    }
+}
+
+impl Eq for SdbTypeInfo {}
+
+
 impl SdbType {
     pub fn new(die: Rc<Die>) -> Self {
         Self {

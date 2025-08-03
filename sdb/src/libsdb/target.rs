@@ -990,6 +990,7 @@ impl SdbThread {
     }
 }
 
+// TODO
 /*
 sdb::typed_data parse_argument(
     sdb::target& target, pid_t tid, std::string_view arg) {
@@ -1046,51 +1047,89 @@ fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, Sdb
     todo!()
 }
 
+// TODO
 /*
-namespace {
-    std::vector<sdb::typed_data> collect_arguments(
-          sdb::target& target, pid_t tid, std::string_view arg_string,
-          const std::vector<sdb::die>& funcs,
-          std::optional<sdb::typed_data> object) {
-        std::vector<sdb::typed_data> args;
-        auto& proc = target.get_process();
+std::vector<sdb::typed_data> collect_arguments(
+        sdb::target& target, pid_t tid, std::string_view arg_string,
+        const std::vector<sdb::die>& funcs,
+        std::optional<sdb::typed_data> object) {
+    std::vector<sdb::typed_data> args;
+    auto& proc = target.get_process();
 
-        if (object) {
-            std::vector<std::byte> data;
-            if (object->address()) { ➊
-                data = sdb::to_byte_vec(*object->address());
-            }
-            else { ➋
-                auto& regs = proc.get_registers(tid);
-                auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
-                rsp -= object->value_type().byte_size();
-                proc.write_memory(sdb::virt_addr{ rsp }, object->data());
-                regs.write_by_id(sdb::register_id::rsp, rsp, true);
-                data = sdb::to_byte_vec(rsp);
-            }
-            auto obj_ptr_die = funcs[0][DW_AT_object_pointer].as_reference(); ➌
-            auto this_type = obj_ptr_die[DW_AT_type].as_type();
-            args.push_back({ std::move(data), this_type });
+    if (object) {
+        std::vector<std::byte> data;
+        if (object->address()) { ➊
+            data = sdb::to_byte_vec(*object->address());
         }
-
-        auto args_start = 1; ➍
-        auto args_end = arg_string.find(')');
-
-        while (args_start < args_end) {
-            auto comma_pos = arg_string.find(',', args_start);
-            if (comma_pos == std::string::npos) {
-                comma_pos = args_end;
-            }
-            auto arg_expr = arg_string.substr(args_start, comma_pos - args_start);
-            args.push_back(parse_argument(target, tid, arg_expr));
-            args_start = comma_pos + 1;
+        else { ➋
+            auto& regs = proc.get_registers(tid);
+            auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
+            rsp -= object->value_type().byte_size();
+            proc.write_memory(sdb::virt_addr{ rsp }, object->data());
+            regs.write_by_id(sdb::register_id::rsp, rsp, true);
+            data = sdb::to_byte_vec(rsp);
         }
-        return args;
+        auto obj_ptr_die = funcs[0][DW_AT_object_pointer].as_reference(); ➌
+        auto this_type = obj_ptr_die[DW_AT_type].as_type();
+        args.push_back({ std::move(data), this_type });
     }
+
+    auto args_start = 1; ➍
+    auto args_end = arg_string.find(')');
+
+    while (args_start < args_end) {
+        auto comma_pos = arg_string.find(',', args_start);
+        if (comma_pos == std::string::npos) {
+            comma_pos = args_end;
+        }
+        auto arg_expr = arg_string.substr(args_start, comma_pos - args_start);
+        args.push_back(parse_argument(target, tid, arg_expr));
+        args_start = comma_pos + 1;
+    }
+    return args;
 }
 */
 
 fn collect_arguments(target: &Target, tid: Pid, arg_string: &str, funcs: &[Die], object: Option<TypedData>) -> Result<Vec<TypedData>, SdbError> {
+    todo!()
+}
+
+// TODO
+/*
+sdb::die resolve_overload(
+        const std::vector<sdb::die>& funcs,
+        const std::vector<sdb::typed_data>& args) {
+    std::optional<sdb::die> matching_func;
+    for (auto& func : funcs) {
+        bool matches = true;
+        auto arg_it = args.begin();
+        auto params = func.parameter_types();
+
+        if (args.size() == params.size()) {
+            for (auto param_it = params.begin();
+                arg_it != args.end();
+                ++param_it, ++arg_it) {
+                if (*param_it != arg_it->value_type()) {
+                    matches = false;
+                    break;
+                }
+            }
+        }
+        else {
+            matches = false;
+        }
+
+        ➊ if (matches) {
+            if (matching_func) sdb::error::send("Ambiguous function call");
+            matching_func = func;
+        }
+    }
+    if (!matching_func) sdb::error::send("No matching function");
+    return *matching_func;
+}
+*/
+
+fn resolve_overload(funcs: &[Die], args: &[TypedData]) -> Result<Die, SdbError> {
     todo!()
 }
     

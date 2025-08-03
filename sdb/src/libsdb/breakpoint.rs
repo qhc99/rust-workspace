@@ -742,15 +742,6 @@ fn execute_cfi_instruction(
                     return SdbError::err("Invalid CFA rule type");
                 }
             }
-            /*
-            case DW_CFA_def_cfa_expression: {
-                auto length = cur.uleb128();
-                auto expr = sdb::dwarf_expression{
-                    elf, { cur.position(), cur.position() + length }, true };
-                ctx.cfa_rule = cfa_expr_rule{ expr };
-                break;
-            }
-             */
             DW_CFA_def_cfa_expression => {
                 let length = cur.uleb128();
                 let expr = DwarfExpression::builder()
