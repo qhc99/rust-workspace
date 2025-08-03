@@ -1157,13 +1157,21 @@ fn global_variables() {
     let name = target
         .resolve_indirect_name("sy.pets[0].name", &target.get_pc_file_address(None))
         .unwrap();
-    let name_vis = name.variable.unwrap().visualize(&target.get_process(), 0).unwrap();
+    let name_vis = name
+        .variable
+        .unwrap()
+        .visualize(&target.get_process(), 0)
+        .unwrap();
     assert_eq!(name_vis, "\"Marshmallow\"");
 
     let cats = target
         .resolve_indirect_name("cats[1].age", &target.get_pc_file_address(None))
         .unwrap();
-    let cats_vis = cats.variable.unwrap().visualize(&target.get_process(), 0).unwrap();
+    let cats_vis = cats
+        .variable
+        .unwrap()
+        .visualize(&target.get_process(), 0)
+        .unwrap();
     assert_eq!(cats_vis, "8");
 }
 

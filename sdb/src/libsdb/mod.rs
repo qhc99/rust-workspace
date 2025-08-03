@@ -252,7 +252,7 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
         let expr = &line[line.find(' ').unwrap() + 1..];
         let ret = target.evaluate_expression(expr, None)?;
         if let Some(ret) = ret {
-            let str = ret.return_value.visualize(&target.get_process(),0)?;
+            let str = ret.return_value.visualize(&target.get_process(), 0)?;
             println!("${}: {}", ret.id, str);
         }
     } else {

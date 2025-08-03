@@ -217,37 +217,37 @@ pub struct Process {
 }
 
 impl Process {
-// TODO
-/*
-sdb::registers sdb::process::inferior_call(
-      sdb::virt_addr func_addr, sdb::virt_addr return_addr,
-      const sdb::registers& regs_to_restore, std::optional<pid_t> otid) {
-    auto tid = otid.value_or(current_thread_);
-    auto& regs = get_registers(tid);
+    // TODO
+    /*
+    sdb::registers sdb::process::inferior_call(
+          sdb::virt_addr func_addr, sdb::virt_addr return_addr,
+          const sdb::registers& regs_to_restore, std::optional<pid_t> otid) {
+        auto tid = otid.value_or(current_thread_);
+        auto& regs = get_registers(tid);
 
-    regs.write_by_id(sdb::register_id::rip, func_addr.addr(), true);
+        regs.write_by_id(sdb::register_id::rip, func_addr.addr(), true);
 
-    auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
+        auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
 
-    rsp -= 8;
-    write_memory(
-        sdb::virt_addr{ rsp }, sdb::to_byte_span(return_addr.addr()));
-    regs.write_by_id(sdb::register_id::rsp, rsp, true);
+        rsp -= 8;
+        write_memory(
+            sdb::virt_addr{ rsp }, sdb::to_byte_span(return_addr.addr()));
+        regs.write_by_id(sdb::register_id::rsp, rsp, true);
 
-    resume(tid);
-    auto reason = wait_on_signal(tid);
-    if (reason.reason != sdb::process_state::stopped) {
-        sdb::error::send("Function call failed");
+        resume(tid);
+        auto reason = wait_on_signal(tid);
+        if (reason.reason != sdb::process_state::stopped) {
+            sdb::error::send("Function call failed");
+        }
+
+        auto new_regs = regs;
+        regs = regs_to_restore;
+        regs.flush();
+        if (target_) target_->notify_stop(reason);
+
+        return new_regs;
     }
-
-    auto new_regs = regs;
-    regs = regs_to_restore;
-    regs.flush();
-    if (target_) target_->notify_stop(reason);
-
-    return new_regs;
-}
-*/
+    */
     pub fn inferior_call(
         &self,
         func_addr: VirtualAddress,
@@ -257,38 +257,38 @@ sdb::registers sdb::process::inferior_call(
     ) -> Result<Registers, SdbError> {
         todo!()
     }
-// TODO
-/*
-sdb::virt_addr sdb::target::inferior_malloc(std::size_t size) {
-    auto saved_regs = process_->get_registers();
+    // TODO
+    /*
+    sdb::virt_addr sdb::target::inferior_malloc(std::size_t size) {
+        auto saved_regs = process_->get_registers();
 
-    auto malloc_funcs = find_functions("malloc").elf_functions;
-    auto malloc_func = std::find_if(
-        malloc_funcs.begin(), malloc_funcs.end(), [](auto& sym) {
-            return sym.second->st_value != 0;
+        auto malloc_funcs = find_functions("malloc").elf_functions;
+        auto malloc_func = std::find_if(
+            malloc_funcs.begin(), malloc_funcs.end(), [](auto& sym) {
+                return sym.second->st_value != 0;
+            });
+        if (malloc_func == malloc_funcs.end()) {
+            error::send("malloc not found");
+        }
+
+        file_addr malloc_addr{
+            *malloc_func->first, malloc_func->second->st_value };
+        auto call_addr = malloc_addr.to_virt_addr();
+
+        auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
+        breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
+            return false;
         });
-    if (malloc_func == malloc_funcs.end()) {
-        error::send("malloc not found");
+
+        process_->get_registers().write_by_id(register_id::rdi, size, true);
+
+        auto new_regs = process_->inferior_call(
+            call_addr, entry_point, saved_regs);
+        auto result = new_regs.read_by_id_as<std::uint64_t>(register_id::rax);
+
+        return virt_addr{ result };
     }
-
-    file_addr malloc_addr{
-        *malloc_func->first, malloc_func->second->st_value };
-    auto call_addr = malloc_addr.to_virt_addr();
-
-    auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
-    breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
-        return false;
-    });
-
-    process_->get_registers().write_by_id(register_id::rdi, size, true);
-
-    auto new_regs = process_->inferior_call(
-        call_addr, entry_point, saved_regs);
-    auto result = new_regs.read_by_id_as<std::uint64_t>(register_id::rax);
-
-    return virt_addr{ result };
-}
-*/
+    */
     pub fn inferior_malloc(&self, size: usize) -> Result<VirtualAddress, SdbError> {
         todo!()
     }

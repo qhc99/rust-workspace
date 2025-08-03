@@ -131,45 +131,45 @@ pub struct ResolveIndirectNameResult {
 }
 
 impl Target {
-// TODO
-/*
-std::optional<sdb::target::evaluate_expression_result>
-sdb::target::evaluate_expression(
-      std::string_view expr, std::optional<pid_t> otid) {
-    auto tid = otid.value_or(process_->current_thread());
-    auto pc = get_pc_file_address(tid);
+    // TODO
+    /*
+    std::optional<sdb::target::evaluate_expression_result>
+    sdb::target::evaluate_expression(
+          std::string_view expr, std::optional<pid_t> otid) {
+        auto tid = otid.value_or(process_->current_thread());
+        auto pc = get_pc_file_address(tid);
 
-    auto paren_pos = expr.find('(');
-    if (paren_pos == std::string::npos) {
-        sdb::error::send("Invalid expression");
+        auto paren_pos = expr.find('(');
+        if (paren_pos == std::string::npos) {
+            sdb::error::send("Invalid expression");
+        }
+
+        std::string name{ expr.substr(0, paren_pos + 1) };
+        auto [variable, funcs] = resolve_indirect_name(name, pc);
+        if (funcs.empty()) {
+            sdb::error::send("Invalid expression");
+        }
+
+        auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
+        breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
+            return false;
+        });
+
+        auto arg_string = expr.substr(paren_pos);
+        auto args = collect_arguments(
+            *this, tid, arg_string, funcs, variable);
+        auto func = resolve_overload(funcs, args);
+        auto ret = inferior_call_from_dwarf(
+            *this, func, args, entry_point, tid);
+        if (ret) {
+            expression_results_.push_back(*ret);
+            return evaluate_expression_result{
+                std::move(*ret), expression_results_.size() - 1
+            };
+        }
+        return std::nullopt;
     }
-
-    std::string name{ expr.substr(0, paren_pos + 1) };
-    auto [variable, funcs] = resolve_indirect_name(name, pc);
-    if (funcs.empty()) {
-        sdb::error::send("Invalid expression");
-    }
-
-    auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
-    breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
-        return false;
-    });
-
-    auto arg_string = expr.substr(paren_pos);
-    auto args = collect_arguments(
-        *this, tid, arg_string, funcs, variable);
-    auto func = resolve_overload(funcs, args);
-    auto ret = inferior_call_from_dwarf(
-        *this, func, args, entry_point, tid);
-    if (ret) {
-        expression_results_.push_back(*ret);
-        return evaluate_expression_result{
-            std::move(*ret), expression_results_.size() - 1
-        };
-    }
-    return std::nullopt;
-}
-*/
+    */
     pub fn evaluate_expression(
         &self,
         expr: &str,
@@ -177,10 +177,12 @@ sdb::target::evaluate_expression(
     ) -> Result<Option<EvaluateExpressionResult>, SdbError> {
         todo!()
     }
-    
+
     pub fn get_expression_result(&self, index: usize) -> Result<TypedData, SdbError> {
         let res = &self.expression_results.borrow()[index];
-        let new_data = self.process.read_memory(res.address().unwrap(), res.value_type().byte_size()?)?;
+        let new_data = self
+            .process
+            .read_memory(res.address().unwrap(), res.value_type().byte_size()?)?;
         Ok(TypedData::builder()
             .data(new_data)
             .type_(res.value_type().clone())
@@ -1165,7 +1167,13 @@ std::vector<sdb::typed_data> collect_arguments(
 }
 */
 
-fn collect_arguments(target: &Target, tid: Pid, arg_string: &str, funcs: &[Die], object: Option<TypedData>) -> Result<Vec<TypedData>, SdbError> {
+fn collect_arguments(
+    target: &Target,
+    tid: Pid,
+    arg_string: &str,
+    funcs: &[Die],
+    object: Option<TypedData>,
+) -> Result<Vec<TypedData>, SdbError> {
     todo!()
 }
 
@@ -1208,7 +1216,6 @@ fn resolve_overload(funcs: &[Die], args: &[TypedData]) -> Result<Die, SdbError> 
     todo!()
 }
 
-
 // TODO
 /*
 namespace {
@@ -1249,7 +1256,12 @@ namespace {
     }
 }
 */
-fn inferior_call_from_dwarf(target: &Target, func: &Rc<Die>, args: &[TypedData], return_addr: VirtualAddress, tid: Pid) -> Result<Option<TypedData>, SdbError> {
+fn inferior_call_from_dwarf(
+    target: &Target,
+    func: &Rc<Die>,
+    args: &[TypedData],
+    return_addr: VirtualAddress,
+    tid: Pid,
+) -> Result<Option<TypedData>, SdbError> {
     todo!()
 }
-    
