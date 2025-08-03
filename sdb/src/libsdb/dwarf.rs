@@ -1228,6 +1228,7 @@ pub struct Dwarf {
     function_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
     cfi: OnceCell<Rc<RefCell<CallFrameInformation>>>,
     global_variable_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
+    member_function_index: RefCell<HashMap<Bytes, DwarfIndexEntry>>,
 }
 
 fn scopes_at_address_in_die(
@@ -1244,6 +1245,30 @@ fn scopes_at_address_in_die(
     Ok(())
 }
 impl Dwarf {
+    pub fn get_member_function_definition(
+        &self,
+        declaration: &Rc<Die>,
+    ) -> Result<Option<Rc<Die>>, SdbError> {
+        self.index()?;
+        let it = self
+            .member_function_index
+            .borrow()
+            .get(&declaration.position())
+            .cloned();
+        if it.is_some() {
+            let it = it.unwrap();
+            let cu = it.cu.upgrade().unwrap();
+            let cu_data_end = cu.data().as_ptr() as usize + cu.data().len();
+
+            let cursor = Cursor::new(&it.pos.slice(..(cu_data_end - it.pos.as_ptr() as usize)));
+            let die = parse_die(&cu, cursor);
+            if die.contains(DW_AT_low_pc.0 as u64) || die.contains(DW_AT_ranges.0 as u64) {
+                return Ok(Some(die));
+            }
+            return self.get_member_function_definition(&die);
+        }
+        return Ok(None);
+    }
     pub fn find_local_variable(
         &self,
         name: &str,
@@ -1305,6 +1330,7 @@ impl Dwarf {
             function_index: RefCell::new(MultiMap::default()),
             global_variable_index: RefCell::new(MultiMap::default()),
             cfi: OnceCell::new(),
+            member_function_index: RefCell::new(HashMap::default()),
         });
         let t = parse_compile_units(&ret, &ret.elf_file())?;
         ret.compile_units
@@ -1407,6 +1433,33 @@ impl Dwarf {
             };
             self.function_index.borrow_mut().insert(name, entry);
         }
+        if is_function {
+            if current.contains(DW_AT_specification.0 as u64) {
+                let index_entry = DwarfIndexEntry {
+                    cu: current.cu.clone(),
+                    pos: current.position(),
+                };
+                self.member_function_index.borrow_mut().insert(
+                    current
+                        .index(DW_AT_specification.0 as u64)?
+                        .as_reference()
+                        .position(),
+                    index_entry,
+                );
+            } else if current.contains(DW_AT_abstract_origin.0 as u64) {
+                let index_entry = DwarfIndexEntry {
+                    cu: current.cu.clone(),
+                    pos: current.position(),
+                };
+                self.member_function_index.borrow_mut().insert(
+                    current
+                        .index(DW_AT_abstract_origin.0 as u64)?
+                        .as_reference()
+                        .position(),
+                    index_entry,
+                );
+            }
+        }
         let has_location = current.contains(DW_AT_location.0 as u64);
         let is_variable = current.abbrev_entry().tag == DW_TAG_variable.0 as u64;
         if has_location
@@ -1459,7 +1512,7 @@ impl Dwarf {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DwarfIndexEntry {
     cu: Weak<CompileUnit>,
     pos: Bytes,
