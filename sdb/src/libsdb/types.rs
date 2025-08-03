@@ -425,13 +425,79 @@ impl TypedData {
     }
 
     pub fn deref_pointer(&self, proc: &Process) -> Result<TypedData, SdbError> {
-        todo!()
+        let stripped_type_die = self.type_.strip_cv_typedef()?.get_die();
+        let tag = stripped_type_die.abbrev_entry().tag;
+        if tag as u16 != DW_TAG_pointer_type.0 {
+            return SdbError::err("Not a pointer type");
+        }
+        let address = VirtualAddress::new(from_bytes::<u64>(&self.data));
+        let value_type = stripped_type_die.index(DW_AT_type.0 as u64)?.as_type();
+        let data_vec = proc.read_memory(address, value_type.byte_size()?)?;
+        Ok(TypedData::builder()
+            .data(data_vec)
+            .type_(value_type)
+            .address(Some(address))
+            .build())
     }
 
+    /*
+sdb::typed_data sdb::typed_data::read_member(
+      const sdb::process& proc, std::string_view member_name) const {
+    auto die = type_.get_die();
+    auto children = die.children();
+    auto it = std::find_if(children.begin(), children.end(),
+        [&](auto& child) { return child.name().value_or("") == member_name; });
+    if (it == children.end()) {
+        sdb::error::send("No such member");
+    }
+    auto var = *it;
+    auto value_type = var[DW_AT_type].as_type();
+
+    auto byte_offset = var.contains(DW_AT_data_member_location) ?
+        var[DW_AT_data_member_location].as_int() :
+        var[DW_AT_data_bit_offset].as_int() / 8;
+    auto data_start = data_.begin() + byte_offset;
+    std::vector<std::byte> member_data{ data_start, data_start + value_type.byte_size() };
+
+    auto data = address_ ?
+        typed_data{ std::move(member_data), value_type, *address_ + byte_offset } :
+        typed_data{ std::move(member_data), value_type };
+    return data.fixup_bitfield(proc, var);
+}
+     */
     pub fn read_member(&self, proc: &Process, member_name: &str) -> Result<TypedData, SdbError> {
         todo!()
     }
 
+    /*
+sdb::typed_data sdb::typed_data::index(
+      const sdb::process& proc, std::size_t index) const {
+    auto parent_type = type_.strip_cv_typedef().get_die();
+    auto tag = parent_type.abbrev_entry()->tag;
+    if (tag != DW_TAG_array_type and tag != DW_TAG_pointer_type) {
+        sdb::error::send("Not an array or pointer type");
+    }
+    auto value_type = parent_type[DW_AT_type].as_type();
+    auto element_size = value_type.byte_size();
+    auto offset = index * element_size;
+    if (tag == DW_TAG_pointer_type) {
+        sdb::virt_addr address{ sdb::from_bytes<std::uint64_t>(data_.data()) };
+        address += offset;
+        auto data_vec = proc.read_memory(
+            address, element_size);
+        return { std::move(data_vec), value_type, address };
+    }
+    else {
+        std::vector<std::byte> data_vec{
+            data_.begin() + offset,
+            data_.begin() + offset + element_size };
+        if (address_) {
+            return { std::move(data_vec), value_type, *address_ + offset };
+        }
+        return { std::move(data_vec), value_type };
+    }
+}
+     */
     pub fn index(&self, _proc: &Process, index: usize) -> Result<TypedData, SdbError> {
         todo!()
     }
