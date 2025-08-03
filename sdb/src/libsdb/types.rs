@@ -402,10 +402,7 @@ impl SdbType {
     }
 
     pub fn is_from_dwarf(&self) -> bool {
-        match &self.info {
-            SdbTypeInfo::Die(_) => true,
-            _ => false,
-        }
+        matches!(&self.info, SdbTypeInfo::Die(_))
     }
 }
 

@@ -70,14 +70,14 @@ fn get_initial_variable_data(
     name: &str,
     pc: &FileAddress,
 ) -> Result<TypedData, SdbError> {
-    if name.starts_with('$') {
-        let index = usize::from_integral(&name[1..]);
+    if let Some(name) = name.strip_prefix('$') {
+        let index = usize::from_integral(name);
         if index.is_err() {
             return SdbError::err("Invalid expression result index");
         }
         return target.get_expression_result(index.unwrap());
     }
-    
+
     let var = target.find_variable(name, pc)?;
     if var.is_none() {
         return SdbError::err("Variable not found");
