@@ -11,6 +11,8 @@ use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
 
+use super::types::TypedData;
+
 use super::bit::memcpy_bits;
 
 use super::dwarf::DwarfExpressionResult;
@@ -60,6 +62,28 @@ pub struct Target {
 }
 
 impl Target {
+    pub fn resolve_indirect_name(&self, name: &str, pc: &FileAddress) -> Result<Option<TypedData>, SdbError> {
+        todo!()
+    }
+
+    pub fn find_variable(&self, name: &str, pc: &FileAddress) -> Result<Option<Rc<Die>>, SdbError> {
+        let dwarf = pc.rc_elf_file().get_dwarf();
+        let local = dwarf.find_local_variable(name, pc)?;
+        if local.is_some() {
+            return Ok(local);
+        }
+
+        let mut global = None;
+        for elf in self.elves.borrow().iter() {
+            let dwarf = elf.get_dwarf();
+            let found = dwarf.find_global_variable(name)?;
+            if found.is_some() {
+                global = found;
+            }
+        }
+        Ok(global)
+    }
+
     pub fn read_location_data(
         &self,
         loc: &DwarfExpressionResult,
