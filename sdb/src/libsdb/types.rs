@@ -473,7 +473,58 @@ fn visualize_member_pointer_type(data: &TypedData) -> Result<String, SdbError> {
 }
 
 fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
-    todo!()
+    let mut dimensions = Vec::new();
+    for child in data.value_type().get_die().children() {
+        if child.abbrev_entry().tag as u16 == DW_TAG_subrange_type.0 {
+            dimensions.push(child.index(DW_AT_upper_bound.0 as u64)?.as_int()? as usize + 1);
+        }
+    }
+    dimensions.reverse();
+    let value_type = data
+        .value_type()
+        .get_die()
+        .index(DW_AT_type.0 as u64)?
+        .as_type();
+    Ok(visualize_subrange(
+        proc,
+        &value_type,
+        data.data(),
+        dimensions,
+    )?)
+}
+
+fn visualize_subrange(
+    proc: &Process,
+    value_type: &SdbType,
+    data: &[u8],
+    mut dimensions: Vec<usize>,
+) -> Result<String, SdbError> {
+    if dimensions.is_empty() {
+        let data_vec = data.to_vec();
+        return Ok(TypedData::builder()
+            .data(data_vec)
+            .type_(value_type.clone())
+            .build()
+            .visualize(proc, 0)?);
+    }
+    let mut ret = "[".to_string();
+    let size = dimensions.pop().unwrap();
+    let sub_size = dimensions
+        .iter()
+        .fold(value_type.byte_size()?, |acc, dim| acc * dim);
+    for i in 0..size {
+        let subdata = &data[i * sub_size..];
+        ret.push_str(&visualize_subrange(
+            proc,
+            value_type,
+            subdata,
+            dimensions.clone(),
+        )?);
+        if i != size - 1 {
+            ret.push_str(", ");
+        }
+    }
+    Ok(ret + "]")
 }
 
 fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<String, SdbError> {
