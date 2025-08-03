@@ -1137,74 +1137,105 @@ fn dwarf_expressions() {
     }
 }
 
-/*
-#include <libsdb/type.hpp>
+#[test]
+#[serial]
+fn global_variables() {
+    let target = Target::launch(GLOBAL_VARIABLE_PATH.as_ref(), None).unwrap();
+    let proc = target.get_process();
 
-TEST_CASE("Global variables", "[variable]") {
-    auto target = target::launch("targets/global_variable");
-    auto& proc = target->get_process();
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    target->create_function_breakpoint("main").enable();
-    proc.resume();
-    proc.wait_on_signal();
+    let name = target
+        .resolve_indirect_name("sy.pets[0].name", &target.get_pc_file_address(None))
+        .unwrap();
+    let name_vis = name.visualize(&target.get_process(), 0).unwrap();
+    assert_eq!(name_vis, "\"Marshmallow\"");
 
-    auto name = target->resolve_indirect_name(
-        "sy.pets[0].name", target->get_pc_file_address());
-    auto name_vis = name.visualize(target->get_process());
-    REQUIRE(name_vis == "\"Marshmallow\"");
-
-    auto cats = target->resolve_indirect_name(
-        "cats[1].age", target->get_pc_file_address());
-    auto cats_vis = cats.visualize(target->get_process());
-    REQUIRE(cats_vis == "8");
+    let cats = target
+        .resolve_indirect_name("cats[1].age", &target.get_pc_file_address(None))
+        .unwrap();
+    let cats_vis = cats.visualize(&target.get_process(), 0).unwrap();
+    assert_eq!(cats_vis, "8");
 }
-*/
 
-/*
-TEST_CASE("Local variables", "[variable]") {
-    auto dev_null = open("/dev/null", O_WRONLY);
-    auto target = target::launch("targets/blocks", dev_null);
-    auto& proc = target->get_process();
+#[test]
+#[serial]
+fn local_variables() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let target = Target::launch(BLOCKS_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
 
-    target->create_function_breakpoint("main").enable();
-    proc.resume();
-    proc.wait_on_signal();
-    target->step_over();
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+    target.step_over(None).unwrap();
 
-    auto var_data = target->resolve_indirect_name("i", target->get_pc_file_address());
-    REQUIRE(from_bytes<std::uint32_t>(var_data.data_ptr()) == 1);
+    let var_data = target
+        .resolve_indirect_name("i", &target.get_pc_file_address(None))
+        .unwrap();
+    let val: u32 = from_bytes(&var_data.data_ptr());
+    assert_eq!(val, 1);
 
-    target->step_over();
-    target->step_over();
+    target.step_over(None).unwrap();
+    target.step_over(None).unwrap();
 
-    var_data = target->resolve_indirect_name("i", target->get_pc_file_address());
-    REQUIRE(from_bytes<std::uint32_t>(var_data.data_ptr()) == 2);
+    let var_data = target
+        .resolve_indirect_name("i", &target.get_pc_file_address(None))
+        .unwrap();
+    let val: u32 = from_bytes(&var_data.data_ptr());
+    assert_eq!(val, 2);
 
-    target->step_over();
-    target->step_over();
+    target.step_over(None).unwrap();
+    target.step_over(None).unwrap();
 
-    var_data = target->resolve_indirect_name("i", target->get_pc_file_address());
-    REQUIRE(from_bytes<std::uint32_t>(var_data.data_ptr()) == 3);
-    close(dev_null);
+    let var_data = target
+        .resolve_indirect_name("i", &target.get_pc_file_address(None))
+        .unwrap();
+    let val: u32 = from_bytes(&var_data.data_ptr());
+    assert_eq!(val, 3);
 }
-*/
 
-/*
-TEST_CASE("Member pointers", "[variable]") {
-    auto target = target::launch("targets/member_pointer");
-    auto& proc = target->get_process();
-    target->create_line_breakpoint("member_pointer.cpp", 10).enable();
-    proc.resume();
-    proc.wait_on_signal();
+#[test]
+#[serial]
+fn member_pointers() {
+    let target = Target::launch(MEMBER_POINTER_PATH.as_ref(), None).unwrap();
+    let proc = target.get_process();
+    target
+        .create_line_breakpoint(Path::new("member_pointer.cpp"), 10, false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
 
-    auto data_ptr = target->resolve_indirect_name(
-        "data_ptr", target->get_pc_file_address());
-    auto data_vis = data_ptr.visualize(proc);
-    REQUIRE(data_vis == "0x0");
+    let data_ptr = target
+        .resolve_indirect_name("data_ptr", &target.get_pc_file_address(None))
+        .unwrap();
+    let data_vis = data_ptr.visualize(&proc, 0).unwrap();
+    assert_eq!(data_vis, "0x0");
 
-    auto func_ptr = target->resolve_indirect_name(
-        "func_ptr", target->get_pc_file_address());
-    auto func_vis = func_ptr.visualize(proc);
-    REQUIRE(func_vis != "0x0");
+    let func_ptr = target
+        .resolve_indirect_name("func_ptr", &target.get_pc_file_address(None))
+        .unwrap();
+    let func_vis = func_ptr.visualize(&proc, 0).unwrap();
+    assert_ne!(func_vis, "0x0");
 }
-*/
