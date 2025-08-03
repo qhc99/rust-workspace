@@ -60,6 +60,11 @@ use dwarf::DieExt;
 
 use types::TypedData;
 
+use dwarf::DwarfExpressionSimpleLocation;
+use register_info::register_info_by_dwarf;
+
+use dwarf::DwarfExpressionResult;
+
 pub mod bit;
 pub mod pipe;
 pub mod process;
@@ -250,36 +255,73 @@ pub fn handle_command(target: &Rc<Target>, line: &str) -> Result<(), SdbError> {
 }
 
 fn handle_variable_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    if args.len() < 2 {
+        print_help(&["help", "variable"]);
+        return Ok(());
+    }
+    if args[1] == "locals" {
+        handle_variable_locals_command(target)?;
+        return Ok(());
+    }
+
     if args.len() < 3 {
         print_help(&["help", "variable"]);
         return Ok(());
     }
     if args[1] == "read" {
-        let die = target
-            .get_main_elf()
-            .upgrade()
-            .unwrap()
-            .get_dwarf()
-            .find_global_variable(args[2])?;
-        let loc = die
-            .unwrap()
-            .index(DW_AT_location.0 as u64)?
-            .as_evaluated_location(
-                &target.get_process(),
-                &target.get_stack(None).borrow().current_frame().registers,
-                false,
-            )?;
-        let value = target.read_location_data(&loc, 8, None)?;
-        let res = u64::from_le_bytes(
-            value
-                .into_iter()
-                .take(8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-        );
-        println!("Value: {res}");
+        handle_variable_read_command(target, args)?;
+    } else if args[1] == "location" {
+        handle_variable_location_command(target, args)?;
     }
+    Ok(())
+}
+
+fn handle_variable_location_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    let name = args[2];
+    let pc = target.get_pc_file_address(None);
+    let var = target.find_variable(name, &pc)?;
+    if var.is_none() {
+        eprintln!("Variable not found");
+        return Ok(());
+    }
+    let var = var.unwrap();
+    let loc = var.index(DW_AT_location.0 as u64)?.as_evaluated_location(
+        &target.get_process(),
+        &target.get_stack(None).borrow().current_frame().registers,
+        false,
+    )?;
+    let print_simple_location = |loc: &DwarfExpressionSimpleLocation| -> Result<(), SdbError> {
+        if let DwarfExpressionSimpleLocation::Register { reg_num } = loc {
+            let name = register_info_by_dwarf(*reg_num as i32)?.name;
+            println!("Register: {name}");
+        } else if let DwarfExpressionSimpleLocation::Address { address } = loc {
+            println!("Address: {:#x}", address.addr());
+        } else {
+            println!("None");
+        }
+        Ok(())
+    };
+
+    if let DwarfExpressionResult::SimpleLocation(loc) = loc {
+        print_simple_location(&loc)?;
+    } else if let DwarfExpressionResult::Pieces(pieces) = loc {
+        for piece in pieces.pieces {
+            print!(
+                "Piece: offset = {}, bit size = {}, location = ",
+                piece.offset, piece.bit_size
+            );
+            print_simple_location(&piece.location)?;
+        }
+    }
+    Ok(())
+}
+
+fn handle_variable_read_command(target: &Rc<Target>, args: &[&str]) -> Result<(), SdbError> {
+    let name = args[2];
+    let pc = target.get_pc_file_address(None);
+    let data = target.resolve_indirect_name(name, &pc)?;
+    let str = data.visualize(&target.get_process(), 0)?;
+    println!("Value: {str}");
     Ok(())
 }
 
