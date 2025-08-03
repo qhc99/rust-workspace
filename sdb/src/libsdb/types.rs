@@ -477,37 +477,37 @@ impl TypedData {
         return data.fixup_bitfield(proc, &var);
     }
 
-    /*
-    sdb::typed_data sdb::typed_data::index(
-          const sdb::process& proc, std::size_t index) const {
-        auto parent_type = type_.strip_cv_typedef().get_die();
-        auto tag = parent_type.abbrev_entry()->tag;
-        if (tag != DW_TAG_array_type and tag != DW_TAG_pointer_type) {
-            sdb::error::send("Not an array or pointer type");
-        }
-        auto value_type = parent_type[DW_AT_type].as_type();
-        auto element_size = value_type.byte_size();
-        auto offset = index * element_size;
-        if (tag == DW_TAG_pointer_type) {
-            sdb::virt_addr address{ sdb::from_bytes<std::uint64_t>(data_.data()) };
-            address += offset;
-            auto data_vec = proc.read_memory(
-                address, element_size);
-            return { std::move(data_vec), value_type, address };
-        }
-        else {
-            std::vector<std::byte> data_vec{
-                data_.begin() + offset,
-                data_.begin() + offset + element_size };
-            if (address_) {
-                return { std::move(data_vec), value_type, *address_ + offset };
-            }
-            return { std::move(data_vec), value_type };
-        }
-    }
-         */
     pub fn index(&self, _proc: &Process, index: usize) -> Result<TypedData, SdbError> {
-        todo!()
+        let parent_type = self.type_.strip_cv_typedef()?.get_die();
+        let tag = parent_type.abbrev_entry().tag;
+        if tag as u16 != DW_TAG_array_type.0 && tag as u16 != DW_TAG_pointer_type.0 {
+            return SdbError::err("Not an array or pointer type");
+        }
+        let value_type = parent_type.index(DW_AT_type.0 as u64)?.as_type();
+        let element_size = value_type.byte_size()?;
+        let offset = index * element_size;
+        if tag as u16 == DW_TAG_pointer_type.0 {
+            let address = VirtualAddress::new(from_bytes::<u64>(&self.data)) + offset as i64;
+            let data_vec = _proc.read_memory(address, element_size)?;
+            return Ok(TypedData::builder()
+                .data(data_vec)
+                .type_(value_type)
+                .address(Some(address))
+                .build());
+        } else {
+            let data_vec = self.data[offset..offset + element_size].to_vec();
+            if let Some(address) = self.address {
+                return Ok(TypedData::builder()
+                    .data(data_vec)
+                    .type_(value_type)
+                    .address(Some(address + offset as i64))
+                    .build());
+            }
+            return Ok(TypedData::builder()
+                .data(data_vec)
+                .type_(value_type)
+                .build());
+        }
     }
 
     pub fn visualize(&self, proc: &Process, depth: i32 /* 0 */) -> Result<String, SdbError> {
