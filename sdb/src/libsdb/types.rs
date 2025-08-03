@@ -6,7 +6,8 @@ use std::{
 };
 
 use gimli::{
-    DW_AT_byte_size, DW_AT_type, DW_AT_upper_bound, DW_TAG_array_type, DW_TAG_const_type,
+    DW_AT_byte_size, DW_AT_encoding, DW_AT_type, DW_AT_upper_bound, DW_ATE_signed_char,
+    DW_ATE_unsigned_char, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_const_type,
     DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type,
     DW_TAG_rvalue_reference_type, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef,
     DW_TAG_volatile_type,
@@ -290,8 +291,15 @@ impl SdbType {
         return Ok(self.byte_size.borrow().unwrap());
     }
 
-    pub fn is_char_type(&self) -> bool {
-        todo!()
+    pub fn is_char_type(&self) -> Result<bool, SdbError> {
+        let stripped = self.strip_cv_typedef()?.get_die();
+        if !stripped.contains(DW_AT_encoding.0 as u64) {
+            return Ok(false);
+        }
+        let encoding = stripped.index(DW_AT_encoding.0 as u64)?.as_int()? as u8;
+        return Ok(stripped.abbrev_entry().tag as u16 == DW_TAG_base_type.0
+            && encoding == DW_ATE_signed_char.0
+            || encoding == DW_ATE_unsigned_char.0);
     }
 
     fn compute_byte_size(&self) -> Result<usize, SdbError> {
