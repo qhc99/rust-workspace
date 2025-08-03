@@ -10,7 +10,7 @@ use gimli::{
     DW_AT_abstract_origin, DW_AT_bit_offset, DW_AT_bit_size, DW_AT_byte_size, DW_AT_call_file,
     DW_AT_call_line, DW_AT_comp_dir, DW_AT_data_bit_offset, DW_AT_decl_file, DW_AT_decl_line,
     DW_AT_frame_base, DW_AT_high_pc, DW_AT_location, DW_AT_low_pc, DW_AT_name, DW_AT_ranges,
-    DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_FORM_addr, DW_FORM_block,
+    DW_AT_sibling, DW_AT_specification, DW_AT_stmt_list, DW_AT_type, DW_FORM_addr, DW_FORM_block,
     DW_FORM_block1, DW_FORM_block2, DW_FORM_block4, DW_FORM_data1, DW_FORM_data2, DW_FORM_data4,
     DW_FORM_data8, DW_FORM_exprloc, DW_FORM_flag, DW_FORM_flag_present, DW_FORM_indirect,
     DW_FORM_ref_addr, DW_FORM_ref_udata, DW_FORM_ref1, DW_FORM_ref2, DW_FORM_ref4, DW_FORM_ref8,
@@ -599,9 +599,24 @@ impl Die {
 
 pub trait DieExt {
     fn children(&self) -> DieChildenIter;
+
+    fn parameter_types(&self) -> Result<Vec<SdbType>, SdbError>;
 }
 
 impl DieExt for Rc<Die> {
+    fn parameter_types(&self) -> Result<Vec<SdbType>, SdbError> {
+        let mut ret = Vec::new();
+        if self.abbrev_entry().tag as u16 != DW_TAG_subprogram.0 {
+            return Ok(ret);
+        }
+        for c in self.children() {
+            if c.abbrev_entry().tag as u16 == DW_TAG_formal_parameter.0 {
+                ret.push(c.index(DW_AT_type.0 as u64)?.as_type());
+            }
+        }
+        Ok(ret)
+    }
+
     fn children(&self) -> DieChildenIter {
         DieChildenIter::new(self)
     }

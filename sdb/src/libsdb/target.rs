@@ -989,3 +989,108 @@ impl SdbThread {
         }
     }
 }
+
+/*
+sdb::typed_data parse_argument(
+    sdb::target& target, pid_t tid, std::string_view arg) {
+    if (arg.empty()) {
+        sdb::error::send("Empty argument");
+    }
+    if (arg.size() > 2 and arg[0] == '"' and arg[arg.size() - 1] == '"') {
+        auto ptr = target.inferior_malloc(arg.size() - 1);
+        std::string arg_str{ arg.substr(1, arg.size() - 2) };
+        auto data_ptr = reinterpret_cast<const std::byte*>(arg_str.data());
+        sdb::span<const std::byte> data = {
+            data_ptr, arg_str.size() + 1 };
+        target.get_process().write_memory(ptr, data);
+        return { sdb::to_byte_vec(ptr), sdb::builtin_type::string };
+    }
+    else if (arg == "true" or arg == "false") {
+        auto value = arg == "true";
+        return { sdb::to_byte_vec(value), sdb::builtin_type::boolean };
+    }
+    else if (arg[0] == '\'') {
+        if (arg.size() != 3 or arg[2] != '\'') {
+            sdb::error::send("Invalid character literal");
+        }
+        return { sdb::to_byte_vec(arg[1]), sdb::builtin_type::character };
+    }
+    else if (arg[0] == '-' or std::isdigit(arg[0])) {
+        if (arg.find(".") != std::string::npos) {
+            auto value = sdb::to_float<double>(arg);
+            if (!value) {
+                sdb::error::send("Invalid floating point literal");
+            }
+            return { sdb::to_byte_vec(*value), sdb::builtin_type::floating_point };
+        }
+        else {
+            auto value = sdb::to_integral<std::int64_t>(arg);
+            if (!value) {
+                sdb::error::send("Invalid integer literal");
+            }
+            return { sdb::to_byte_vec(*value), sdb::builtin_type::integer };
+        }
+    }
+    else {
+        auto pc = target.get_pc_file_address(tid);
+        auto res = target.resolve_indirect_name(std::string(arg), pc);
+        if (!res.funcs.empty()) {
+            sdb::error::send("Nested function calls not supported");
+        }
+        return *res.variable;
+    }
+}
+*/
+
+fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, SdbError> {
+    todo!()
+}
+
+/*
+namespace {
+    std::vector<sdb::typed_data> collect_arguments(
+          sdb::target& target, pid_t tid, std::string_view arg_string,
+          const std::vector<sdb::die>& funcs,
+          std::optional<sdb::typed_data> object) {
+        std::vector<sdb::typed_data> args;
+        auto& proc = target.get_process();
+
+        if (object) {
+            std::vector<std::byte> data;
+            if (object->address()) { ➊
+                data = sdb::to_byte_vec(*object->address());
+            }
+            else { ➋
+                auto& regs = proc.get_registers(tid);
+                auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
+                rsp -= object->value_type().byte_size();
+                proc.write_memory(sdb::virt_addr{ rsp }, object->data());
+                regs.write_by_id(sdb::register_id::rsp, rsp, true);
+                data = sdb::to_byte_vec(rsp);
+            }
+            auto obj_ptr_die = funcs[0][DW_AT_object_pointer].as_reference(); ➌
+            auto this_type = obj_ptr_die[DW_AT_type].as_type();
+            args.push_back({ std::move(data), this_type });
+        }
+
+        auto args_start = 1; ➍
+        auto args_end = arg_string.find(')');
+
+        while (args_start < args_end) {
+            auto comma_pos = arg_string.find(',', args_start);
+            if (comma_pos == std::string::npos) {
+                comma_pos = args_end;
+            }
+            auto arg_expr = arg_string.substr(args_start, comma_pos - args_start);
+            args.push_back(parse_argument(target, tid, arg_expr));
+            args_start = comma_pos + 1;
+        }
+        return args;
+    }
+}
+*/
+
+fn collect_arguments(target: &Target, tid: Pid, arg_string: &str, funcs: &[Die], object: Option<TypedData>) -> Result<Vec<TypedData>, SdbError> {
+    todo!()
+}
+    
