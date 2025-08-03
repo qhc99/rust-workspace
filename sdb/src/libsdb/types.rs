@@ -397,10 +397,10 @@ impl TypedData {
     }
 
     pub fn address(&self) -> Option<VirtualAddress> {
-        self.address.clone()
+        self.address
     }
 
-    pub fn fixup_bitfield(&self, proc: &Process, member_die: &Die) -> Result<Self, SdbError> {
+    pub fn fixup_bitfield(&self, _proc: &Process, member_die: &Die) -> Result<Self, SdbError> {
         let stripped = self.type_.strip_cv_typedef()?;
         let bitfield_info = member_die.get_bitfield_information(stripped.byte_size()? as u64)?;
         if let Some(bitfield_info) = bitfield_info {
@@ -465,7 +465,7 @@ fn visualize_pointer_type(proc: &Process, data: &TypedData) -> Result<String, Sd
             proc.read_string(VirtualAddress::new(ptr))?
         ));
     }
-    Ok(format!("0x{:x}", ptr))
+    Ok(format!("0x{ptr:x}"))
 }
 
 fn visualize_member_pointer_type(data: &TypedData) -> Result<String, SdbError> {
@@ -485,12 +485,7 @@ fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbE
         .get_die()
         .index(DW_AT_type.0 as u64)?
         .as_type();
-    Ok(visualize_subrange(
-        proc,
-        &value_type,
-        data.data(),
-        dimensions,
-    )?)
+    visualize_subrange(proc, &value_type, data.data(), dimensions)
 }
 
 fn visualize_subrange(
@@ -501,11 +496,11 @@ fn visualize_subrange(
 ) -> Result<String, SdbError> {
     if dimensions.is_empty() {
         let data_vec = data.to_vec();
-        return Ok(TypedData::builder()
+        return TypedData::builder()
             .data(data_vec)
             .type_(value_type.clone())
             .build()
-            .visualize(proc, 0)?);
+            .visualize(proc, 0);
     }
     let mut ret = "[".to_string();
     let size = dimensions.pop().unwrap();

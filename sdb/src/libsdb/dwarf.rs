@@ -386,7 +386,7 @@ pub struct Die {
     attr_locs: Vec<Bytes>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct BitfieldInformation {
     pub bit_size: u64,
     pub storage_byte_size: u64,
@@ -405,7 +405,7 @@ impl Die {
         }
         let bit_size = self.index(DW_AT_bit_size.0 as u64)?.as_int()?;
         let storage_byte_size = if self.contains(DW_AT_byte_size.0 as u64) {
-            self.index(DW_AT_byte_size.0 as u64)?.as_int()? as u64
+            self.index(DW_AT_byte_size.0 as u64)?.as_int()?
         } else {
             class_byte_size
         };
