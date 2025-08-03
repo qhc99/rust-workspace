@@ -6,11 +6,13 @@ use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 
 use elf::abi::STT_FUNC;
-use gimli::{DW_AT_location, DW_AT_type};
+use gimli::{DW_AT_location, DW_AT_object_pointer, DW_AT_type, DW_TAG_subprogram};
 use goblin::elf::sym::st_type;
 use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
+
+use super::dwarf::DieExt;
 
 use super::traits::FromLowerHexStr;
 use super::types::TypedData;
@@ -94,18 +96,32 @@ fn get_initial_variable_data(
         .build())
 }
 
+pub struct ResolveIndirectNameResult {
+    variable: Option<TypedData>,
+    funcs: Vec<Rc<Die>>,
+}
+
 impl Target {
     pub fn resolve_indirect_name(
         &self,
         mut name: &str,
         pc: &FileAddress,
-    ) -> Result<TypedData, SdbError> {
+    ) -> Result<ResolveIndirectNameResult, SdbError> {
         let mut op_pos = name
             .chars()
             .enumerate()
-            .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
+            .find(|(_, c)| *c == '.' || *c == '-' || *c == '[' || *c == '(')
             .map(|(i, _)| i)
             .or(Some(name.len()));
+
+        if op_pos.unwrap() < name.len() && name.chars().nth(op_pos.unwrap()).unwrap() == '(' {
+            let func_name = &name[..op_pos.unwrap()];
+            let funcs = self.find_functions(func_name)?;
+            return Ok(ResolveIndirectNameResult {
+                variable: None,
+                funcs: funcs.dwarf_functions,
+            });
+        }
 
         let var_name = &name[..op_pos.unwrap()];
         let mut data = get_initial_variable_data(self, var_name, pc)?;
@@ -127,10 +143,32 @@ impl Target {
                     .chars()
                     .enumerate()
                     .skip(member_name_start)
-                    .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
+                    .find(|(_, c)| *c == '.' || *c == '-' || *c == '[' || *c == '(' || *c == ',')
                     .map(|(i, _)| i)
                     .or(Some(name.len()));
                 let member_name = &name[member_name_start..op_pos.unwrap()];
+                if name.chars().nth(op_pos.unwrap()).unwrap() == '(' {
+                    let mut funcs = Vec::new();
+                    let stripped_value_type = data.value_type().strip_cvref_typedef()?;
+                    for child in stripped_value_type.get_die().children() {
+                        if child.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
+                            && child.contains(DW_AT_object_pointer.0 as u64)
+                            && child
+                                .name()?
+                                .map(|name| name == member_name)
+                                .unwrap_or(false)
+                        {
+                            funcs.push(child);
+                        }
+                    }
+                    if funcs.is_empty() {
+                        return SdbError::err("No such member function");
+                    }
+                    return Ok(ResolveIndirectNameResult {
+                        variable: Some(data),
+                        funcs,
+                    });
+                }
                 data = data.read_member(&self.get_process(), member_name)?;
                 name = &name[member_name_start..];
             } else if name.chars().nth(op_pos.unwrap()).unwrap() == '[' {
@@ -147,12 +185,15 @@ impl Target {
             op_pos = name
                 .chars()
                 .enumerate()
-                .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
+                .find(|(_, c)| *c == '.' || *c == '-' || *c == '[' || *c == '(' || *c == ',')
                 .map(|(i, _)| i)
                 .or(Some(name.len()));
         }
 
-        Ok(data)
+        Ok(ResolveIndirectNameResult {
+            variable: Some(data),
+            funcs: Vec::new(),
+        })
     }
 
     pub fn find_variable(&self, name: &str, pc: &FileAddress) -> Result<Option<Rc<Die>>, SdbError> {
