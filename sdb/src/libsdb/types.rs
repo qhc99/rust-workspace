@@ -40,10 +40,10 @@ macro_rules! strip {
     ($value:expr, $( $tag:expr ),+ $(,)?) => {{
         use gimli::DW_AT_type;
         let mut ret = $value.clone();
-        let mut tag = ret.get_die().abbrev_entry().tag as u16;
+        let mut tag = ret.get_die()?.abbrev_entry().tag as u16;
         while false $(|| tag == $tag.0)+ {
-            ret = SdbType::new(ret.get_die().index(DW_AT_type.0 as u64)?.as_type().get_die());
-            tag = ret.get_die().abbrev_entry().tag as u16;
+            ret = SdbType::new(ret.get_die()?.index(DW_AT_type.0 as u64)?.as_type().get_die()?);
+            tag = ret.get_die()?.abbrev_entry().tag as u16;
         }
         Ok(ret)
     }};
@@ -277,20 +277,36 @@ impl Display for StoppointMode {
 
 #[derive(Debug, Clone)]
 pub struct SdbType {
-    die: Rc<Die>,
     byte_size: RefCell<Option<usize>>,
+    info: SdbTypeInfo,
+}
+
+#[derive(Debug, Clone)]
+pub enum SdbTypeInfo {
+    Die(Rc<Die>),
+    BuiltinType(BuiltinType),
 }
 
 impl SdbType {
     pub fn new(die: Rc<Die>) -> Self {
         Self {
-            die,
             byte_size: RefCell::new(None),
+            info: SdbTypeInfo::Die(die),
         }
     }
 
-    pub fn get_die(&self) -> Rc<Die> {
-        self.die.clone()
+    pub fn new_from_info(info: SdbTypeInfo) -> Self {
+        Self {
+            byte_size: RefCell::new(None),
+            info,
+        }
+    }
+
+    pub fn get_die(&self) -> Result<Rc<Die>, SdbError> {
+        match &self.info {
+            SdbTypeInfo::Die(die) => Ok(die.clone()),
+            _ => SdbError::err("Type is not from DWARF info"),
+        }
     }
 
     pub fn byte_size(&self) -> Result<usize, SdbError> {
@@ -303,7 +319,7 @@ impl SdbType {
     }
 
     pub fn is_char_type(&self) -> Result<bool, SdbError> {
-        let stripped = self.strip_cv_typedef()?.get_die();
+        let stripped = self.strip_cv_typedef()?.get_die()?;
         if !stripped.contains(DW_AT_encoding.0 as u64) {
             return Ok(false);
         }
@@ -314,32 +330,33 @@ impl SdbType {
     }
 
     fn compute_byte_size(&self) -> Result<usize, SdbError> {
-        let tag = self.die.abbrev_entry().tag;
+        let die = self.get_die()?;
+        let tag = die.abbrev_entry().tag;
 
         if tag as u16 == DW_TAG_pointer_type.0 {
             return Ok(8);
         }
         if tag as u16 == DW_TAG_ptr_to_member_type.0 {
-            let member_type = self.die.index(DW_AT_type.0 as u64)?.as_type();
-            if member_type.get_die().abbrev_entry().tag as u16 == DW_TAG_subroutine_type.0 {
+            let member_type = die.index(DW_AT_type.0 as u64)?.as_type();
+            if member_type.get_die()?.abbrev_entry().tag as u16 == DW_TAG_subroutine_type.0 {
                 return Ok(16);
             }
             return Ok(8);
         }
         if tag as u16 == DW_TAG_array_type.0 {
-            let mut value_size = self.die.index(DW_AT_type.0 as u64)?.as_type().byte_size()?;
-            for child in self.die.children() {
+            let mut value_size = die.index(DW_AT_type.0 as u64)?.as_type().byte_size()?;
+            for child in die.children() {
                 if child.abbrev_entry().tag as u16 == DW_TAG_subrange_type.0 {
                     value_size *= (child.index(DW_AT_upper_bound.0 as u64)?.as_int()? + 1) as usize;
                 }
             }
             return Ok(value_size);
         }
-        if self.die.contains(DW_AT_byte_size.0 as u64) {
-            return Ok(self.die.index(DW_AT_byte_size.0 as u64)?.as_int()? as usize);
+        if die.contains(DW_AT_byte_size.0 as u64) {
+            return Ok(die.index(DW_AT_byte_size.0 as u64)?.as_int()? as usize);
         }
-        if self.die.contains(DW_AT_type.0 as u64) {
-            return self.die.index(DW_AT_type.0 as u64)?.as_type().byte_size();
+        if die.contains(DW_AT_type.0 as u64) {
+            return die.index(DW_AT_type.0 as u64)?.as_type().byte_size();
         }
 
         return Ok(0);
@@ -375,6 +392,20 @@ impl SdbType {
             DW_TAG_rvalue_reference_type,
             DW_TAG_pointer_type
         )
+    }
+
+    pub fn get_builtin_type(&self) -> Result<BuiltinType, SdbError> {
+        match &self.info {
+            SdbTypeInfo::BuiltinType(builtin_type) => Ok(*builtin_type),
+            _ => SdbError::err("Type is not a builtin type"),
+        }
+    }
+
+    pub fn is_from_dwarf(&self) -> bool {
+        match &self.info {
+            SdbTypeInfo::Die(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -425,7 +456,7 @@ impl TypedData {
     }
 
     pub fn deref_pointer(&self, proc: &Process) -> Result<TypedData, SdbError> {
-        let stripped_type_die = self.type_.strip_cv_typedef()?.get_die();
+        let stripped_type_die = self.type_.strip_cv_typedef()?.get_die()?;
         let tag = stripped_type_die.abbrev_entry().tag;
         if tag as u16 != DW_TAG_pointer_type.0 {
             return SdbError::err("Not a pointer type");
@@ -441,7 +472,7 @@ impl TypedData {
     }
 
     pub fn read_member(&self, proc: &Process, member_name: &str) -> Result<TypedData, SdbError> {
-        let die = self.type_.get_die();
+        let die = self.type_.get_die()?;
         let mut children = die.children();
         let it = children.find(|child| {
             child
@@ -478,7 +509,7 @@ impl TypedData {
     }
 
     pub fn index(&self, _proc: &Process, index: usize) -> Result<TypedData, SdbError> {
-        let parent_type = self.type_.strip_cv_typedef()?.get_die();
+        let parent_type = self.type_.strip_cv_typedef()?.get_die()?;
         let tag = parent_type.abbrev_entry().tag;
         if tag as u16 != DW_TAG_array_type.0 && tag as u16 != DW_TAG_pointer_type.0 {
             return SdbError::err("Not an array or pointer type");
@@ -511,7 +542,7 @@ impl TypedData {
     }
 
     pub fn visualize(&self, proc: &Process, depth: i32 /* 0 */) -> Result<String, SdbError> {
-        let die = self.type_.get_die();
+        let die = self.type_.get_die()?;
         #[allow(non_upper_case_globals)]
         match DwTag(die.abbrev_entry().tag as u16) {
             DW_TAG_base_type => Ok(visualize_base_type(self)?),
@@ -535,7 +566,7 @@ impl TypedData {
 
 fn visualize_base_type(data: &TypedData) -> Result<String, SdbError> {
     let type_ = data.value_type();
-    let die = type_.get_die();
+    let die = type_.get_die()?;
     let ptr = data.data_ptr();
     #[allow(non_upper_case_globals)]
     match DwAte(die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8) {
@@ -579,7 +610,7 @@ fn visualize_pointer_type(proc: &Process, data: &TypedData) -> Result<String, Sd
     }
     if data
         .value_type()
-        .get_die()
+        .get_die()?
         .index(DW_AT_type.0 as u64)?
         .as_type()
         .is_char_type()?
@@ -598,7 +629,7 @@ fn visualize_member_pointer_type(data: &TypedData) -> Result<String, SdbError> {
 
 fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
     let mut dimensions = Vec::new();
-    for child in data.value_type().get_die().children() {
+    for child in data.value_type().get_die()?.children() {
         if child.abbrev_entry().tag as u16 == DW_TAG_subrange_type.0 {
             dimensions.push(child.index(DW_AT_upper_bound.0 as u64)?.as_int()? as usize + 1);
         }
@@ -606,7 +637,7 @@ fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbE
     dimensions.reverse();
     let value_type = data
         .value_type()
-        .get_die()
+        .get_die()?
         .index(DW_AT_type.0 as u64)?
         .as_type();
     visualize_subrange(proc, &value_type, data.data(), dimensions)
@@ -648,7 +679,7 @@ fn visualize_subrange(
 
 fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<String, SdbError> {
     let mut ret = "{\n".to_string();
-    for child in data.value_type().get_die().children() {
+    for child in data.value_type().get_die()?.children() {
         if child.abbrev_entry().tag as u16 == DW_TAG_member.0
             && child.contains(DW_AT_data_member_location.0 as u64)
             || child.contains(DW_AT_data_bit_offset.0 as u64)
@@ -675,4 +706,13 @@ fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<
     let indent = "\t".repeat(depth as usize);
     ret.push_str(&format!("{indent}}}"));
     Ok(ret)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BuiltinType {
+    String,
+    Character,
+    Integer,
+    Boolean,
+    FloatingPoint,
 }

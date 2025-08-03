@@ -70,6 +70,14 @@ fn get_initial_variable_data(
     name: &str,
     pc: &FileAddress,
 ) -> Result<TypedData, SdbError> {
+    if name.starts_with('$') {
+        let index = usize::from_integral(&name[1..]);
+        if index.is_err() {
+            return SdbError::err("Invalid expression result index");
+        }
+        return target.get_expression_result(index.unwrap());
+    }
+    
     let var = target.find_variable(name, pc)?;
     if var.is_none() {
         return SdbError::err("Variable not found");
@@ -97,11 +105,15 @@ fn get_initial_variable_data(
 }
 
 pub struct ResolveIndirectNameResult {
-    variable: Option<TypedData>,
-    funcs: Vec<Rc<Die>>,
+    pub variable: Option<TypedData>,
+    pub funcs: Vec<Rc<Die>>,
 }
 
 impl Target {
+    pub fn get_expression_result(&self, index: usize) -> Result<TypedData, SdbError> {
+        todo!()
+    }
+
     pub fn resolve_indirect_name(
         &self,
         mut name: &str,
@@ -150,7 +162,7 @@ impl Target {
                 if name.chars().nth(op_pos.unwrap()).unwrap() == '(' {
                     let mut funcs = Vec::new();
                     let stripped_value_type = data.value_type().strip_cvref_typedef()?;
-                    for child in stripped_value_type.get_die().children() {
+                    for child in stripped_value_type.get_die()?.children() {
                         if child.abbrev_entry().tag as u16 == DW_TAG_subprogram.0
                             && child.contains(DW_AT_object_pointer.0 as u64)
                             && child

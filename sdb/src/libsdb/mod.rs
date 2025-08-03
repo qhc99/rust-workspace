@@ -320,7 +320,7 @@ fn handle_variable_read_command(target: &Rc<Target>, args: &[&str]) -> Result<()
     let name = args[2];
     let pc = target.get_pc_file_address(None);
     let data = target.resolve_indirect_name(name, &pc)?;
-    let str = data.visualize(&target.get_process(), 0)?;
+    let str = data.variable.unwrap().visualize(&target.get_process(), 0)?;
     println!("Value: {str}");
     Ok(())
 }
