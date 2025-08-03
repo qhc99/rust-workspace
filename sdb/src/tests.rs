@@ -92,6 +92,7 @@ static GLOBAL_VARIABLE_PATH: LazyLock<&Path> =
     LazyLock::new(|| Path::new("resource/bin/global_variable"));
 static MEMBER_POINTER_PATH: LazyLock<&Path> =
     LazyLock::new(|| Path::new("resource/bin/member_pointer"));
+static BLOCKS_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/blocks"));
 
 #[test]
 #[serial]

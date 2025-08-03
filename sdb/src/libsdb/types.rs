@@ -444,6 +444,51 @@ impl TypedData {
     }
 }
 
+/*
+std::string visualize_base_type(const sdb::typed_data& data) {
+        auto& type = data.value_type();
+        auto die = type.get_die();
+        auto ptr = data.data_ptr();
+
+        switch (die[DW_AT_encoding].as_int()) {
+        case DW_ATE_boolean:
+            return sdb::from_bytes<bool>(ptr) ? "true" : "false";
+        case DW_ATE_float:
+            if (die.name() == "float")
+                return fmt::format("{}", sdb::from_bytes<float>(ptr));
+            if (die.name() == "double")
+                return fmt::format("{}", sdb::from_bytes<double>(ptr));
+            if (die.name() == "long double")
+                return fmt::format("{}", sdb::from_bytes<long double>(ptr));
+            sdb::error::send("Unsupported floating point type");
+        case DW_ATE_signed:
+            switch (type.byte_size()) {
+            case 1: return fmt::format("{}", sdb::from_bytes<std::int8_t>(ptr));
+            case 2: return fmt::format("{}", sdb::from_bytes<std::int16_t>(ptr));
+            case 4: return fmt::format("{}", sdb::from_bytes<std::int32_t>(ptr));
+            case 8: return fmt::format("{}", sdb::from_bytes<std::int64_t>(ptr));
+            default: sdb::error::send("Unsupported signed integer size");
+            }
+        case DW_ATE_unsigned:
+            switch (type.byte_size()) {
+            case 1: return fmt::format("{}", sdb::from_bytes<std::uint8_t>(ptr));
+            case 2: return fmt::format("{}", sdb::from_bytes<std::uint16_t>(ptr));
+            case 4: return fmt::format("{}", sdb::from_bytes<std::uint32_t>(ptr));
+            case 8: return fmt::format("{}", sdb::from_bytes<std::uint64_t>(ptr));
+            default: sdb::error::send("Unsupported unsigned integer size");
+            }
+        case DW_ATE_signed_char:
+            return fmt::format("{}", sdb::from_bytes<signed char>(ptr));
+        case DW_ATE_unsigned_char:
+            return fmt::format("{}", sdb::from_bytes<unsigned char>(ptr));
+        case DW_ATE_UTF:
+            sdb::error::send("DW_ATE_UTF is not implemented");
+        default:
+            sdb::error::send("Unsupported encoding");
+        }
+    }
+}
+*/
 fn visualize_base_type(data: &TypedData) -> Result<String, SdbError> {
     todo!()
 }
