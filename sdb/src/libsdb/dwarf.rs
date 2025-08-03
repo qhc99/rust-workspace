@@ -1214,8 +1214,55 @@ pub struct Dwarf {
     cfi: OnceCell<Rc<RefCell<CallFrameInformation>>>,
     global_variable_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
 }
-
+/*
+    void scopes_at_address_in_die(
+          const sdb::die& die, sdb::file_addr address,
+          std::vector<sdb::die>& scopes) {
+        for (auto& c : die.children()) {
+            if (c.contains_address(address)) {
+                scopes_at_address_in_die(c, address, scopes);
+                scopes.push_back(c);
+            }
+        }
+    }
+*/
 impl Dwarf {
+    /*
+    std::optional<sdb::die> sdb::dwarf::find_local_variable(
+        std::string name, file_addr pc) const {
+        auto scopes = scopes_at_address(pc);
+        for (auto& scope : scopes) {
+            for (auto& child : scope.children()) {
+                auto tag = child.abbrev_entry()->tag;
+                if ((tag == DW_TAG_variable or
+                    tag == DW_TAG_formal_parameter) and
+                    child.name() == name) {
+                    return child;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+     */
+    pub fn find_local_variable(&self, name: &str, pc: &FileAddress) -> Result<Option<Rc<Die>>, SdbError> {
+        todo!()
+    }
+
+    /*
+    std::vector<sdb::die> sdb::dwarf::scopes_at_address(file_addr address) const {
+        auto func = function_containing_address(address);
+        if (!func) return {};
+
+        std::vector<sdb::die> scopes;
+        scopes_at_address_in_die(*func, address, scopes);
+        scopes.push_back(*func);
+        return scopes;
+    }
+     */
+    pub fn scopes_at_address(&self, address: &FileAddress) -> Result<Vec<Rc<Die>>, SdbError> {
+        todo!()
+    }
+
     pub fn find_global_variable(&self, name: &str) -> Result<Option<Rc<Die>>, SdbError> {
         self.index()?;
         let global_variable_index = self.global_variable_index.borrow();
