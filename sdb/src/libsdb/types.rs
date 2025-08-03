@@ -7,13 +7,16 @@ use std::{
 
 use gimli::{
     DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_encoding, DW_AT_type,
-    DW_AT_upper_bound, DW_ATE_signed_char, DW_ATE_unsigned_char, DW_TAG_array_type,
-    DW_TAG_base_type, DW_TAG_class_type, DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_member,
-    DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type,
-    DW_TAG_rvalue_reference_type, DW_TAG_structure_type, DW_TAG_subrange_type,
-    DW_TAG_subroutine_type, DW_TAG_typedef, DW_TAG_union_type, DW_TAG_volatile_type, DwTag,
+    DW_AT_upper_bound, DW_ATE_UTF, DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char,
+    DW_ATE_unsigned, DW_ATE_unsigned_char, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_class_type,
+    DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_member, DW_TAG_pointer_type,
+    DW_TAG_ptr_to_member_type, DW_TAG_reference_type, DW_TAG_rvalue_reference_type,
+    DW_TAG_structure_type, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef,
+    DW_TAG_union_type, DW_TAG_volatile_type, DwAte, DwTag,
 };
 use typed_builder::TypedBuilder;
+
+use super::{bit::from_bytes, registers::F80};
 
 use super::bit::memcpy_bits;
 
@@ -444,57 +447,47 @@ impl TypedData {
     }
 }
 
-/*
-std::string visualize_base_type(const sdb::typed_data& data) {
-        auto& type = data.value_type();
-        auto die = type.get_die();
-        auto ptr = data.data_ptr();
-
-        switch (die[DW_AT_encoding].as_int()) {
-        case DW_ATE_boolean:
-            return sdb::from_bytes<bool>(ptr) ? "true" : "false";
-        case DW_ATE_float:
-            if (die.name() == "float")
-                return fmt::format("{}", sdb::from_bytes<float>(ptr));
-            if (die.name() == "double")
-                return fmt::format("{}", sdb::from_bytes<double>(ptr));
-            if (die.name() == "long double")
-                return fmt::format("{}", sdb::from_bytes<long double>(ptr));
-            sdb::error::send("Unsupported floating point type");
-        case DW_ATE_signed:
-            switch (type.byte_size()) {
-            case 1: return fmt::format("{}", sdb::from_bytes<std::int8_t>(ptr));
-            case 2: return fmt::format("{}", sdb::from_bytes<std::int16_t>(ptr));
-            case 4: return fmt::format("{}", sdb::from_bytes<std::int32_t>(ptr));
-            case 8: return fmt::format("{}", sdb::from_bytes<std::int64_t>(ptr));
-            default: sdb::error::send("Unsupported signed integer size");
-            }
-        case DW_ATE_unsigned:
-            switch (type.byte_size()) {
-            case 1: return fmt::format("{}", sdb::from_bytes<std::uint8_t>(ptr));
-            case 2: return fmt::format("{}", sdb::from_bytes<std::uint16_t>(ptr));
-            case 4: return fmt::format("{}", sdb::from_bytes<std::uint32_t>(ptr));
-            case 8: return fmt::format("{}", sdb::from_bytes<std::uint64_t>(ptr));
-            default: sdb::error::send("Unsupported unsigned integer size");
-            }
-        case DW_ATE_signed_char:
-            return fmt::format("{}", sdb::from_bytes<signed char>(ptr));
-        case DW_ATE_unsigned_char:
-            return fmt::format("{}", sdb::from_bytes<unsigned char>(ptr));
-        case DW_ATE_UTF:
-            sdb::error::send("DW_ATE_UTF is not implemented");
-        default:
-            sdb::error::send("Unsupported encoding");
-        }
-    }
-}
-*/
 fn visualize_base_type(data: &TypedData) -> Result<String, SdbError> {
-    todo!()
+    let type_ = data.value_type();
+    let die = type_.get_die();
+    let ptr = data.data_ptr();
+    #[allow(non_upper_case_globals)]
+    match DwAte(die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8) {
+        DW_ATE_boolean => Ok((ptr[0] != 0).to_string()),
+        DW_ATE_float => {
+            if die.name()?.unwrap() == "float" {
+                Ok((from_bytes::<f32>(ptr)).to_string())
+            } else if die.name()?.unwrap() == "double" {
+                Ok((from_bytes::<f64>(ptr)).to_string())
+            } else if die.name()?.unwrap() == "long double" {
+                Ok((from_bytes::<F80>(ptr)).to_string())
+            } else {
+                SdbError::err("Unsupported floating point type")
+            }
+        }
+        DW_ATE_signed => match type_.byte_size()? {
+            1 => Ok(from_bytes::<i8>(ptr).to_string()),
+            2 => Ok(from_bytes::<i16>(ptr).to_string()),
+            4 => Ok(from_bytes::<i32>(ptr).to_string()),
+            8 => Ok(from_bytes::<i64>(ptr).to_string()),
+            _ => SdbError::err("Unsupported signed integer size"),
+        },
+        DW_ATE_unsigned => match type_.byte_size()? {
+            1 => Ok(from_bytes::<u8>(ptr).to_string()),
+            2 => Ok(from_bytes::<u16>(ptr).to_string()),
+            4 => Ok(from_bytes::<u32>(ptr).to_string()),
+            8 => Ok(from_bytes::<u64>(ptr).to_string()),
+            _ => SdbError::err("Unsupported unsigned integer size"),
+        },
+        DW_ATE_signed_char => Ok(from_bytes::<i8>(ptr).to_string()),
+        DW_ATE_unsigned_char => Ok(from_bytes::<u8>(ptr).to_string()),
+        DW_ATE_UTF => SdbError::err("DW_ATE_UTF is not implemented"),
+        _ => SdbError::err("Unsupported encoding"),
+    }
 }
 
 fn visualize_pointer_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
-    let ptr = data.data_ptr().as_ptr() as u64;
+    let ptr = from_bytes::<u64>(data.data_ptr());
     if ptr == 0 {
         return Ok("0x0".to_string());
     }
@@ -514,7 +507,7 @@ fn visualize_pointer_type(proc: &Process, data: &TypedData) -> Result<String, Sd
 }
 
 fn visualize_member_pointer_type(data: &TypedData) -> Result<String, SdbError> {
-    Ok(format!("0x{:x}", data.data_ptr().as_ptr() as usize))
+    Ok(format!("0x{:x}", from_bytes::<usize>(data.data_ptr())))
 }
 
 fn visualize_array_type(proc: &Process, data: &TypedData) -> Result<String, SdbError> {
