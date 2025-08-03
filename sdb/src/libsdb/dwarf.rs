@@ -1214,18 +1214,16 @@ pub struct Dwarf {
     cfi: OnceCell<Rc<RefCell<CallFrameInformation>>>,
     global_variable_index: RefCell<MultiMap<String, DwarfIndexEntry>>,
 }
-/*
-    void scopes_at_address_in_die(
-          const sdb::die& die, sdb::file_addr address,
-          std::vector<sdb::die>& scopes) {
-        for (auto& c : die.children()) {
-            if (c.contains_address(address)) {
-                scopes_at_address_in_die(c, address, scopes);
-                scopes.push_back(c);
-            }
+
+fn scopes_at_address_in_die(die: &Rc<Die>, address: &FileAddress, scopes: &mut Vec<Rc<Die>>) -> Result<(), SdbError> {
+    for c in die.children() {
+        if c.contains_address(address)? {
+            scopes_at_address_in_die(&c, address, scopes)?;
+            scopes.push(c);
         }
     }
-*/
+    Ok(())
+}
 impl Dwarf {
     /*
     std::optional<sdb::die> sdb::dwarf::find_local_variable(
