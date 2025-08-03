@@ -330,6 +330,15 @@ impl SdbType {
     }
 
     fn compute_byte_size(&self) -> Result<usize, SdbError> {
+        if !self.is_from_dwarf() {
+            return Ok(match self.get_builtin_type()? {
+                BuiltinType::Boolean => 1,
+                BuiltinType::Character => 1,
+                BuiltinType::Integer => 8,
+                BuiltinType::FloatingPoint => 8,
+                BuiltinType::String => 8,
+            });
+        }
         let die = self.get_die()?;
         let tag = die.abbrev_entry().tag;
 
