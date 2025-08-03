@@ -13,6 +13,15 @@ pub fn from_bytes<To: Pod>(bytes: &[u8]) -> To {
     pod_read_unaligned(slice)
 }
 
+pub fn to_byte_span<T: Pod>(src: &T) -> &[u8] {
+    bytes_of(src)
+}
+
+pub fn to_byte_vec<T: Pod>(src: &T) -> Vec<u8> {
+    let src_bytes = bytes_of(src);
+    src_bytes.to_vec()
+}
+
 pub fn to_byte64<T: NoUninit>(src: T) -> Byte64 {
     let mut out: Byte64 = [0; 8];
     let src_bytes = bytes_of(&src);
