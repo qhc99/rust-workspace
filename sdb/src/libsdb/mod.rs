@@ -6,7 +6,7 @@ compile_error!("Not x86_64 arch");
 use breakpoint_site::IdType;
 use disassembler::print_disassembly;
 use ffi::sig_abbrev;
-use gimli::DW_AT_location;
+use gimli::{DW_AT_location, DW_AT_type, DW_TAG_formal_parameter, DW_TAG_variable};
 use indoc::indoc;
 use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
@@ -20,6 +20,7 @@ use sdb_error::SdbError;
 use std::any::{Any, TypeId};
 use std::cell::Ref;
 use std::cmp::min;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -54,6 +55,10 @@ use breakpoint::FunctionBreakpoint;
 use breakpoint::LineBreakpoint;
 
 use register_info::RegisterInfo;
+
+use dwarf::DieExt;
+
+use types::TypedData;
 
 pub mod bit;
 pub mod pipe;
@@ -274,6 +279,39 @@ fn handle_variable_command(target: &Rc<Target>, args: &[&str]) -> Result<(), Sdb
                 .unwrap(),
         );
         println!("Value: {res}");
+    }
+    Ok(())
+}
+
+fn handle_variable_locals_command(target: &Rc<Target>) -> Result<(), SdbError> {
+    let pc = target.get_pc_file_address(None);
+    let scopes = pc.rc_elf_file().get_dwarf().scopes_at_address(&pc)?;
+    let mut seen = HashSet::new();
+    for scope in scopes {
+        for var in scope.children() {
+            let name = var.name()?.unwrap_or("".to_string());
+            let tag = var.abbrev_entry().tag;
+            if tag as u16 == DW_TAG_variable.0
+                || tag as u16 == DW_TAG_formal_parameter.0
+                    && !name.is_empty()
+                    && !seen.contains(&name)
+            {
+                let loc = var.index(DW_AT_location.0 as u64)?.as_evaluated_location(
+                    &target.get_process(),
+                    &target.get_stack(None).borrow().current_frame().registers,
+                    false,
+                )?;
+                let type_ = var.index(DW_AT_type.0 as u64)?.as_type();
+                let value = target.read_location_data(&loc, type_.byte_size()?, None)?;
+                let str = TypedData::builder()
+                    .data(value)
+                    .type_(type_)
+                    .build()
+                    .visualize(&target.get_process(), 0)?;
+                println!("{name}: {str}");
+                seen.insert(name);
+            }
+        }
     }
     Ok(())
 }
