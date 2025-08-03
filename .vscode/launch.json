@@ -24,12 +24,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "debug marshmallow",
+            "name": "debug global var",
             "program": "${workspaceFolder}/target/debug/sdb",
-            "args": ["${workspaceFolder}/sdb/resource/marshmallow_0"],
+            "args": ["${workspaceFolder}/sdb/resource/bin/global_variable"],
             "cwd": "${workspaceFolder}",
             "env": {
-                "LD_LIBRARY_PATH": "${workspaceFolder}/sdb/resource:${env:LD_LIBRARY_PATH}",
                 "RUST_BACKTRACE": "1"
               }
         },

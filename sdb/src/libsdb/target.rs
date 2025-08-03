@@ -104,20 +104,14 @@ impl Target {
             .chars()
             .enumerate()
             .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
-            .map(|(i, _)| i);
+            .map(|(i, _)| i)
+            .or_else(|| Some(name.len()));
 
-        let var_name = if let Some(pos) = op_pos {
-            &name[..pos]
-        } else {
-            name
-        };
-
+        let var_name = &name[..op_pos.unwrap()];
         let mut data = get_initial_variable_data(self, var_name, pc)?;
-
-        while let Some(pos) = op_pos {
+        while let Some(pos) = op_pos && pos < name.len() {
             if name.chars().nth(pos).unwrap() == '-' {
-                if let Some(p) = name.chars().nth(pos + 1)
-                    && p != '>'
+                if name.chars().nth(pos + 1).map(|c| c != '>').unwrap_or(true)
                 {
                     return SdbError::err("Invalid operator");
                 }
@@ -133,12 +127,13 @@ impl Target {
                     .enumerate()
                     .skip(member_name_start)
                     .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
-                    .map(|(i, _)| i);
+                    .map(|(i, _)| i)
+                    .or_else(|| Some(name.len()));
                 let member_name = &name[member_name_start..op_pos.unwrap()];
                 data = data.read_member(&self.get_process(), member_name)?;
                 name = &name[member_name_start..];
             } else if name.chars().nth(op_pos.unwrap()).unwrap() == '[' {
-                let int_end = name[op_pos.unwrap()..].find(']').unwrap_or(name.len());
+                let int_end = name.find(']').unwrap_or(name.len());
                 let index_str = &name[op_pos.unwrap() + 1..int_end];
                 let index = usize::from_integral(index_str);
                 if index.is_err() {
@@ -152,7 +147,8 @@ impl Target {
                 .chars()
                 .enumerate()
                 .find(|(_, c)| *c == '.' || *c == '-' || *c == '[')
-                .map(|(i, _)| i);
+                .map(|(i, _)| i)
+                .or_else(|| Some(name.len()));
         }
 
         Ok(data)
