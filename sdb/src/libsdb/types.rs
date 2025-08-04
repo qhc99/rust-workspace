@@ -11,6 +11,8 @@ use gimli::{
 };
 use typed_builder::TypedBuilder;
 
+use super::bit::to_byte_vec;
+
 use super::{registers::Registers, target::Target};
 use super::register_info::RegisterId;
 
@@ -1433,60 +1435,6 @@ pub fn setup_arguments(
     Ok(())
 }
 
-// TODO
-/*
-namespace {
-    sdb::typed_data read_return_value(
-          sdb::target& target, sdb::die func,
-          sdb::virt_addr return_slot, sdb::registers& regs) {
-        auto ret_type = func[DW_AT_type].as_type();
-        auto ret_classes = ret_type.get_parameter_classes();
-
-        bool used_int = false;
-        bool used_sse = false;
-
-        if (ret_classes[0] == sdb::parameter_class::memory) {
-            auto value = target.get_process().read_memory(
-                return_slot, ret_type.byte_size());
-            return { sdb::typed_data{
-                std::move(value), func[DW_AT_type].as_type(), return_slot } };
-        }
-
-        if (ret_classes[0] == sdb::parameter_class::x87) {
-            auto data = regs.read_by_id_as<long double>(sdb::register_id::st0);
-            auto value = sdb::to_byte_vec(data);
-            target.get_process().write_memory(return_slot, value);
-            return { sdb::typed_data{
-                std::move(value), func[DW_AT_type].as_type(), return_slot } };
-        }
-
-        std::vector<std::byte> value;
-        for (auto ret_class : ret_classes) {
-            if (ret_class == sdb::parameter_class::integer) {
-                auto reg = used_int ? sdb::register_id::rdx : sdb::register_id::rax;
-                used_int = true;
-                auto data = regs.read_by_id_as<std::uint64_t>(reg);
-                auto new_value = sdb::to_byte_vec(data);
-                value.insert(value.end(), new_value.begin(), new_value.end());
-            }
-            else if (ret_class == sdb::parameter_class::sse) {
-                auto reg = used_sse ? sdb::register_id::xmm1 : sdb::register_id::xmm0;
-                used_sse = true;
-                auto data = regs.read_by_id_as<sdb::byte128>(reg);
-                value = { data.begin(), data.end() };
-                target.get_process().write_memory(return_slot, value);
-            }
-            else if (ret_class != sdb::parameter_class::no_class) {
-                sdb::error::send("Unsupported return type");
-            }
-        }
-        target.get_process().write_memory(return_slot, value);
-        return { sdb::typed_data{
-            std::move(value), func[DW_AT_type].as_type(), return_slot } };
-    }
-}
-*/
-
 pub fn read_return_value(
     target: &Target,
     func: &Rc<Die>,
@@ -1510,7 +1458,7 @@ pub fn read_return_value(
 
     if ret_classes[0] == ParameterClass::X87 {
         let data = regs.read_by_id_as::<F80>(RegisterId::st0)?;
-        let value = unsafe { std::slice::from_raw_parts(&data as *const F80 as *const u8, std::mem::size_of::<F80>()) }.to_vec();
+        let value = to_byte_vec(&data);
         target.get_process().write_memory(return_slot, &value)?;
         return Ok(TypedData::builder()
             .data(value)
