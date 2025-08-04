@@ -279,7 +279,7 @@ impl Display for StoppointMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SdbType {
     byte_size: RefCell<Option<usize>>,
     info: SdbTypeInfo,
@@ -343,81 +343,13 @@ bool sdb::type::operator==(const type& rhs) const {
     return false;
 }
 */
-impl PartialEq for SdbTypeInfo {
+impl PartialEq for SdbType {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (SdbTypeInfo::BuiltinType(a), SdbTypeInfo::BuiltinType(b)) => a == b,
-            (SdbTypeInfo::Die(_), SdbTypeInfo::BuiltinType(_)) |
-            (SdbTypeInfo::BuiltinType(_), SdbTypeInfo::Die(_)) => {
-                let (from_dwarf, builtin) = if matches!(self, SdbTypeInfo::Die(_)) {
-                    (self, other)
-                } else {
-                    (other, self)
-                };
-                
-                if let (SdbTypeInfo::Die(die), SdbTypeInfo::BuiltinType(builtin_type)) = (from_dwarf, builtin) {
-                    let stripped = SdbType::new(die.clone()).strip_cvref_typedef();
-                    if stripped.is_err() { return false; }
-                    let stripped = stripped.unwrap();
-                    let die = stripped.get_die();
-                    if die.is_err() { return false; }
-                    let die = die.unwrap();
-                    let tag = die.abbrev_entry().tag;
-                    
-                    if tag == DW_TAG_base_type.0 as u64 {
-                        let encoding = die.index(DW_AT_encoding.0 as u64);
-                        if encoding.is_err() { return false; }
-                        let encoding = encoding.unwrap().as_int();
-                        if encoding.is_err() { return false; }
-                        let encoding = encoding.unwrap();
-                        
-                        match encoding as u32 {
-                            x if x == DW_ATE_boolean.0.into() => *builtin_type == BuiltinType::Boolean,
-                            x if x == DW_ATE_float.0.into() => *builtin_type == BuiltinType::FloatingPoint,
-                            x if x == DW_ATE_signed.0.into() || x == DW_ATE_unsigned.0.into() => *builtin_type == BuiltinType::Integer,
-                            x if x == DW_ATE_signed_char.0.into() || x == DW_ATE_unsigned_char.0.into() => *builtin_type == BuiltinType::Character,
-                            _ => false,
-                        }
-                    } else if tag == DW_TAG_pointer_type.0 as u64 {
-                        let pointed_type = die.index(DW_AT_type.0 as u64);
-                        if pointed_type.is_err() { return false; }
-                        let pointed_type = pointed_type.unwrap().as_type();
-                        pointed_type.is_char_type().unwrap_or(false) && *builtin_type == BuiltinType::String
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            },
-            (SdbTypeInfo::Die(a), SdbTypeInfo::Die(b)) => {
-                let lhs_stripped = SdbType::new(a.clone()).strip_all();
-                let rhs_stripped = SdbType::new(b.clone()).strip_all();
-                
-                if lhs_stripped.is_err() || rhs_stripped.is_err() { return false; }
-                let lhs_stripped = lhs_stripped.unwrap();
-                let rhs_stripped = rhs_stripped.unwrap();
-                
-                let lhs_die = lhs_stripped.get_die();
-                let rhs_die = rhs_stripped.get_die();
-                if lhs_die.is_err() || rhs_die.is_err() { return false; }
-                let lhs_die = lhs_die.unwrap();
-                let rhs_die = rhs_die.unwrap();
-                
-                let lhs_name = lhs_die.name().unwrap_or(None);
-                let rhs_name = rhs_die.name().unwrap_or(None);
-                
-                if let (Some(lhs_name), Some(rhs_name)) = (lhs_name, rhs_name) {
-                    lhs_name == rhs_name
-                } else {
-                    false
-                }
-            }
-        }
+        todo!()
     }
 }
 
-impl Eq for SdbTypeInfo {}
+impl Eq for SdbType {}
 
 impl SdbType {
     pub fn is_class_type(&self) -> Result<bool, SdbError> {
@@ -1182,134 +1114,6 @@ fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<b
     Ok(i == 2)
 }
 
-// TODO
-/*
-void setup_arguments(
-        sdb::target& target, sdb::die func,
-        std::vector<sdb::typed_data> args,
-        sdb::registers& regs,
-        std::optional<sdb::virt_addr> return_slot) {
-    std::array<sdb::register_id, 6> int_regs = {
-        sdb::register_id::rdi,
-        sdb::register_id::rsi,
-        sdb::register_id::rdx,
-        sdb::register_id::rcx,
-        sdb::register_id::r8,
-        sdb::register_id::r9
-    };
-
-    std::array<sdb::register_id, 8> sse_regs = {
-        sdb::register_id::xmm0,
-        sdb::register_id::xmm1,
-        sdb::register_id::xmm2,
-        sdb::register_id::xmm3,
-        sdb::register_id::xmm4,
-        sdb::register_id::xmm5,
-        sdb::register_id::xmm6,
-        sdb::register_id::xmm7
-    };
-    auto current_int_reg = 0;
-    auto current_sse_reg = 0;
-    struct stack_arg {
-        sdb::typed_data data;
-        std::size_t size;
-    };
-    auto stack_args = std::vector<stack_arg>{};
-    auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
-
-    auto round_up_to_eightbyte = [](std::size_t size) {
-        return (size + 7) & ~7;
-    };
-    if (func.contains(DW_AT_type)) {
-        auto ret_type = func[DW_AT_type].as_type();
-        auto ret_class = ret_type.get_parameter_classes()[0];
-        if (ret_class == sdb::parameter_class::memory) {
-            current_int_reg++;
-            regs.write_by_id(int_regs[0], return_slot->addr(), true);
-        }
-    }
-    auto params = func.parameter_types();
-    for (auto i = 0; i < params.size(); ++i) {
-        auto& param = params[i];
-        auto param_classes = param.get_parameter_classes();
-
-        if (param.is_reference_type()) {
-            if (args[i].address()) {
-                args[i] = sdb::typed_data{
-                    sdb::to_byte_vec(*args[i].address()),
-                    sdb::builtin_type::integer };
-            }
-            else {
-                rsp -= args[i].value_type().byte_size();
-                ➊ rsp &= ~(args[i].value_type().alignment() - 1);
-                target.get_process().write_memory(
-                    sdb::virt_addr{ rsp }, args[i].data());
-                args[i] = sdb::typed_data{
-                    sdb::to_byte_vec(rsp),
-                    sdb::builtin_type::integer };
-            }
-        }
-    }
-    for (auto i = 0; i < params.size(); ++i) {
-        auto& arg = args[i];
-        auto& param = params[i];
-        auto param_classes = params[i].get_parameter_classes();
-        auto param_size = param.byte_size();
-
-        auto required_int_regs = std::count(
-            param_classes.begin(), param_classes.end(),
-            sdb::parameter_class::integer);
-        auto required_sse_regs = std::count(
-            param_classes.begin(), param_classes.end(),
-            sdb::parameter_class::sse);
-
-        ➊ if (current_int_reg + required_int_regs > int_regs.size() or
-            current_sse_reg + required_sse_regs > sse_regs.size() or
-            (required_int_regs == 0 and required_sse_regs == 0)) {
-            auto size = round_up_to_eightbyte(param_size);
-            stack_args.push_back({ args[i], size });
-        }
-        ➋ else {
-            for (auto i = 0; i < param_size; i += 8) {
-                sdb::register_id reg;
-                switch (param_classes[i / 8]) {
-                case sdb::parameter_class::integer:
-                    reg = int_regs[current_int_reg++];
-                    break;
-                case sdb::parameter_class::sse:
-                    reg = sse_regs[current_sse_reg++];
-                    break;
-                case sdb::parameter_class::no_class:
-                    break;
-                default:
-                    sdb::error::send("Unsupported parameter class");
-                }
-
-                sdb::byte64 data;
-                std::copy(
-                    arg.data().begin() + i,
-                    arg.data().begin() + i + 8,
-                    data.begin());
-                regs.write_by_id(reg, data, true);
-            }
-        }
-    }
-    for (auto& [_,size] : stack_args) {
-        rsp -= size;
-    }
-    ➊ rsp &= ~0xf;
-
-    auto start_pos = rsp;
-    for (auto& [arg,size] : stack_args) {
-        target.get_process().write_memory(
-            sdb::virt_addr{ start_pos }, arg.data());
-        start_pos += size;
-    }
-    regs.write_by_id(sdb::register_id::rax, current_sse_reg, true);
-    regs.write_by_id(sdb::register_id::rsp, rsp, true);
-}
-*/
-
 pub fn setup_arguments(
     target: &Target,
     func: &Rc<Die>,
@@ -1394,28 +1198,26 @@ pub fn setup_arguments(
             stack_args.push((args[i].clone(), size));
         } else {
             for j in (0..param_size).step_by(8) {
-                let class_index = j / 8;
-                if class_index < param_classes.len() {
-                    let reg = match param_classes[class_index] {
-                        ParameterClass::Integer if current_int_reg < int_regs.len() => {
-                            let reg = int_regs[current_int_reg];
-                            current_int_reg += 1;
-                            reg
-                        },
-                        ParameterClass::Sse if current_sse_reg < sse_regs.len() => {
-                            let reg = sse_regs[current_sse_reg];
-                            current_sse_reg += 1;
-                            reg
-                        },
-                        ParameterClass::NoClass => continue,
-                        _ => return SdbError::err("Unsupported parameter class"),
-                    };
 
-                    let mut data = [0u8; 8];
-                    let end_idx = std::cmp::min(j + 8, arg.data().len());
-                    data[..end_idx - j].copy_from_slice(&arg.data()[j..end_idx]);
-                    regs.write_by_id(reg, data, true)?;
-                }
+                let reg = match param_classes[j/8] {
+                    ParameterClass::Integer => {
+                        let reg = int_regs[current_int_reg];
+                        current_int_reg += 1;
+                        reg
+                    },
+                    ParameterClass::Sse=> {
+                        let reg = sse_regs[current_sse_reg];
+                        current_sse_reg += 1;
+                        reg
+                    },
+                    ParameterClass::NoClass => continue,
+                    _ => return SdbError::err("Unsupported parameter class"),
+                };
+
+                let mut data = [0u8; 8];
+                data.copy_from_slice(&arg.data()[j..j+8]);
+                regs.write_by_id(reg, data, true)?;
+                
             }
         }
     }
