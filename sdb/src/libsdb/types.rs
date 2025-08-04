@@ -7,14 +7,22 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use gimli::{
-    DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char, DW_ATE_unsigned, DW_ATE_unsigned_char, DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_defaulted, DW_AT_encoding, DW_AT_type, DW_AT_upper_bound, DW_AT_virtuality, DW_DEFAULTED_in_class, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_class_type, DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_formal_parameter, DW_TAG_inheritance, DW_TAG_member, DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type, DW_TAG_rvalue_reference_type, DW_TAG_structure_type, DW_TAG_subprogram, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef, DW_TAG_union_type, DW_TAG_volatile_type, DW_VIRTUALITY_none, DwAte, DwTag, DW_ATE_UTF
+    DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_defaulted,
+    DW_AT_encoding, DW_AT_type, DW_AT_upper_bound, DW_AT_virtuality, DW_ATE_UTF, DW_ATE_boolean,
+    DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char, DW_ATE_unsigned, DW_ATE_unsigned_char,
+    DW_DEFAULTED_in_class, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_class_type,
+    DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_formal_parameter, DW_TAG_inheritance,
+    DW_TAG_member, DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type,
+    DW_TAG_rvalue_reference_type, DW_TAG_structure_type, DW_TAG_subprogram, DW_TAG_subrange_type,
+    DW_TAG_subroutine_type, DW_TAG_typedef, DW_TAG_union_type, DW_TAG_volatile_type,
+    DW_VIRTUALITY_none, DwAte, DwTag,
 };
 use typed_builder::TypedBuilder;
 
 use super::bit::to_byte_vec;
 
-use super::{registers::Registers, target::Target};
 use super::register_info::RegisterId;
+use super::{registers::Registers, target::Target};
 
 use super::{bit::from_bytes, registers::F80};
 
@@ -24,7 +32,7 @@ use super::dwarf::BitfieldInformation;
 
 use super::process::Process;
 
-use super::{dwarf::DieExt, sdb_error::SdbError};
+use super::sdb_error::SdbError;
 
 use super::dwarf::Die;
 
@@ -374,14 +382,15 @@ impl SdbType {
 
     pub fn alignment(&self) -> Result<usize, SdbError> {
         if !self.is_from_dwarf() {
-            return Ok(self.byte_size()?);
+            return self.byte_size();
         }
         if self.is_class_type()? {
             let mut max_alignment = 0;
             for child in self.get_die()?.children() {
-                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-                   child.contains(DW_AT_data_member_location.0 as u64) ||
-                   child.contains(DW_AT_data_bit_offset.0 as u64) {
+                if child.abbrev_entry().tag as u16 == DW_TAG_member.0
+                    && child.contains(DW_AT_data_member_location.0 as u64)
+                    || child.contains(DW_AT_data_bit_offset.0 as u64)
+                {
                     let member_type = child.index(DW_AT_type.0 as u64)?.as_type();
                     let member_alignment = member_type.alignment()?;
                     if member_alignment > max_alignment {
@@ -392,9 +401,13 @@ impl SdbType {
             return Ok(max_alignment);
         }
         if self.get_die()?.abbrev_entry().tag as u16 == DW_TAG_array_type.0 {
-            return self.get_die()?.index(DW_AT_type.0 as u64)?.as_type().alignment();
+            return self
+                .get_die()?
+                .index(DW_AT_type.0 as u64)?
+                .as_type()
+                .alignment();
         }
-        Ok(self.byte_size()?)
+        self.byte_size()
     }
 
     pub fn has_unaligned_fields(&self) -> Result<bool, SdbError> {
@@ -403,10 +416,12 @@ impl SdbType {
         }
         if self.is_class_type()? {
             for child in self.get_die()?.children() {
-                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-                   child.contains(DW_AT_data_member_location.0 as u64) {
+                if child.abbrev_entry().tag as u16 == DW_TAG_member.0
+                    && child.contains(DW_AT_data_member_location.0 as u64)
+                {
                     let member_type = child.index(DW_AT_type.0 as u64)?.as_type();
-                    let location = child.index(DW_AT_data_member_location.0 as u64)?.as_int()? as usize;
+                    let location =
+                        child.index(DW_AT_data_member_location.0 as u64)?.as_int()? as usize;
                     if location % member_type.alignment()? != 0 {
                         return Ok(true);
                     }
@@ -422,42 +437,59 @@ impl SdbType {
     pub fn is_non_trivial_for_calls(&self) -> Result<bool, SdbError> {
         let stripped = self.strip_cv_typedef()?.get_die()?;
         let tag = stripped.abbrev_entry().tag as u16;
-        
-        if tag == DW_TAG_class_type.0 || tag == DW_TAG_structure_type.0 || tag == DW_TAG_union_type.0 {
+
+        if tag == DW_TAG_class_type.0
+            || tag == DW_TAG_structure_type.0
+            || tag == DW_TAG_union_type.0
+        {
             for child in stripped.children() {
-                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-                   child.contains(DW_AT_data_member_location.0 as u64) ||
-                    child.contains(DW_AT_data_bit_offset.0 as u64) {
-                    if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
-                        return Ok(true);
-                    }
+                if (child.abbrev_entry().tag as u16 == DW_TAG_member.0
+                    && child.contains(DW_AT_data_member_location.0 as u64)
+                    || child.contains(DW_AT_data_bit_offset.0 as u64))
+                    && child
+                        .index(DW_AT_type.0 as u64)?
+                        .as_type()
+                        .is_non_trivial_for_calls()?
+                {
+                    return Ok(true);
                 }
-                if child.abbrev_entry().tag as u16 == DW_TAG_inheritance.0 {
-                    if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
-                        return Ok(true);
-                    }
+                if (child.abbrev_entry().tag as u16 == DW_TAG_inheritance.0)
+                    && child
+                        .index(DW_AT_type.0 as u64)?
+                        .as_type()
+                        .is_non_trivial_for_calls()?
+                {
+                    return Ok(true);
                 }
-                if child.contains(DW_AT_virtuality.0 as u64) &&
-                   child.index(DW_AT_virtuality.0 as u64)?.as_int()? != DW_VIRTUALITY_none.0 as u64 {
+                if child.contains(DW_AT_virtuality.0 as u64)
+                    && child.index(DW_AT_virtuality.0 as u64)?.as_int()?
+                        != DW_VIRTUALITY_none.0 as u64
+                {
                     return Ok(true);
                 }
                 if child.abbrev_entry().tag as u16 == DW_TAG_subprogram.0 {
                     if is_copy_or_move_constructor(self, &child)? {
-                        if !child.contains(DW_AT_defaulted.0 as u64) ||
-                           child.index(DW_AT_defaulted.0 as u64)?.as_int()? != DW_DEFAULTED_in_class.0 as u64 {
+                        if !child.contains(DW_AT_defaulted.0 as u64)
+                            || child.index(DW_AT_defaulted.0 as u64)?.as_int()?
+                                != DW_DEFAULTED_in_class.0 as u64
+                        {
                             return Ok(true);
                         }
-                    } else if is_destructor(&child)? {
-                        if !child.contains(DW_AT_defaulted.0 as u64) ||
-                           child.index(DW_AT_defaulted.0 as u64)?.as_int()? != DW_DEFAULTED_in_class.0 as u64 {
-                            return Ok(true);
-                        }
+                    } else if is_destructor(&child)?
+                        && (!child.contains(DW_AT_defaulted.0 as u64)
+                            || child.index(DW_AT_defaulted.0 as u64)?.as_int()?
+                                != DW_DEFAULTED_in_class.0 as u64)
+                    {
+                        return Ok(true);
                     }
                 }
             }
         }
         if tag == DW_TAG_array_type.0 {
-            return stripped.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls();
+            return stripped
+                .index(DW_AT_type.0 as u64)?
+                .as_type()
+                .is_non_trivial_for_calls();
         }
         Ok(false)
     }
@@ -479,7 +511,7 @@ impl SdbType {
         let stripped = self.strip_cv_typedef()?;
         let die = stripped.get_die()?;
         let tag = die.abbrev_entry().tag as u16;
-        
+
         if tag == DW_TAG_base_type.0 && stripped.byte_size()? <= 8 {
             let encoding = die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8;
             #[allow(non_upper_case_globals)]
@@ -492,19 +524,22 @@ impl SdbType {
                 DW_ATE_unsigned_char => classes[0] = ParameterClass::Integer,
                 _ => return SdbError::err("Unimplemented base type encoding"),
             }
-        } else if tag == DW_TAG_pointer_type.0 || 
-                  tag == DW_TAG_reference_type.0 ||
-                  tag == DW_TAG_rvalue_reference_type.0 {
+        } else if tag == DW_TAG_pointer_type.0
+            || tag == DW_TAG_reference_type.0
+            || tag == DW_TAG_rvalue_reference_type.0
+        {
             classes[0] = ParameterClass::Integer;
-        } else if tag == DW_TAG_base_type.0 &&
-                  die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8 == DW_ATE_float.0  &&
-                  stripped.byte_size()? == 16 {
+        } else if tag == DW_TAG_base_type.0
+            && die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8 == DW_ATE_float.0
+            && stripped.byte_size()? == 16
+        {
             classes[0] = ParameterClass::X87;
             classes[1] = ParameterClass::X87up;
-        } else if tag == DW_TAG_class_type.0 ||
-                  tag == DW_TAG_structure_type.0 ||
-                  tag == DW_TAG_union_type.0 ||
-                  tag == DW_TAG_array_type.0 {
+        } else if tag == DW_TAG_class_type.0
+            || tag == DW_TAG_structure_type.0
+            || tag == DW_TAG_union_type.0
+            || tag == DW_TAG_array_type.0
+        {
             classes = classify_class_type(self)?;
         }
         Ok(classes)
@@ -554,8 +589,8 @@ impl SdbType {
         }
         let encoding = stripped.index(DW_AT_encoding.0 as u64)?.as_int()? as u8;
         return Ok(stripped.abbrev_entry().tag as u16 == DW_TAG_base_type.0
-            && encoding == DW_ATE_signed_char.0.into()
-            || encoding == DW_ATE_unsigned_char.0.into());
+            && encoding == DW_ATE_signed_char.0
+            || encoding == DW_ATE_unsigned_char.0);
     }
 
     fn compute_byte_size(&self) -> Result<usize, SdbError> {
@@ -968,33 +1003,33 @@ fn classify_class_type(type_: &SdbType) -> Result<[ParameterClass; 2], SdbError>
     if type_.is_non_trivial_for_calls()? {
         return SdbError::err("NTFPOC types are not supported");
     }
-    
+
     if type_.byte_size()? > 16 || type_.has_unaligned_fields()? {
         return Ok([ParameterClass::Memory, ParameterClass::Memory]);
     }
 
     let mut classes = [ParameterClass::NoClass, ParameterClass::NoClass];
-    
+
     if type_.get_die()?.abbrev_entry().tag as u16 == DW_TAG_array_type.0 {
         let value_type = type_.get_die()?.index(DW_AT_type.0 as u64)?.as_type();
         classes = value_type.get_parameter_classes()?;
         if type_.byte_size()? > 8 && classes[1] == ParameterClass::NoClass {
             classes[1] = classes[0];
         }
-    }else{
+    } else {
         for child in type_.get_die()?.children() {
-            if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-               child.contains(DW_AT_data_member_location.0 as u64) ||
-               child.contains(DW_AT_data_bit_offset.0 as u64) {
+            if child.abbrev_entry().tag as u16 == DW_TAG_member.0
+                && child.contains(DW_AT_data_member_location.0 as u64)
+                || child.contains(DW_AT_data_bit_offset.0 as u64)
+            {
                 classify_class_field(type_, &child, &mut classes, 0)?;
             }
         }
     }
 
-    if classes[0] == ParameterClass::Memory || classes[1] == ParameterClass::Memory {
-        classes[0] = ParameterClass::Memory;
-        classes[1] = ParameterClass::Memory;
-    } else if classes[1] == ParameterClass::X87up && classes[0] != ParameterClass::X87 {
+    if (classes[0] == ParameterClass::Memory || classes[1] == ParameterClass::Memory)
+        || (classes[1] == ParameterClass::X87up && classes[0] != ParameterClass::X87)
+    {
         classes[0] = ParameterClass::Memory;
         classes[1] = ParameterClass::Memory;
     }
@@ -1010,29 +1045,28 @@ fn classify_class_field(
 ) -> Result<(), SdbError> {
     let bitfield_info = field.get_bitfield_information(type_.byte_size()? as u64)?;
     let field_type = field.index(DW_AT_type.0 as u64)?.as_type();
-    
+
     let current_bit_offset = if let Some(info) = &bitfield_info {
         info.bit_offset as i32 + bit_offset
     } else {
         field.index(DW_AT_data_member_location.0 as u64)?.as_int()? as i32 * 8 + bit_offset
     };
-    
+
     let eightbyte_index = (current_bit_offset / 64) as usize;
 
     if field_type.is_class_type()? {
         for child in field_type.get_die()?.children() {
-            if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-               child.contains(DW_AT_data_member_location.0 as u64) ||
-                child.contains(DW_AT_data_bit_offset.0 as u64) {
+            if child.abbrev_entry().tag as u16 == DW_TAG_member.0
+                && child.contains(DW_AT_data_member_location.0 as u64)
+                || child.contains(DW_AT_data_bit_offset.0 as u64)
+            {
                 classify_class_field(type_, &child, classes, current_bit_offset)?;
             }
         }
     } else {
         let field_classes = field_type.get_parameter_classes()?;
-        classes[eightbyte_index] = merge_parameter_classes(
-            classes[eightbyte_index], 
-            field_classes[0]
-        );
+        classes[eightbyte_index] =
+            merge_parameter_classes(classes[eightbyte_index], field_classes[0]);
         if eightbyte_index == 0 {
             classes[1] = merge_parameter_classes(classes[1], field_classes[1]);
         }
@@ -1078,7 +1112,7 @@ fn is_destructor(func: &Rc<Die>) -> Result<bool, SdbError> {
 fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<bool, SdbError> {
     let class_name = class_type.get_die()?.name()?;
     let func_name = func.name()?;
-    
+
     if class_name != func_name {
         return Ok(false);
     }
@@ -1091,7 +1125,11 @@ fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<b
                 if param_type.get_die()?.abbrev_entry().tag as u16 != DW_TAG_pointer_type.0 {
                     return Ok(false);
                 }
-                let pointed_type = param_type.get_die()?.index(DW_AT_type.0 as u64)?.as_type().strip_cv_typedef()?;
+                let pointed_type = param_type
+                    .get_die()?
+                    .index(DW_AT_type.0 as u64)?
+                    .as_type()
+                    .strip_cv_typedef()?;
                 if pointed_type != *class_type {
                     return Ok(false);
                 }
@@ -1101,7 +1139,11 @@ fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<b
                 if tag != DW_TAG_reference_type.0 && tag != DW_TAG_rvalue_reference_type.0 {
                     return Ok(false);
                 }
-                let ref_type = param_type.get_die()?.index(DW_AT_type.0 as u64)?.as_type().strip_cv_typedef()?;
+                let ref_type = param_type
+                    .get_die()?
+                    .index(DW_AT_type.0 as u64)?
+                    .as_type()
+                    .strip_cv_typedef()?;
                 if ref_type != *class_type {
                     return Ok(false);
                 }
@@ -1140,15 +1182,13 @@ pub fn setup_arguments(
         RegisterId::xmm6,
         RegisterId::xmm7,
     ];
-    
+
     let mut current_int_reg = 0;
     let mut current_sse_reg = 0;
     let mut stack_args = Vec::<(TypedData, usize)>::new();
     let mut rsp = regs.read_by_id_as::<u64>(RegisterId::rsp)?;
 
-    let round_up_to_eightbyte = |size: usize| -> usize {
-        (size + 7) & !7
-    };
+    let round_up_to_eightbyte = |size: usize| -> usize { (size + 7) & !7 };
 
     if func.contains(DW_AT_type.0 as u64) {
         let ret_type = func.index(DW_AT_type.0 as u64)?.as_type();
@@ -1173,7 +1213,9 @@ pub fn setup_arguments(
             } else {
                 rsp -= args[i].value_type().byte_size()? as u64;
                 rsp &= !(args[i].value_type().alignment()? as u64 - 1);
-                target.get_process().write_memory(VirtualAddress::new(rsp), args[i].data())?;
+                target
+                    .get_process()
+                    .write_memory(VirtualAddress::new(rsp), args[i].data())?;
                 args[i] = TypedData::builder()
                     .data(rsp.to_le_bytes().to_vec())
                     .type_(SdbType::new_builtin(BuiltinType::Integer))
@@ -1188,36 +1230,41 @@ pub fn setup_arguments(
         let param_classes = params[i].get_parameter_classes()?;
         let param_size = param.byte_size()?;
 
-        let required_int_regs = param_classes.iter().filter(|&&c| c == ParameterClass::Integer).count();
-        let required_sse_regs = param_classes.iter().filter(|&&c| c == ParameterClass::Sse).count();
+        let required_int_regs = param_classes
+            .iter()
+            .filter(|&&c| c == ParameterClass::Integer)
+            .count();
+        let required_sse_regs = param_classes
+            .iter()
+            .filter(|&&c| c == ParameterClass::Sse)
+            .count();
 
-        if current_int_reg + required_int_regs > int_regs.len() ||
-           current_sse_reg + required_sse_regs > sse_regs.len() ||
-           (required_int_regs == 0 && required_sse_regs == 0) {
+        if current_int_reg + required_int_regs > int_regs.len()
+            || current_sse_reg + required_sse_regs > sse_regs.len()
+            || (required_int_regs == 0 && required_sse_regs == 0)
+        {
             let size = round_up_to_eightbyte(param_size);
             stack_args.push((args[i].clone(), size));
         } else {
             for j in (0..param_size).step_by(8) {
-
-                let reg = match param_classes[j/8] {
+                let reg = match param_classes[j / 8] {
                     ParameterClass::Integer => {
                         let reg = int_regs[current_int_reg];
                         current_int_reg += 1;
                         reg
-                    },
-                    ParameterClass::Sse=> {
+                    }
+                    ParameterClass::Sse => {
                         let reg = sse_regs[current_sse_reg];
                         current_sse_reg += 1;
                         reg
-                    },
+                    }
                     ParameterClass::NoClass => continue,
                     _ => return SdbError::err("Unsupported parameter class"),
                 };
 
                 let mut data = [0u8; 8];
-                data.copy_from_slice(&arg.data()[j..j+8]);
+                data.copy_from_slice(&arg.data()[j..j + 8]);
                 regs.write_by_id(reg, data, true)?;
-                
             }
         }
     }
@@ -1229,7 +1276,9 @@ pub fn setup_arguments(
 
     let mut start_pos = rsp;
     for (arg, size) in &stack_args {
-        target.get_process().write_memory(VirtualAddress::new(start_pos), arg.data())?;
+        target
+            .get_process()
+            .write_memory(VirtualAddress::new(start_pos), arg.data())?;
         start_pos += *size as u64;
     }
     regs.write_by_id(RegisterId::rax, current_sse_reg as u64, true)?;
@@ -1250,7 +1299,9 @@ pub fn read_return_value(
     let mut used_sse = false;
 
     if ret_classes[0] == ParameterClass::Memory {
-        let value = target.get_process().read_memory(return_slot, ret_type.byte_size()?)?;
+        let value = target
+            .get_process()
+            .read_memory(return_slot, ret_type.byte_size()?)?;
         return Ok(TypedData::builder()
             .data(value)
             .type_(func.index(DW_AT_type.0 as u64)?.as_type())
@@ -1273,20 +1324,28 @@ pub fn read_return_value(
     for ret_class in ret_classes {
         match ret_class {
             ParameterClass::Integer => {
-                let reg = if used_int { RegisterId::rdx } else { RegisterId::rax };
+                let reg = if used_int {
+                    RegisterId::rdx
+                } else {
+                    RegisterId::rax
+                };
                 used_int = true;
                 let data = regs.read_by_id_as::<u64>(reg)?;
                 let new_value = data.to_le_bytes().to_vec();
                 value.extend(new_value);
-            },
+            }
             ParameterClass::Sse => {
-                let reg = if used_sse { RegisterId::xmm1 } else { RegisterId::xmm0 };
+                let reg = if used_sse {
+                    RegisterId::xmm1
+                } else {
+                    RegisterId::xmm0
+                };
                 used_sse = true;
                 let data = regs.read_by_id_as::<Byte128>(reg)?;
                 value = data.to_vec();
                 target.get_process().write_memory(return_slot, &value)?;
-            },
-            ParameterClass::NoClass => {},
+            }
+            ParameterClass::NoClass => {}
             _ => return SdbError::err("Unsupported return type"),
         }
     }

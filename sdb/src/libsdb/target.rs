@@ -16,8 +16,6 @@ use super::bit::to_byte_vec;
 
 use super::breakpoint::Breakpoint;
 
-use super::dwarf::DieExt;
-
 use super::traits::FromLowerHexStr;
 use super::types::BuiltinType;
 use super::types::SdbType;
@@ -49,11 +47,9 @@ use super::dwarf::Die;
 use super::elf::SdbElf64Sym;
 
 use super::disassembler::Disassembler;
-use super::dwarf::LineTableExt;
 use super::dwarf::LineTableIter;
 use super::elf::Elf;
 use super::process::Process;
-use super::process::ProcessExt;
 use super::process::StopReason;
 use super::process::{ProcessState, TrapType};
 use super::register_info::RegisterId;
@@ -123,6 +119,144 @@ pub struct ResolveIndirectNameResult {
 }
 
 impl Target {
+    pub fn notify_thread_lifecycle_event(self: &Rc<Self>, reason: &StopReason) {
+        let tid = reason.tid;
+        if reason.reason == ProcessState::Stopped {
+            let state = self
+                .process
+                .thread_states()
+                .borrow()
+                .get(&tid)
+                .unwrap()
+                .clone();
+            self.threads.borrow_mut().insert(
+                tid,
+                SdbThread::new(Rc::downgrade(&state), Stack::new(&Rc::downgrade(self), tid)),
+            );
+        } else {
+            self.threads.borrow_mut().remove(&tid);
+        }
+    }
+
+    pub fn create_address_breakpoint(
+        self: &Rc<Self>,
+        address: VirtualAddress,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(AddressBreakpoint::new(
+            self,
+            address,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
+    }
+
+    pub fn create_function_breakpoint(
+        self: &Rc<Self>,
+        function_name: &str,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(FunctionBreakpoint::new(
+            self,
+            function_name,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
+    }
+
+    pub fn create_line_breakpoint(
+        self: &Rc<Self>,
+        file: &Path,
+        line: usize,
+        is_hardware: bool,
+        is_internal: bool,
+    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
+        let breakpoint = Rc::new(RefCell::new(LineBreakpoint::new(
+            self,
+            file,
+            line,
+            is_hardware,
+            is_internal,
+        )?));
+        let breakpoint = self
+            .breakpoints
+            .borrow_mut()
+            .push_strong(breakpoint.clone());
+        Ok(breakpoint)
+    }
+
+    pub fn resolve_dynamic_linker_rendezvous(self: &Rc<Self>) -> Result<(), SdbError> {
+        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
+            return Ok(());
+        }
+
+        let dynamic_section = self
+            .main_elf
+            .upgrade()
+            .unwrap()
+            .get_section(".dynamic")
+            .unwrap();
+        let dynamic_start =
+            FileAddress::new(&self.main_elf.upgrade().unwrap(), dynamic_section.0.sh_addr);
+        let dynamic_size = dynamic_section.0.sh_size as usize;
+        let dynamic_bytes = self
+            .process
+            .read_memory(dynamic_start.to_virt_addr(), dynamic_size)?;
+
+        let entry_size = std::mem::size_of::<super::ffi::Elf64_Dyn>();
+        let num_entries = dynamic_size / entry_size;
+
+        for i in 0..num_entries {
+            let start_idx = i * entry_size;
+            let end_idx = start_idx + entry_size;
+            if end_idx > dynamic_bytes.len() {
+                break;
+            }
+
+            let entry_bytes = &dynamic_bytes[start_idx..end_idx];
+            let entry: super::ffi::Elf64_Dyn =
+                unsafe { std::ptr::read(entry_bytes.as_ptr() as *const super::ffi::Elf64_Dyn) };
+
+            if entry.d_tag == super::ffi::DT_DEBUG as i64 {
+                let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
+                *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
+                self.reload_dynamic_libraries()?;
+
+                let debug_info = self.read_dynamic_linker_rendezvous()?.unwrap();
+                let debug_state_addr = VirtualAddress::new(debug_info.r_brk);
+                let debug_state_bp =
+                    self.create_address_breakpoint(debug_state_addr, false, true)?;
+                let debug_state_bp = debug_state_bp.upgrade().unwrap();
+                let bp_ref = debug_state_bp.borrow_mut();
+                let mut bp = bp_ref as RefMut<dyn std::any::Any>;
+                let breakpoint = bp.downcast_mut::<AddressBreakpoint>().unwrap();
+                let target_clone = self.clone();
+                breakpoint
+                    .breakpoint
+                    .borrow_mut()
+                    .install_hit_handler(move || {
+                        target_clone.reload_dynamic_libraries()?;
+                        Ok(true)
+                    });
+                breakpoint.enable()?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn inferior_malloc(&self, size: usize) -> Result<VirtualAddress, SdbError> {
         let saved_regs = self.process.get_registers(None);
 
@@ -891,174 +1025,6 @@ fn dump_vdso(process: &Process, address: VirtualAddress) -> Result<PathBuf, SdbE
     Ok(vdso_dump_path)
 }
 
-pub trait TargetExt {
-    fn create_address_breakpoint(
-        &self,
-        address: VirtualAddress,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
-
-    fn create_function_breakpoint(
-        &self,
-        function_name: &str,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
-
-    fn create_line_breakpoint(
-        &self,
-        file: &Path,
-        line: usize,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError>;
-
-    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError>;
-
-    fn notify_thread_lifecycle_event(&self, reason: &StopReason);
-}
-
-impl TargetExt for Rc<Target> {
-    fn notify_thread_lifecycle_event(&self, reason: &StopReason) {
-        let tid = reason.tid;
-        if reason.reason == ProcessState::Stopped {
-            let state = self
-                .process
-                .thread_states()
-                .borrow()
-                .get(&tid)
-                .unwrap()
-                .clone();
-            self.threads.borrow_mut().insert(
-                tid,
-                SdbThread::new(Rc::downgrade(&state), Stack::new(&Rc::downgrade(self), tid)),
-            );
-        } else {
-            self.threads.borrow_mut().remove(&tid);
-        }
-    }
-
-    fn create_address_breakpoint(
-        &self,
-        address: VirtualAddress,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
-        let breakpoint = Rc::new(RefCell::new(AddressBreakpoint::new(
-            self,
-            address,
-            is_hardware,
-            is_internal,
-        )?));
-        let breakpoint = self
-            .breakpoints
-            .borrow_mut()
-            .push_strong(breakpoint.clone());
-        Ok(breakpoint)
-    }
-
-    fn create_function_breakpoint(
-        &self,
-        function_name: &str,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
-        let breakpoint = Rc::new(RefCell::new(FunctionBreakpoint::new(
-            self,
-            function_name,
-            is_hardware,
-            is_internal,
-        )?));
-        let breakpoint = self
-            .breakpoints
-            .borrow_mut()
-            .push_strong(breakpoint.clone());
-        Ok(breakpoint)
-    }
-
-    fn create_line_breakpoint(
-        &self,
-        file: &Path,
-        line: usize,
-        is_hardware: bool,
-        is_internal: bool,
-    ) -> Result<Weak<RefCell<dyn StoppointTrait>>, SdbError> {
-        let breakpoint = Rc::new(RefCell::new(LineBreakpoint::new(
-            self,
-            file,
-            line,
-            is_hardware,
-            is_internal,
-        )?));
-        let breakpoint = self
-            .breakpoints
-            .borrow_mut()
-            .push_strong(breakpoint.clone());
-        Ok(breakpoint)
-    }
-
-    fn resolve_dynamic_linker_rendezvous(&self) -> Result<(), SdbError> {
-        if self.dynamic_linker_rendezvous_address.borrow().addr() != 0 {
-            return Ok(());
-        }
-
-        let dynamic_section = self
-            .main_elf
-            .upgrade()
-            .unwrap()
-            .get_section(".dynamic")
-            .unwrap();
-        let dynamic_start =
-            FileAddress::new(&self.main_elf.upgrade().unwrap(), dynamic_section.0.sh_addr);
-        let dynamic_size = dynamic_section.0.sh_size as usize;
-        let dynamic_bytes = self
-            .process
-            .read_memory(dynamic_start.to_virt_addr(), dynamic_size)?;
-
-        let entry_size = std::mem::size_of::<super::ffi::Elf64_Dyn>();
-        let num_entries = dynamic_size / entry_size;
-
-        for i in 0..num_entries {
-            let start_idx = i * entry_size;
-            let end_idx = start_idx + entry_size;
-            if end_idx > dynamic_bytes.len() {
-                break;
-            }
-
-            let entry_bytes = &dynamic_bytes[start_idx..end_idx];
-            let entry: super::ffi::Elf64_Dyn =
-                unsafe { std::ptr::read(entry_bytes.as_ptr() as *const super::ffi::Elf64_Dyn) };
-
-            if entry.d_tag == super::ffi::DT_DEBUG as i64 {
-                let rendezvous_addr = VirtualAddress::new(unsafe { entry.d_un.d_ptr });
-                *self.dynamic_linker_rendezvous_address.borrow_mut() = rendezvous_addr;
-                self.reload_dynamic_libraries()?;
-
-                let debug_info = self.read_dynamic_linker_rendezvous()?.unwrap();
-                let debug_state_addr = VirtualAddress::new(debug_info.r_brk);
-                let debug_state_bp =
-                    self.create_address_breakpoint(debug_state_addr, false, true)?;
-                let debug_state_bp = debug_state_bp.upgrade().unwrap();
-                let bp_ref = debug_state_bp.borrow_mut();
-                let mut bp = bp_ref as RefMut<dyn std::any::Any>;
-                let breakpoint = bp.downcast_mut::<AddressBreakpoint>().unwrap();
-                let target_clone = self.clone();
-                breakpoint
-                    .breakpoint
-                    .borrow_mut()
-                    .install_hit_handler(move || {
-                        target_clone.reload_dynamic_libraries()?;
-                        Ok(true)
-                    });
-                breakpoint.enable()?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
 pub struct FindFunctionsResult {
     pub dwarf_functions: Vec<Rc<Die>>,
     pub elf_functions: Vec<(Rc<Elf>, Rc<SdbElf64Sym>)>,
@@ -1267,7 +1233,12 @@ fn inferior_call_from_dwarf(
             .inferior_call(call_addr, return_addr, &saved_regs, Some(tid))?;
 
     if func.contains(DW_AT_type.0 as u64) {
-        return Ok(Some(read_return_value(target, func, return_slot.unwrap(), &new_regs)?));
+        return Ok(Some(read_return_value(
+            target,
+            func,
+            return_slot.unwrap(),
+            &new_regs,
+        )?));
     }
     Ok(None)
 }

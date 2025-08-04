@@ -293,6 +293,55 @@ pub struct LineTable {
 }
 
 impl LineTable {
+    pub fn get_entry_by_address(
+        self: &Rc<Self>,
+        address: &FileAddress,
+    ) -> Result<LineTableIter, SdbError> {
+        let mut prev = LineTableIter::new(self)?;
+        if prev.current.is_none() {
+            return Ok(LineTableIter::default());
+        }
+        let mut it = prev.clone();
+        it.step()?;
+        while it.current.is_some() {
+            if prev.get_current().address <= *address
+                && it.get_current().address > *address
+                && !prev.get_current().end_sequence
+            {
+                return Ok(prev);
+            }
+            prev = it.clone();
+            it.step()?;
+        }
+        Ok(LineTableIter::default())
+    }
+
+    pub fn get_entries_by_line(
+        self: &Rc<Self>,
+        path: &Path,
+        line: u64,
+    ) -> Result<Vec<LineTableIter>, SdbError> {
+        let mut entries = Vec::new();
+        let mut it = LineTableIter::new(self)?;
+        while !it.is_end() {
+            let entry_path = &it.get_current().file_entry.as_ref().unwrap().path;
+            #[allow(clippy::collapsible_if)]
+            if it.get_current().line == line {
+                if (path.is_absolute() && entry_path == path)
+                    || (path.is_relative() && entry_path.ends_with(path))
+                {
+                    entries.push(it.clone());
+                }
+            }
+            it.step()?;
+        }
+        Ok(entries)
+    }
+
+    pub fn iter(self: &Rc<Self>) -> Result<LineTableIter, SdbError> {
+        LineTableIter::new(self)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         data: Bytes,
@@ -325,58 +374,6 @@ impl LineTable {
     }
 }
 
-pub trait LineTableExt {
-    fn get_entry_by_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError>;
-
-    fn get_entries_by_line(&self, path: &Path, line: u64) -> Result<Vec<LineTableIter>, SdbError>;
-
-    fn iter(&self) -> Result<LineTableIter, SdbError>;
-}
-
-impl LineTableExt for Rc<LineTable> {
-    fn get_entry_by_address(&self, address: &FileAddress) -> Result<LineTableIter, SdbError> {
-        let mut prev = LineTableIter::new(self)?;
-        if prev.current.is_none() {
-            return Ok(LineTableIter::default());
-        }
-        let mut it = prev.clone();
-        it.step()?;
-        while it.current.is_some() {
-            if prev.get_current().address <= *address
-                && it.get_current().address > *address
-                && !prev.get_current().end_sequence
-            {
-                return Ok(prev);
-            }
-            prev = it.clone();
-            it.step()?;
-        }
-        Ok(LineTableIter::default())
-    }
-
-    fn get_entries_by_line(&self, path: &Path, line: u64) -> Result<Vec<LineTableIter>, SdbError> {
-        let mut entries = Vec::new();
-        let mut it = LineTableIter::new(self)?;
-        while !it.is_end() {
-            let entry_path = &it.get_current().file_entry.as_ref().unwrap().path;
-            #[allow(clippy::collapsible_if)]
-            if it.get_current().line == line {
-                if (path.is_absolute() && entry_path == path)
-                    || (path.is_relative() && entry_path.ends_with(path))
-                {
-                    entries.push(it.clone());
-                }
-            }
-            it.step()?;
-        }
-        Ok(entries)
-    }
-
-    fn iter(&self) -> Result<LineTableIter, SdbError> {
-        LineTableIter::new(self)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Die {
     pos: Bytes,
@@ -394,6 +391,23 @@ pub struct BitfieldInformation {
 }
 
 impl Die {
+    pub fn parameter_types(self: &Rc<Self>) -> Result<Vec<SdbType>, SdbError> {
+        let mut ret = Vec::new();
+        if self.abbrev_entry().tag as u16 != DW_TAG_subprogram.0 {
+            return Ok(ret);
+        }
+        for c in self.children() {
+            if c.abbrev_entry().tag as u16 == DW_TAG_formal_parameter.0 {
+                ret.push(c.index(DW_AT_type.0 as u64)?.as_type());
+            }
+        }
+        Ok(ret)
+    }
+
+    pub fn children(self: &Rc<Self>) -> DieChildenIter {
+        DieChildenIter::new(self)
+    }
+
     pub fn get_bitfield_information(
         &self,
         class_byte_size: u64,
@@ -594,31 +608,6 @@ impl Die {
             return self.index(DW_AT_call_line.0 as u64)?.as_int();
         }
         self.index(DW_AT_decl_line.0 as u64)?.as_int()
-    }
-}
-
-pub trait DieExt {
-    fn children(&self) -> DieChildenIter;
-
-    fn parameter_types(&self) -> Result<Vec<SdbType>, SdbError>;
-}
-
-impl DieExt for Rc<Die> {
-    fn parameter_types(&self) -> Result<Vec<SdbType>, SdbError> {
-        let mut ret = Vec::new();
-        if self.abbrev_entry().tag as u16 != DW_TAG_subprogram.0 {
-            return Ok(ret);
-        }
-        for c in self.children() {
-            if c.abbrev_entry().tag as u16 == DW_TAG_formal_parameter.0 {
-                ret.push(c.index(DW_AT_type.0 as u64)?.as_type());
-            }
-        }
-        Ok(ret)
-    }
-
-    fn children(&self) -> DieChildenIter {
-        DieChildenIter::new(self)
     }
 }
 
@@ -1055,6 +1044,12 @@ fn parse_line_table(cu: &Rc<CompileUnit>) -> Result<Option<Rc<LineTable>>, SdbEr
 }
 
 impl CompileUnit {
+    pub fn root(self: &Rc<Self>) -> Rc<Die> {
+        let header_size = 11usize;
+        let cursor = Cursor::new(&self.data.slice(header_size..));
+        parse_die(self, cursor)
+    }
+
     pub fn new(
         parent: &Rc<Dwarf>,
         data: Bytes,
@@ -1180,18 +1175,6 @@ pub struct CompileUnitRangeEntry {
 impl CompileUnitRangeEntry {
     pub fn contains(&self, addr: &FileAddress) -> bool {
         &self.low <= addr && addr < &self.high
-    }
-}
-
-pub trait CompileUnitExt {
-    fn root(&self) -> Rc<Die>;
-}
-
-impl CompileUnitExt for Rc<CompileUnit> {
-    fn root(&self) -> Rc<Die> {
-        let header_size = 11usize;
-        let cursor = Cursor::new(&self.data.slice(header_size..));
-        parse_die(self, cursor)
     }
 }
 

@@ -1,7 +1,5 @@
 use super::bit::to_byte_span;
 
-use super::target::TargetExt;
-
 use super::breakpoint::Breakpoint;
 
 use super::bit::from_bytes;
@@ -217,8 +215,339 @@ pub struct Process {
     current_thread: RefCell<Pid>,
     thread_lifecycle_callback: RefCell<HitHandler>,
 }
-// TODO remove Ext traits
+
 impl Process {
+    pub fn cleanup_exited_threads(self: &Rc<Self>, main_stop_tid: Pid) -> Option<StopReason> {
+        let mut to_remove = Vec::new();
+        let mut to_report = None;
+        for (tid, thread) in self.threads.borrow().iter() {
+            if *tid != main_stop_tid
+                && (thread.borrow().state == ProcessState::Exited
+                    || thread.borrow().state == ProcessState::Terminated)
+            {
+                self.report_thread_lifecycle_event(&thread.borrow().reason);
+                to_remove.push(*tid);
+                if *tid == self.pid {
+                    to_report = Some(thread.borrow().reason);
+                }
+            }
+        }
+        for tid in to_remove {
+            self.threads.borrow_mut().remove(&tid);
+        }
+        to_report
+    }
+
+    pub fn report_thread_lifecycle_event(self: &Rc<Self>, reason: &StopReason) {
+        if let Some(callback) = self.thread_lifecycle_callback.borrow().as_ref() {
+            callback(reason);
+        }
+        if let Some(target) = self.target.borrow().as_ref() {
+            target
+                .upgrade()
+                .unwrap()
+                .notify_thread_lifecycle_event(reason);
+        }
+    }
+
+    pub fn stop_running_threads(self: &Rc<Self>) -> Result<(), SdbError> {
+        let threads = self.threads.borrow().clone();
+        for (tid, thread) in threads.iter() {
+            if thread.borrow().state == ProcessState::Running {
+                if !thread.borrow().pending_sigstop {
+                    unsafe {
+                        let ret = nix::libc::syscall(
+                            nix::libc::SYS_tgkill,
+                            self.pid.as_raw() as nix::libc::c_long,
+                            tid.as_raw() as nix::libc::c_long,
+                            SIGSTOP as nix::libc::c_long,
+                        );
+                        if ret == -1 {
+                            return SdbError::errno("tgkill failed", Errno::last());
+                        }
+                    }
+                }
+
+                let wait_status =
+                    waitpid(*tid, None).map_err(|e| SdbError::new_errno("Failed to waitpid", e))?;
+                let mut thread_reason = StopReason::new(*tid, wait_status)?;
+
+                if thread_reason.reason == ProcessState::Stopped {
+                    if thread_reason.info != SIGSTOP as i32 {
+                        thread.borrow_mut().pending_sigstop = true;
+                    } else if thread.borrow().pending_sigstop {
+                        thread.borrow_mut().pending_sigstop = false;
+                    }
+                }
+
+                thread_reason = self
+                    .handle_signal(thread_reason, false)?
+                    .unwrap_or(thread_reason);
+
+                let mut temp_mut = self.threads.borrow_mut();
+                let mut temp_mut = temp_mut.get_mut(tid).unwrap().borrow_mut();
+                temp_mut.reason = thread_reason;
+                temp_mut.state = thread_reason.reason;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn step_instruction(
+        self: &Rc<Self>,
+        otid: Option<Pid>, /* None */
+    ) -> Result<StopReason, SdbError> {
+        let tid = otid.unwrap_or(self.current_thread());
+        let mut to_reenable: Option<_> = None;
+        let pc = self.get_pc(Some(tid));
+        let breakpoint_sites = &self.breakpoint_sites.borrow();
+        if breakpoint_sites.enabled_breakpoint_at_address(pc) {
+            let bp = breakpoint_sites.get_by_address(pc).unwrap();
+            bp.borrow_mut().disable()?;
+            to_reenable = Some(bp);
+        }
+        self.swallow_pending_sigstop(tid)?;
+        step(tid, None).map_err(|errno| SdbError::new_errno("Could not single step", errno))?;
+        let reason = self.wait_on_signal(tid)?;
+        if let Some(to_reenable) = to_reenable {
+            to_reenable.borrow_mut().enable()?;
+        }
+        Ok(reason)
+    }
+
+    pub fn wait_on_signal(
+        self: &Rc<Self>,
+        to_await: Pid, /* -1 */
+    ) -> Result<StopReason, SdbError> {
+        let options = WaitPidFlag::__WALL;
+        let wait_status = waitpid(to_await, Some(options));
+
+        let (tid, status) = match wait_status {
+            Err(errno) => return SdbError::errno("waitpid failed", errno),
+            Ok(status) => {
+                let tid = match status {
+                    WaitStatus::Exited(pid, _) => pid,
+                    WaitStatus::Signaled(pid, _, _) => pid,
+                    WaitStatus::Stopped(pid, _) => pid,
+                    WaitStatus::PtraceEvent(pid, _, _) => pid,
+                    WaitStatus::PtraceSyscall(pid) => pid,
+                    WaitStatus::Continued(pid) => pid,
+                    WaitStatus::StillAlive => {
+                        return SdbError::err("Unexpected WaitStatus::StillAlive");
+                    }
+                };
+                (tid, status)
+            }
+        };
+
+        let mut reason = StopReason::new(tid, status)?;
+        let final_reason = self.handle_signal(reason, true)?;
+
+        if final_reason.is_none() {
+            self.resume(Some(tid))?;
+            return self.wait_on_signal(to_await);
+        }
+
+        reason = final_reason.unwrap();
+        // Implementation difference: add empty check
+        if let Some(thread) = self.threads.borrow().get(&tid) {
+            let thread = thread.clone();
+            let mut thread_state = thread.borrow_mut();
+            thread_state.reason = reason;
+            thread_state.state = reason.reason;
+        }
+
+        if reason.reason == ProcessState::Exited || reason.reason == ProcessState::Terminated {
+            self.report_thread_lifecycle_event(&reason);
+            if tid == self.pid {
+                *self.state.borrow_mut() = reason.reason;
+                return Ok(reason);
+            } else {
+                return self.wait_on_signal(Pid::from_raw(-1));
+            }
+        }
+
+        self.stop_running_threads()?;
+        reason = self.cleanup_exited_threads(tid).unwrap_or(reason);
+
+        *self.state.borrow_mut() = reason.reason;
+        self.set_current_thread(tid);
+
+        Ok(reason)
+    }
+
+    pub fn handle_signal(
+        self: &Rc<Self>,
+        mut reason: StopReason,
+        is_main_stop: bool,
+    ) -> Result<Option<StopReason>, SdbError> {
+        let tid = reason.tid;
+
+        if reason.trap_reason == Some(TrapType::Clone) && is_main_stop {
+            return Ok(None);
+        }
+
+        if self.is_attached && reason.reason == ProcessState::Stopped {
+            if !self.threads.borrow().contains_key(&tid) {
+                let thread_state = Rc::new(RefCell::new(
+                    ThreadState::builder()
+                        .tid(tid)
+                        .regs(Rc::new(RefCell::new(Registers::new(
+                            &Rc::downgrade(self),
+                            tid,
+                        ))))
+                        .build(),
+                ));
+                self.threads.borrow_mut().insert(tid, thread_state);
+                self.report_thread_lifecycle_event(&reason);
+                if is_main_stop {
+                    return Ok(None);
+                }
+            }
+
+            let thread = self.threads.borrow().get(&tid).unwrap().clone();
+            if thread.borrow().pending_sigstop && reason.info == SIGSTOP as i32 {
+                thread.borrow_mut().pending_sigstop = false;
+                return Ok(None);
+            }
+
+            self.read_all_registers(tid)?;
+            self.augment_stop_reason(&mut reason)?;
+
+            if reason.info == SIGTRAP as i32 {
+                let instr_begin = VirtualAddress::from(self.get_pc(Some(tid)).addr() - 1);
+
+                if reason.trap_reason == Some(TrapType::SoftwareBreak)
+                    && self.breakpoint_sites.borrow().contains_address(instr_begin)
+                    && self
+                        .breakpoint_sites
+                        .borrow()
+                        .get_by_address(instr_begin)?
+                        .borrow()
+                        .is_enabled()
+                {
+                    self.set_pc(instr_begin, Some(tid))?;
+
+                    let bp = self.breakpoint_sites.borrow().get_by_address(instr_begin)?;
+                    let bp = bp.borrow() as Ref<dyn Any>;
+                    let bp = bp.downcast_ref::<BreakpointSite>().unwrap();
+                    if let Some(parent) = &bp.parent.upgrade() {
+                        let should_restart = parent.borrow().notify_hit()?;
+                        if should_restart && is_main_stop {
+                            return Ok(None);
+                        }
+                    }
+                } else if reason.trap_reason == Some(TrapType::HardwareBreak) {
+                    let id = self.get_current_hardware_stoppoint(Some(tid))?;
+                    if let StoppointId::Watchpoint(watchpoint_id) = id {
+                        if let Ok(wp) = self.watchpoints.borrow().get_by_id(watchpoint_id) {
+                            let mut wp = wp.borrow_mut() as RefMut<dyn Any>;
+                            let wp = wp.downcast_mut::<WatchPoint>().unwrap();
+                            wp.update_data()?;
+                        }
+                    }
+                } else if reason.trap_reason == Some(TrapType::Syscall)
+                    && is_main_stop
+                    && self.should_resume_from_syscall(&reason)
+                {
+                    return Ok(None);
+                }
+            }
+
+            if let Some(target_weak) = self.target.borrow().as_ref() {
+                target_weak.upgrade().unwrap().notify_stop(&reason)?;
+            }
+        }
+
+        Ok(Some(reason))
+    }
+
+    pub fn populate_existing_threads(self: &Rc<Self>) {
+        let path = format!("/proc/{}/task", self.pid);
+        let entries = std::fs::read_dir(path).unwrap();
+        for entry in entries {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let tid = Pid::from_raw(
+                path.file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .parse::<i32>()
+                    .unwrap(),
+            );
+            self.threads.borrow_mut().insert(
+                tid,
+                Rc::new(RefCell::new(
+                    ThreadState::builder()
+                        .tid(tid)
+                        .regs(Rc::new(RefCell::new(Registers::new(
+                            &Rc::downgrade(self),
+                            tid,
+                        ))))
+                        .build(),
+                )),
+            );
+        }
+    }
+
+    pub fn create_breakpoint_site(
+        self: &Rc<Self>,
+        address: VirtualAddress,
+        hardware: bool, // false
+        internal: bool, // false
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
+        if self.breakpoint_sites.borrow().contains_address(address) {
+            return SdbError::err(&format!(
+                "Breakpoint site already created at address {}",
+                address.addr()
+            ));
+        }
+        let bs = Rc::new(RefCell::new(BreakpointSite::new(
+            self, address, hardware, internal,
+        )));
+        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
+        Ok(Rc::downgrade(&bs))
+    }
+
+    pub fn create_breakpoint_site_from_breakpoint(
+        self: &Rc<Self>,
+        parent: &Rc<RefCell<Breakpoint>>,
+        id: IdType,
+        address: VirtualAddress,
+        hardware: bool,
+        internal: bool,
+    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
+        if self.breakpoint_sites.borrow().contains_address(address) {
+            return SdbError::err(&format!(
+                "Breakpoint site already created at address {}",
+                address.addr()
+            ));
+        }
+        let bs = Rc::new(RefCell::new(BreakpointSite::from_breakpoint(
+            parent, id, self, address, hardware, internal,
+        )));
+        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
+        Ok(Rc::downgrade(&bs))
+    }
+
+    pub fn create_watchpoint(
+        self: &Rc<Self>,
+        address: VirtualAddress,
+        mode: StoppointMode,
+        size: usize,
+    ) -> Result<Weak<RefCell<WatchPoint>>, SdbError> {
+        if self.watchpoints.borrow().contains_address(address) {
+            return SdbError::err(&format!(
+                "Watchpoint already created at address {}",
+                address.addr()
+            ));
+        }
+        let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
+        self.watchpoints.borrow_mut().push_strong(wp.clone());
+        Ok(Rc::downgrade(&wp))
+    }
+
     pub fn inferior_call(
         self: &Rc<Self>,
         func_addr: VirtualAddress,
@@ -893,376 +1222,6 @@ impl Process {
 pub enum StoppointId {
     BreakpointSite(IdType),
     Watchpoint(IdType),
-}
-
-pub trait ProcessExt {
-    fn create_breakpoint_site(
-        &self,
-        address: VirtualAddress,
-        hardware: bool,
-        internal: bool,
-    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError>;
-
-    fn create_watchpoint(
-        &self,
-        address: VirtualAddress,
-        mode: StoppointMode,
-        size: usize,
-    ) -> Result<Weak<RefCell<WatchPoint>>, SdbError>;
-
-    fn create_breakpoint_site_from_breakpoint(
-        &self,
-        parent: &Rc<RefCell<Breakpoint>>,
-        id: IdType,
-        address: VirtualAddress,
-        hardware: bool,
-        internal: bool,
-    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError>;
-
-    fn populate_existing_threads(&self);
-
-    fn handle_signal(
-        &self,
-        reason: StopReason,
-        is_main_stop: bool,
-    ) -> Result<Option<StopReason>, SdbError>;
-
-    fn wait_on_signal(&self, to_await: Pid /* -1 */) -> Result<StopReason, SdbError>;
-
-    fn step_instruction(&self, otid: Option<Pid> /* None */) -> Result<StopReason, SdbError>;
-
-    fn stop_running_threads(&self) -> Result<(), SdbError>;
-
-    fn report_thread_lifecycle_event(&self, reason: &StopReason);
-
-    fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason>;
-}
-
-impl ProcessExt for Rc<Process> {
-    fn cleanup_exited_threads(&self, main_stop_tid: Pid) -> Option<StopReason> {
-        let mut to_remove = Vec::new();
-        let mut to_report = None;
-        for (tid, thread) in self.threads.borrow().iter() {
-            if *tid != main_stop_tid
-                && (thread.borrow().state == ProcessState::Exited
-                    || thread.borrow().state == ProcessState::Terminated)
-            {
-                self.report_thread_lifecycle_event(&thread.borrow().reason);
-                to_remove.push(*tid);
-                if *tid == self.pid {
-                    to_report = Some(thread.borrow().reason);
-                }
-            }
-        }
-        for tid in to_remove {
-            self.threads.borrow_mut().remove(&tid);
-        }
-        to_report
-    }
-
-    fn report_thread_lifecycle_event(&self, reason: &StopReason) {
-        if let Some(callback) = self.thread_lifecycle_callback.borrow().as_ref() {
-            callback(reason);
-        }
-        if let Some(target) = self.target.borrow().as_ref() {
-            target
-                .upgrade()
-                .unwrap()
-                .notify_thread_lifecycle_event(reason);
-        }
-    }
-
-    fn stop_running_threads(&self) -> Result<(), SdbError> {
-        let threads = self.threads.borrow().clone();
-        for (tid, thread) in threads.iter() {
-            if thread.borrow().state == ProcessState::Running {
-                if !thread.borrow().pending_sigstop {
-                    unsafe {
-                        let ret = nix::libc::syscall(
-                            nix::libc::SYS_tgkill,
-                            self.pid.as_raw() as nix::libc::c_long,
-                            tid.as_raw() as nix::libc::c_long,
-                            SIGSTOP as nix::libc::c_long,
-                        );
-                        if ret == -1 {
-                            return SdbError::errno("tgkill failed", Errno::last());
-                        }
-                    }
-                }
-
-                let wait_status =
-                    waitpid(*tid, None).map_err(|e| SdbError::new_errno("Failed to waitpid", e))?;
-                let mut thread_reason = StopReason::new(*tid, wait_status)?;
-
-                if thread_reason.reason == ProcessState::Stopped {
-                    if thread_reason.info != SIGSTOP as i32 {
-                        thread.borrow_mut().pending_sigstop = true;
-                    } else if thread.borrow().pending_sigstop {
-                        thread.borrow_mut().pending_sigstop = false;
-                    }
-                }
-
-                thread_reason = self
-                    .handle_signal(thread_reason, false)?
-                    .unwrap_or(thread_reason);
-
-                let mut temp_mut = self.threads.borrow_mut();
-                let mut temp_mut = temp_mut.get_mut(tid).unwrap().borrow_mut();
-                temp_mut.reason = thread_reason;
-                temp_mut.state = thread_reason.reason;
-            }
-        }
-        Ok(())
-    }
-
-    fn step_instruction(&self, otid: Option<Pid> /* None */) -> Result<StopReason, SdbError> {
-        let tid = otid.unwrap_or(self.current_thread());
-        let mut to_reenable: Option<_> = None;
-        let pc = self.get_pc(Some(tid));
-        let breakpoint_sites = &self.breakpoint_sites.borrow();
-        if breakpoint_sites.enabled_breakpoint_at_address(pc) {
-            let bp = breakpoint_sites.get_by_address(pc).unwrap();
-            bp.borrow_mut().disable()?;
-            to_reenable = Some(bp);
-        }
-        self.swallow_pending_sigstop(tid)?;
-        step(tid, None).map_err(|errno| SdbError::new_errno("Could not single step", errno))?;
-        let reason = self.wait_on_signal(tid)?;
-        if let Some(to_reenable) = to_reenable {
-            to_reenable.borrow_mut().enable()?;
-        }
-        Ok(reason)
-    }
-
-    fn wait_on_signal(&self, to_await: Pid /* -1 */) -> Result<StopReason, SdbError> {
-        let options = WaitPidFlag::__WALL;
-        let wait_status = waitpid(to_await, Some(options));
-
-        let (tid, status) = match wait_status {
-            Err(errno) => return SdbError::errno("waitpid failed", errno),
-            Ok(status) => {
-                let tid = match status {
-                    WaitStatus::Exited(pid, _) => pid,
-                    WaitStatus::Signaled(pid, _, _) => pid,
-                    WaitStatus::Stopped(pid, _) => pid,
-                    WaitStatus::PtraceEvent(pid, _, _) => pid,
-                    WaitStatus::PtraceSyscall(pid) => pid,
-                    WaitStatus::Continued(pid) => pid,
-                    WaitStatus::StillAlive => {
-                        return SdbError::err("Unexpected WaitStatus::StillAlive");
-                    }
-                };
-                (tid, status)
-            }
-        };
-
-        let mut reason = StopReason::new(tid, status)?;
-        let final_reason = self.handle_signal(reason, true)?;
-
-        if final_reason.is_none() {
-            self.resume(Some(tid))?;
-            return self.wait_on_signal(to_await);
-        }
-
-        reason = final_reason.unwrap();
-        // Implementation difference: add empty check
-        if let Some(thread) = self.threads.borrow().get(&tid) {
-            let thread = thread.clone();
-            let mut thread_state = thread.borrow_mut();
-            thread_state.reason = reason;
-            thread_state.state = reason.reason;
-        }
-
-        if reason.reason == ProcessState::Exited || reason.reason == ProcessState::Terminated {
-            self.report_thread_lifecycle_event(&reason);
-            if tid == self.pid {
-                *self.state.borrow_mut() = reason.reason;
-                return Ok(reason);
-            } else {
-                return self.wait_on_signal(Pid::from_raw(-1));
-            }
-        }
-
-        self.stop_running_threads()?;
-        reason = self.cleanup_exited_threads(tid).unwrap_or(reason);
-
-        *self.state.borrow_mut() = reason.reason;
-        self.set_current_thread(tid);
-
-        Ok(reason)
-    }
-
-    fn handle_signal(
-        &self,
-        mut reason: StopReason,
-        is_main_stop: bool,
-    ) -> Result<Option<StopReason>, SdbError> {
-        let tid = reason.tid;
-
-        if reason.trap_reason == Some(TrapType::Clone) && is_main_stop {
-            return Ok(None);
-        }
-
-        if self.is_attached && reason.reason == ProcessState::Stopped {
-            if !self.threads.borrow().contains_key(&tid) {
-                let thread_state = Rc::new(RefCell::new(
-                    ThreadState::builder()
-                        .tid(tid)
-                        .regs(Rc::new(RefCell::new(Registers::new(
-                            &Rc::downgrade(self),
-                            tid,
-                        ))))
-                        .build(),
-                ));
-                self.threads.borrow_mut().insert(tid, thread_state);
-                self.report_thread_lifecycle_event(&reason);
-                if is_main_stop {
-                    return Ok(None);
-                }
-            }
-
-            let thread = self.threads.borrow().get(&tid).unwrap().clone();
-            if thread.borrow().pending_sigstop && reason.info == SIGSTOP as i32 {
-                thread.borrow_mut().pending_sigstop = false;
-                return Ok(None);
-            }
-
-            self.read_all_registers(tid)?;
-            self.augment_stop_reason(&mut reason)?;
-
-            if reason.info == SIGTRAP as i32 {
-                let instr_begin = VirtualAddress::from(self.get_pc(Some(tid)).addr() - 1);
-
-                if reason.trap_reason == Some(TrapType::SoftwareBreak)
-                    && self.breakpoint_sites.borrow().contains_address(instr_begin)
-                    && self
-                        .breakpoint_sites
-                        .borrow()
-                        .get_by_address(instr_begin)?
-                        .borrow()
-                        .is_enabled()
-                {
-                    self.set_pc(instr_begin, Some(tid))?;
-
-                    let bp = self.breakpoint_sites.borrow().get_by_address(instr_begin)?;
-                    let bp = bp.borrow() as Ref<dyn Any>;
-                    let bp = bp.downcast_ref::<BreakpointSite>().unwrap();
-                    if let Some(parent) = &bp.parent.upgrade() {
-                        let should_restart = parent.borrow().notify_hit()?;
-                        if should_restart && is_main_stop {
-                            return Ok(None);
-                        }
-                    }
-                } else if reason.trap_reason == Some(TrapType::HardwareBreak) {
-                    let id = self.get_current_hardware_stoppoint(Some(tid))?;
-                    if let StoppointId::Watchpoint(watchpoint_id) = id {
-                        if let Ok(wp) = self.watchpoints.borrow().get_by_id(watchpoint_id) {
-                            let mut wp = wp.borrow_mut() as RefMut<dyn Any>;
-                            let wp = wp.downcast_mut::<WatchPoint>().unwrap();
-                            wp.update_data()?;
-                        }
-                    }
-                } else if reason.trap_reason == Some(TrapType::Syscall)
-                    && is_main_stop
-                    && self.should_resume_from_syscall(&reason)
-                {
-                    return Ok(None);
-                }
-            }
-
-            if let Some(target_weak) = self.target.borrow().as_ref() {
-                target_weak.upgrade().unwrap().notify_stop(&reason)?;
-            }
-        }
-
-        Ok(Some(reason))
-    }
-
-    fn populate_existing_threads(&self) {
-        let path = format!("/proc/{}/task", self.pid);
-        let entries = std::fs::read_dir(path).unwrap();
-        for entry in entries {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            let tid = Pid::from_raw(
-                path.file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .parse::<i32>()
-                    .unwrap(),
-            );
-            self.threads.borrow_mut().insert(
-                tid,
-                Rc::new(RefCell::new(
-                    ThreadState::builder()
-                        .tid(tid)
-                        .regs(Rc::new(RefCell::new(Registers::new(
-                            &Rc::downgrade(self),
-                            tid,
-                        ))))
-                        .build(),
-                )),
-            );
-        }
-    }
-
-    fn create_breakpoint_site(
-        &self,
-        address: VirtualAddress,
-        hardware: bool, // false
-        internal: bool, // false
-    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
-        if self.breakpoint_sites.borrow().contains_address(address) {
-            return SdbError::err(&format!(
-                "Breakpoint site already created at address {}",
-                address.addr()
-            ));
-        }
-        let bs = Rc::new(RefCell::new(BreakpointSite::new(
-            self, address, hardware, internal,
-        )));
-        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
-        Ok(Rc::downgrade(&bs))
-    }
-
-    fn create_breakpoint_site_from_breakpoint(
-        &self,
-        parent: &Rc<RefCell<Breakpoint>>,
-        id: IdType,
-        address: VirtualAddress,
-        hardware: bool,
-        internal: bool,
-    ) -> Result<Weak<RefCell<BreakpointSite>>, SdbError> {
-        if self.breakpoint_sites.borrow().contains_address(address) {
-            return SdbError::err(&format!(
-                "Breakpoint site already created at address {}",
-                address.addr()
-            ));
-        }
-        let bs = Rc::new(RefCell::new(BreakpointSite::from_breakpoint(
-            parent, id, self, address, hardware, internal,
-        )));
-        self.breakpoint_sites.borrow_mut().push_strong(bs.clone());
-        Ok(Rc::downgrade(&bs))
-    }
-
-    fn create_watchpoint(
-        &self,
-        address: VirtualAddress,
-        mode: StoppointMode,
-        size: usize,
-    ) -> Result<Weak<RefCell<WatchPoint>>, SdbError> {
-        if self.watchpoints.borrow().contains_address(address) {
-            return SdbError::err(&format!(
-                "Watchpoint already created at address {}",
-                address.addr()
-            ));
-        }
-        let wp = Rc::new(RefCell::new(WatchPoint::new(self, address, mode, size)?));
-        self.watchpoints.borrow_mut().push_strong(wp.clone());
-        Ok(Rc::downgrade(&wp))
-    }
 }
 
 impl Drop for Process {

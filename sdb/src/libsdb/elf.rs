@@ -74,6 +74,58 @@ pub struct Elf {
 }
 
 impl Elf {
+    pub fn data_pointer_as_file_offset(self: &Rc<Self>, ptr: &Bytes) -> FileOffset {
+        FileOffset::new(self, ptr.as_ptr() as u64 - self.data.as_ptr() as u64)
+    }
+    pub fn file_offset_as_data_pointer(self: &Rc<Self>, offset: FileOffset) -> Bytes {
+        self.data.slice(offset.off() as usize..)
+    }
+
+    pub fn get_section_start_address(self: &Rc<Self>, name: &str) -> Option<FileAddress> {
+        return self
+            .get_section(name)
+            .map(|section| FileAddress::new(self, section.0.sh_addr));
+    }
+
+    pub fn build_symbol_maps(self: &Rc<Self>) {
+        let this = self;
+        for symbol in &this.symbol_table {
+            let mangled_name = this.get_string(symbol.0.st_name as usize).to_owned();
+            let demangled_name = demangle(&mangled_name);
+            let mut symbol_name_map = this.symbol_name_map.borrow_mut();
+            if let Some(demangled_name) = demangled_name {
+                symbol_name_map.insert(demangled_name, symbol.clone());
+            }
+            symbol_name_map.insert(mangled_name.to_owned(), symbol.clone());
+            if symbol.0.st_value != 0
+                && symbol.0.st_name != 0
+                && st_type(symbol.0.st_info) != STT_TLS
+            {
+                let addr_range = FileAddressRange(
+                    FileAddress::new(self, symbol.0.st_value),
+                    FileAddress::new(self, symbol.0.st_value + symbol.0.st_size),
+                );
+                this.symbol_addr_map
+                    .borrow_mut()
+                    .insert(addr_range, symbol.clone());
+            }
+        }
+    }
+
+    pub fn get_symbol_at_virt_address(
+        self: &Rc<Self>,
+        address: VirtualAddress,
+    ) -> Option<Rc<SdbElf64Sym>> {
+        self.get_symbol_at_file_address(address.to_file_addr_elf(self))
+    }
+
+    pub fn get_symbol_containing_virt_address(
+        self: &Rc<Self>,
+        address: VirtualAddress,
+    ) -> Option<Rc<SdbElf64Sym>> {
+        self.get_symbol_containing_file_address(address.to_file_addr_elf(self))
+    }
+
     pub fn new(path: &Path) -> Result<Rc<Self>, SdbError> {
         let raw_fd = open(path, OFlag::O_RDONLY, Mode::empty())
             .map_err(|_| SdbError::new_err("Could not open ELF file"))?;
@@ -318,74 +370,6 @@ impl PartialOrd for FileAddressRange {
 impl Ord for FileAddressRange {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
-    }
-}
-
-pub trait ElfExt {
-    fn get_section_start_address(&self, name: &str) -> Option<FileAddress>;
-
-    fn build_symbol_maps(&self);
-
-    fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>>;
-
-    fn get_symbol_containing_virt_address(
-        &self,
-        address: VirtualAddress,
-    ) -> Option<Rc<SdbElf64Sym>>;
-
-    fn data_pointer_as_file_offset(&self, ptr: &Bytes) -> FileOffset;
-
-    fn file_offset_as_data_pointer(&self, offset: FileOffset) -> Bytes;
-}
-
-impl ElfExt for Rc<Elf> {
-    fn data_pointer_as_file_offset(&self, ptr: &Bytes) -> FileOffset {
-        FileOffset::new(self, ptr.as_ptr() as u64 - self.data.as_ptr() as u64)
-    }
-    fn file_offset_as_data_pointer(&self, offset: FileOffset) -> Bytes {
-        self.data.slice(offset.off() as usize..)
-    }
-
-    fn get_section_start_address(&self, name: &str) -> Option<FileAddress> {
-        return self
-            .get_section(name)
-            .map(|section| FileAddress::new(self, section.0.sh_addr));
-    }
-
-    fn build_symbol_maps(&self) {
-        let this = self;
-        for symbol in &this.symbol_table {
-            let mangled_name = this.get_string(symbol.0.st_name as usize).to_owned();
-            let demangled_name = demangle(&mangled_name);
-            let mut symbol_name_map = this.symbol_name_map.borrow_mut();
-            if let Some(demangled_name) = demangled_name {
-                symbol_name_map.insert(demangled_name, symbol.clone());
-            }
-            symbol_name_map.insert(mangled_name.to_owned(), symbol.clone());
-            if symbol.0.st_value != 0
-                && symbol.0.st_name != 0
-                && st_type(symbol.0.st_info) != STT_TLS
-            {
-                let addr_range = FileAddressRange(
-                    FileAddress::new(self, symbol.0.st_value),
-                    FileAddress::new(self, symbol.0.st_value + symbol.0.st_size),
-                );
-                this.symbol_addr_map
-                    .borrow_mut()
-                    .insert(addr_range, symbol.clone());
-            }
-        }
-    }
-
-    fn get_symbol_at_virt_address(&self, address: VirtualAddress) -> Option<Rc<SdbElf64Sym>> {
-        self.get_symbol_at_file_address(address.to_file_addr_elf(self))
-    }
-
-    fn get_symbol_containing_virt_address(
-        &self,
-        address: VirtualAddress,
-    ) -> Option<Rc<SdbElf64Sym>> {
-        self.get_symbol_containing_file_address(address.to_file_addr_elf(self))
     }
 }
 

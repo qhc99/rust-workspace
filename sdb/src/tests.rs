@@ -12,7 +12,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use libsdb::target::{Target, TargetExt};
+use libsdb::target::Target;
 
 use bytes::Bytes;
 use gimli::{
@@ -20,7 +20,11 @@ use gimli::{
     DW_OP_const4u, DW_OP_piece, DW_OP_reg16, DW_TAG_subprogram,
 };
 use libsdb::dwarf::{DwarfExpression, DwarfExpressionResult, DwarfExpressionSimpleLocation};
+use libsdb::register_info::RegisterId;
+use libsdb::syscalls::syscall_id_to_name;
 use libsdb::syscalls::syscall_name_to_id;
+use libsdb::traits::StoppointTrait;
+use libsdb::types::VirtualAddress;
 use libsdb::{bit::from_bytes, process::SyscallCatchPolicy};
 use libsdb::{
     bit::{to_byte64, to_byte128},
@@ -29,16 +33,12 @@ use libsdb::{
     registers::F80,
     types::{Byte64, Byte128},
 };
-use libsdb::{dwarf::CompileUnitExt, register_info::RegisterId};
 use libsdb::{dwarf::CompileUnitRangeList, types::StoppointMode};
-use libsdb::{dwarf::DieExt, syscalls::syscall_id_to_name};
-use libsdb::{dwarf::LineTableExt, types::VirtualAddress};
 use libsdb::{
     elf::Elf,
     process::{ProcessState, SyscallData, TrapType},
     types::FileAddress,
 };
-use libsdb::{process::ProcessExt, traits::StoppointTrait};
 use nix::{
     sys::signal::Signal::{self, SIGTRAP},
     unistd::Pid,

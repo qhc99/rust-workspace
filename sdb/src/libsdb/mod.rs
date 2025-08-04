@@ -12,9 +12,7 @@ use nix::libc::SIGTRAP;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use parse::{parse_register_value, parse_vector};
-use process::{
-    Process, ProcessExt, ProcessState, StopReason, StoppointId, SyscallCatchPolicy, TrapType,
-};
+use process::{Process, ProcessState, StopReason, StoppointId, SyscallCatchPolicy, TrapType};
 use register_info::{GRegisterInfos, RegisterType, register_info_by_name};
 use sdb_error::SdbError;
 use std::any::{Any, TypeId};
@@ -27,7 +25,6 @@ use std::path::Path;
 use std::rc::Rc;
 use syscalls::{syscall_id_to_name, syscall_name_to_id};
 use target::Target;
-use target::TargetExt;
 use traits::FromLowerHexStr;
 use traits::StoppointTrait;
 use types::{StoppointMode, VirtualAddress};
@@ -55,8 +52,6 @@ use breakpoint::FunctionBreakpoint;
 use breakpoint::LineBreakpoint;
 
 use register_info::RegisterInfo;
-
-use dwarf::DieExt;
 
 use types::TypedData;
 

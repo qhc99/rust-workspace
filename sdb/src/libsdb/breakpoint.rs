@@ -36,7 +36,6 @@ use super::bit::from_bytes;
 
 use super::dwarf::Cursor;
 use super::dwarf::Dwarf;
-use super::dwarf::LineTableExt;
 use super::dwarf::OffsetRule;
 use super::dwarf::RegisterRule;
 use super::dwarf::Rule;
@@ -45,9 +44,7 @@ use super::dwarf::UndefinedRule;
 use super::dwarf::UnwindContext;
 use super::dwarf::ValOffsetRule;
 use super::elf::Elf;
-use super::elf::ElfExt;
 use super::process::Process;
-use super::process::ProcessExt;
 use super::register_info::RegisterId;
 use super::register_info::register_info_by_dwarf;
 use super::registers::RegisterValue;
