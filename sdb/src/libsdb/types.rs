@@ -7,13 +7,7 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 use gimli::{
-    DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_encoding, DW_AT_type,
-    DW_AT_upper_bound, DW_ATE_UTF, DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char,
-    DW_ATE_unsigned, DW_ATE_unsigned_char, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_class_type,
-    DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_member, DW_TAG_pointer_type,
-    DW_TAG_ptr_to_member_type, DW_TAG_reference_type, DW_TAG_rvalue_reference_type,
-    DW_TAG_structure_type, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef,
-    DW_TAG_union_type, DW_TAG_volatile_type, DwAte, DwTag,
+    DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char, DW_ATE_unsigned, DW_ATE_unsigned_char, DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_defaulted, DW_AT_encoding, DW_AT_type, DW_AT_upper_bound, DW_AT_virtuality, DW_DEFAULTED_in_class, DW_TAG_array_type, DW_TAG_base_type, DW_TAG_class_type, DW_TAG_const_type, DW_TAG_enumeration_type, DW_TAG_formal_parameter, DW_TAG_inheritance, DW_TAG_member, DW_TAG_pointer_type, DW_TAG_ptr_to_member_type, DW_TAG_reference_type, DW_TAG_rvalue_reference_type, DW_TAG_structure_type, DW_TAG_subprogram, DW_TAG_subrange_type, DW_TAG_subroutine_type, DW_TAG_typedef, DW_TAG_union_type, DW_TAG_volatile_type, DW_VIRTUALITY_none, DwAte, DwTag, DW_ATE_UTF
 };
 use typed_builder::TypedBuilder;
 
@@ -490,147 +484,50 @@ impl SdbType {
         }
         Ok(false)
     }
-    // TODO
-    /*
-    bool sdb::type::is_non_trivial_for_calls() const {
-        auto stripped = strip_cv_typedef().get_die();
-        auto tag = stripped.abbrev_entry()->tag;
-        if (tag == DW_TAG_class_type or
-            tag == DW_TAG_structure_type or
-            tag == DW_TAG_union_type) {
-            for (auto& child : stripped.children()) {
-                if (child.abbrev_entry()->tag == DW_TAG_member and ➊
-                    child.contains(DW_AT_data_member_location) or
-                    child.contains(DW_AT_data_bit_offset)) {
-                    if (child[DW_AT_type].as_type().is_non_trivial_for_calls()) {
-                        return true;
-                    }
-                }
-                if (child.abbrev_entry()->tag == DW_TAG_inheritance) { ➋
-                    if (child[DW_AT_type].as_type().is_non_trivial_for_calls()) {
-                        return true;
-                    }
-                }
-                if (child.contains(DW_AT_virtuality) and ➌
-                    child[DW_AT_virtuality].as_int() != DW_VIRTUALITY_none) {
-                    return true;
-                }
-                if (child.abbrev_entry()->tag == DW_TAG_subprogram) { ➍
-                    if (is_copy_or_move_constructor(*this, child)) {
-                        if (!child.contains(DW_AT_defaulted) or
-                            !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
-                            return true;
-                        }
-                    }
-                    else if (is_destructor(child)) {
-                        if (!child.contains(DW_AT_defaulted) or
-                            !child[DW_AT_defaulted].as_int() != DW_DEFAULTED_in_class) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        if (tag == DW_TAG_array_type) { ➎
-            return stripped[DW_AT_type].as_type().is_non_trivial_for_calls();
-        }
-        return false;
-    }
-    */
+
     pub fn is_non_trivial_for_calls(&self) -> Result<bool, SdbError> {
         let stripped = self.strip_cv_typedef()?.get_die()?;
-        let tag = stripped.abbrev_entry().tag;
+        let tag = stripped.abbrev_entry().tag as u16;
         
-        if tag == DW_TAG_class_type.0 as u64 || tag == DW_TAG_structure_type.0 as u64 || tag == DW_TAG_union_type.0 as u64 {
+        if tag == DW_TAG_class_type.0 || tag == DW_TAG_structure_type.0 || tag == DW_TAG_union_type.0 {
             for child in stripped.children() {
                 if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-                   (child.contains(DW_AT_data_member_location.0 as u64) ||
-                    child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                   child.contains(DW_AT_data_member_location.0 as u64) ||
+                    child.contains(DW_AT_data_bit_offset.0 as u64) {
                     if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
                         return Ok(true);
                     }
                 }
-                if child.abbrev_entry().tag as u16 == gimli::DW_TAG_inheritance.0 {
+                if child.abbrev_entry().tag as u16 == DW_TAG_inheritance.0 {
                     if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
                         return Ok(true);
                     }
                 }
-                if child.contains(gimli::DW_AT_virtuality.0 as u64) &&
-                   child.index(gimli::DW_AT_virtuality.0 as u64)?.as_int()? != (gimli::DW_VIRTUALITY_none.0 as i64).try_into().unwrap() {
+                if child.contains(DW_AT_virtuality.0 as u64) &&
+                   child.index(DW_AT_virtuality.0 as u64)?.as_int()? != DW_VIRTUALITY_none.0 as u64 {
                     return Ok(true);
                 }
-                if child.abbrev_entry().tag as u16 == gimli::DW_TAG_subprogram.0 {
-                    if is_copy_or_move_constructor(&SdbType::new(stripped.clone()), &child)? {
-                        if !child.contains(gimli::DW_AT_defaulted.0 as u64) ||
-                           child.index(gimli::DW_AT_defaulted.0 as u64)?.as_int()? != (gimli::DW_DEFAULTED_in_class.0 as i64).try_into().unwrap() {
+                if child.abbrev_entry().tag as u16 == DW_TAG_subprogram.0 {
+                    if is_copy_or_move_constructor(self, &child)? {
+                        if !child.contains(DW_AT_defaulted.0 as u64) ||
+                           child.index(DW_AT_defaulted.0 as u64)?.as_int()? != DW_DEFAULTED_in_class.0 as u64 {
                             return Ok(true);
                         }
                     } else if is_destructor(&child)? {
-                        if !child.contains(gimli::DW_AT_defaulted.0 as u64) ||
-                           child.index(gimli::DW_AT_defaulted.0 as u64)?.as_int()? != (gimli::DW_DEFAULTED_in_class.0 as i64).try_into().unwrap() {
+                        if !child.contains(DW_AT_defaulted.0 as u64) ||
+                           child.index(DW_AT_defaulted.0 as u64)?.as_int()? != DW_DEFAULTED_in_class.0 as u64 {
                             return Ok(true);
                         }
                     }
                 }
             }
         }
-        if tag == DW_TAG_array_type.0 as u64 {
+        if tag == DW_TAG_array_type.0 {
             return stripped.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls();
         }
         Ok(false)
     }
-    // TODO
-    /*
-    std::array<sdb::parameter_class, 2> sdb::type::get_parameter_classes() const {
-        std::array<parameter_class, 2> classes = { ➊
-            parameter_class::no_class, parameter_class::no_class };
 
-        if (!is_from_dwarf()) { ➋
-            switch (get_builtin_type()) {
-            case builtin_type::boolean: classes[0] = parameter_class::integer; break;
-            case builtin_type::character: classes[0] = parameter_class::integer; break;
-            case builtin_type::integer: classes[0] = parameter_class::integer; break;
-            case builtin_type::floating_point: classes[0] = parameter_class::sse; break;
-            case builtin_type::string: classes[0] = parameter_class::integer; break;
-            }
-            return classes;
-        }
-
-        auto stripped = strip_cv_typedef();
-        auto die = stripped.get_die();
-        auto tag = die.abbrev_entry()->tag;
-        if (tag == DW_TAG_base_type and stripped.byte_size() <= 8) { ➌
-            switch (die[DW_AT_encoding].as_int()) {
-            case DW_ATE_boolean: classes[0] = parameter_class::integer; break;
-            case DW_ATE_float: classes[0] = parameter_class::sse; break;
-            case DW_ATE_signed: classes[0] = parameter_class::integer; break;
-            case DW_ATE_signed_char: classes[0] = parameter_class::integer; break;
-            case DW_ATE_unsigned: classes[0] = parameter_class::integer; break;
-            case DW_ATE_unsigned_char: classes[0] = parameter_class::integer; break;
-            default: sdb::error::send("Unimplemented base type encoding");
-            }
-        }
-        else if (tag == DW_TAG_pointer_type or ➍
-            tag == DW_TAG_reference_type or
-            tag == DW_TAG_rvalue_reference_type) {
-            classes[0] = parameter_class::integer;
-        }
-        else if (tag == DW_TAG_base_type and ➎
-            die[DW_AT_encoding].as_int() == DW_ATE_float and
-            stripped.byte_size() == 16) {
-            classes[0] = parameter_class::x87;
-            classes[1] = parameter_class::x87up;
-        }
-        else if (tag == DW_TAG_class_type or ➏
-            tag == DW_TAG_structure_type or
-            tag == DW_TAG_union_type or
-            tag == DW_TAG_array_type) {
-            classes = classify_class_type(*this);
-        }
-        return classes;
-    }
-
-    */
     pub fn get_parameter_classes(&self) -> Result<[ParameterClass; 2], SdbError> {
         let mut classes = [ParameterClass::NoClass, ParameterClass::NoClass];
 
@@ -647,32 +544,33 @@ impl SdbType {
 
         let stripped = self.strip_cv_typedef()?;
         let die = stripped.get_die()?;
-        let tag = die.abbrev_entry().tag;
+        let tag = die.abbrev_entry().tag as u16;
         
-        if tag as u16 == DW_TAG_base_type.0 && stripped.byte_size()? <= 8 {
-            let encoding = die.index(DW_AT_encoding.0 as u64)?.as_int()? as u32;
-            match encoding {
-                x if x == DW_ATE_boolean.0 as u32 => classes[0] = ParameterClass::Integer,
-                x if x == DW_ATE_float.0 as u32 => classes[0] = ParameterClass::Sse,
-                x if x == DW_ATE_signed.0 as u32 => classes[0] = ParameterClass::Integer,
-                x if x == DW_ATE_signed_char.0 as u32 => classes[0] = ParameterClass::Integer,
-                x if x == DW_ATE_unsigned.0 as u32 => classes[0] = ParameterClass::Integer,
-                x if x == DW_ATE_unsigned_char.0 as u32 => classes[0] = ParameterClass::Integer,
+        if tag == DW_TAG_base_type.0 && stripped.byte_size()? <= 8 {
+            let encoding = die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8;
+            #[allow(non_upper_case_globals)]
+            match DwAte(encoding) {
+                DW_ATE_boolean => classes[0] = ParameterClass::Integer,
+                DW_ATE_float => classes[0] = ParameterClass::Sse,
+                DW_ATE_signed => classes[0] = ParameterClass::Integer,
+                DW_ATE_signed_char => classes[0] = ParameterClass::Integer,
+                DW_ATE_unsigned => classes[0] = ParameterClass::Integer,
+                DW_ATE_unsigned_char => classes[0] = ParameterClass::Integer,
                 _ => return SdbError::err("Unimplemented base type encoding"),
             }
-        } else if tag as u16 == DW_TAG_pointer_type.0 || 
-                  tag as u16 == DW_TAG_reference_type.0 ||
-                  tag as u16 == DW_TAG_rvalue_reference_type.0 {
+        } else if tag == DW_TAG_pointer_type.0 || 
+                  tag == DW_TAG_reference_type.0 ||
+                  tag == DW_TAG_rvalue_reference_type.0 {
             classes[0] = ParameterClass::Integer;
-        } else if tag as u16 == DW_TAG_base_type.0 &&
-                  die.index(DW_AT_encoding.0 as u64)?.as_int()? as u32 == DW_ATE_float.0 as u32 &&
+        } else if tag == DW_TAG_base_type.0 &&
+                  die.index(DW_AT_encoding.0 as u64)?.as_int()? as u8 == DW_ATE_float.0  &&
                   stripped.byte_size()? == 16 {
             classes[0] = ParameterClass::X87;
             classes[1] = ParameterClass::X87up;
-        } else if tag as u16 == DW_TAG_class_type.0 ||
-                  tag as u16 == DW_TAG_structure_type.0 ||
-                  tag as u16 == DW_TAG_union_type.0 ||
-                  tag as u16 == DW_TAG_array_type.0 {
+        } else if tag == DW_TAG_class_type.0 ||
+                  tag == DW_TAG_structure_type.0 ||
+                  tag == DW_TAG_union_type.0 ||
+                  tag == DW_TAG_array_type.0 {
             classes = classify_class_type(self)?;
         }
         Ok(classes)
@@ -1132,87 +1030,28 @@ pub enum ParameterClass {
     NoClass,
 }
 
-// TODO
-/*
-std::array<sdb::parameter_class, 2> classify_class_type(
-        const sdb::type& type) {
-    if (type.is_non_trivial_for_calls()) { ➊
-        sdb::error::send("NTFPOC types are not supported");
-    }
-
-    if (type.byte_size() > 16 or ➋
-        type.has_unaligned_fields()) {
-        return {
-            sdb::parameter_class::memory,
-            sdb::parameter_class::memory
-        };
-    }
-
-    std::array<sdb::parameter_class, 2> classes = { ➌
-        sdb::parameter_class::no_class,
-        sdb::parameter_class::no_class
-    };
-
-    if (type.get_die().abbrev_entry()->tag == DW_TAG_array_type) { ➍
-        auto value_type = type.get_die()[DW_AT_type].as_type();
-        classes = value_type.get_parameter_classes();
-        if (type.byte_size() > 8 and classes[1] == sdb::parameter_class::no_class) {
-            classes[1] = classes[0];
-        }
-    }
-    else { ➎
-        for (auto child : type.get_die().children()) {
-            if (child.abbrev_entry()->tag == DW_TAG_member and
-                child.contains(DW_AT_data_member_location) or
-                child.contains(DW_AT_data_bit_offset)) {
-                classify_class_field(type, child, classes, 0);
-            }
-        }
-    }
-
-    if (classes[0] == sdb::parameter_class::memory or ➏
-        classes[1] == sdb::parameter_class::memory) {
-        classes[0] = classes[1] = sdb::parameter_class::memory;
-    }
-    else if (classes[1] == sdb::parameter_class::x87up and
-        classes[0] != sdb::parameter_class::x87) {
-        classes[0] = classes[1] = sdb::parameter_class::memory;
-    }
-
-    return classes;
-}
-*/
-
 fn classify_class_type(type_: &SdbType) -> Result<[ParameterClass; 2], SdbError> {
+    if type_.is_non_trivial_for_calls()? {
+        return SdbError::err("NTFPOC types are not supported");
+    }
+    
+    if type_.byte_size()? > 16 || type_.has_unaligned_fields()? {
+        return Ok([ParameterClass::Memory, ParameterClass::Memory]);
+    }
+
     let mut classes = [ParameterClass::NoClass, ParameterClass::NoClass];
     
-    if type_.byte_size()? > 16 {
-        classes[0] = ParameterClass::Memory;
-        classes[1] = ParameterClass::Memory;
-        return Ok(classes);
-    }
-
-    if type_.is_non_trivial_for_calls()? {
-        classes[0] = ParameterClass::Memory;
-        classes[1] = ParameterClass::Memory;
-        return Ok(classes);
-    }
-
-    let stripped = type_.strip_cv_typedef()?;
-    let die = stripped.get_die()?;
-    let tag = die.abbrev_entry().tag;
-    
-    if tag as u16 == DW_TAG_array_type.0 {
-        classes[0] = ParameterClass::Memory;
-        classes[1] = ParameterClass::Memory;
-        return Ok(classes);
-    }
-
-    if tag as u16 == DW_TAG_class_type.0 || tag as u16 == DW_TAG_structure_type.0 || tag as u16 == DW_TAG_union_type.0 {
-        for child in die.children() {
+    if type_.get_die()?.abbrev_entry().tag as u16 == DW_TAG_array_type.0 {
+        let value_type = type_.get_die()?.index(DW_AT_type.0 as u64)?.as_type();
+        classes = value_type.get_parameter_classes()?;
+        if type_.byte_size()? > 8 && classes[1] == ParameterClass::NoClass {
+            classes[1] = classes[0];
+        }
+    }else{
+        for child in type_.get_die()?.children() {
             if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-               (child.contains(DW_AT_data_member_location.0 as u64) ||
-                child.contains(DW_AT_data_bit_offset.0 as u64)) {
+               child.contains(DW_AT_data_member_location.0 as u64) ||
+               child.contains(DW_AT_data_bit_offset.0 as u64) {
                 classify_class_field(type_, &child, &mut classes, 0)?;
             }
         }
@@ -1302,43 +1141,6 @@ fn is_destructor(func: &Rc<Die>) -> Result<bool, SdbError> {
         .unwrap_or(false));
 }
 
-// TODO
-/*
-bool is_copy_or_move_constructor(
-        const sdb::type& class_type, const sdb::die& func) {
-    auto class_name = class_type.get_die().name();
-    if (class_name != func.name()) return false;
-
-    int i = 0;
-    for (auto child : func.children()) {
-        if (child.abbrev_entry()->tag == DW_TAG_formal_parameter) {
-            if (i == 0) {
-                auto type = child[DW_AT_type].as_type();
-                if (type.get_die().abbrev_entry()->tag != DW_TAG_pointer_type)
-                    return false;
-                if (type.get_die()[DW_AT_type].as_type().strip_cv_typedef() != class_type)
-                    return false;
-            }
-            else if (i == 1) {
-                auto type = child[DW_AT_type].as_type();
-                auto tag = type.get_die().abbrev_entry()->tag;
-                if (tag != DW_TAG_reference_type and
-                    tag != DW_TAG_rvalue_reference_type)
-                    return false;
-                auto ref = type.get_die()[DW_AT_type].as_type().strip_cv_typedef();
-                if (ref != class_type)
-                    return false;
-            }
-            else {
-                return false;
-            }
-        }
-        ++i;
-    }
-    return i == 2;
-}
-*/
-
 fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<bool, SdbError> {
     let class_name = class_type.get_die()?.name()?;
     let func_name = func.name()?;
@@ -1349,7 +1151,7 @@ fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<b
 
     let mut i = 0;
     for child in func.children() {
-        if child.abbrev_entry().tag as u16 == gimli::DW_TAG_formal_parameter.0 {
+        if child.abbrev_entry().tag as u16 == DW_TAG_formal_parameter.0 {
             if i == 0 {
                 let param_type = child.index(DW_AT_type.0 as u64)?.as_type();
                 if param_type.get_die()?.abbrev_entry().tag as u16 != DW_TAG_pointer_type.0 {
@@ -1361,8 +1163,8 @@ fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<b
                 }
             } else if i == 1 {
                 let param_type = child.index(DW_AT_type.0 as u64)?.as_type();
-                let tag = param_type.get_die()?.abbrev_entry().tag;
-                if tag as u16 != DW_TAG_reference_type.0 && tag as u16 != DW_TAG_rvalue_reference_type.0 {
+                let tag = param_type.get_die()?.abbrev_entry().tag as u16;
+                if tag != DW_TAG_reference_type.0 && tag != DW_TAG_rvalue_reference_type.0 {
                     return Ok(false);
                 }
                 let ref_type = param_type.get_die()?.index(DW_AT_type.0 as u64)?.as_type().strip_cv_typedef()?;
