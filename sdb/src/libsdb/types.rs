@@ -5,6 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use bytemuck::{Pod, Zeroable};
 use gimli::{
     DW_AT_byte_size, DW_AT_data_bit_offset, DW_AT_data_member_location, DW_AT_encoding, DW_AT_type,
     DW_AT_upper_bound, DW_ATE_UTF, DW_ATE_boolean, DW_ATE_float, DW_ATE_signed, DW_ATE_signed_char,
@@ -17,6 +18,7 @@ use gimli::{
 use typed_builder::TypedBuilder;
 
 use super::{registers::Registers, target::Target};
+use super::register_info::RegisterId;
 
 use super::{bit::from_bytes, registers::F80};
 
@@ -56,6 +58,10 @@ macro_rules! strip {
 pub struct VirtualAddress {
     addr: u64,
 }
+
+unsafe impl Pod for VirtualAddress {}
+
+unsafe impl Zeroable for VirtualAddress {}
 
 #[derive(Default, Debug)]
 pub struct FileOffset {
@@ -277,7 +283,7 @@ impl Display for StoppointMode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SdbType {
     byte_size: RefCell<Option<usize>>,
     info: SdbTypeInfo,
@@ -343,7 +349,75 @@ bool sdb::type::operator==(const type& rhs) const {
 */
 impl PartialEq for SdbTypeInfo {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        match (self, other) {
+            (SdbTypeInfo::BuiltinType(a), SdbTypeInfo::BuiltinType(b)) => a == b,
+            (SdbTypeInfo::Die(_), SdbTypeInfo::BuiltinType(_)) |
+            (SdbTypeInfo::BuiltinType(_), SdbTypeInfo::Die(_)) => {
+                let (from_dwarf, builtin) = if matches!(self, SdbTypeInfo::Die(_)) {
+                    (self, other)
+                } else {
+                    (other, self)
+                };
+                
+                if let (SdbTypeInfo::Die(die), SdbTypeInfo::BuiltinType(builtin_type)) = (from_dwarf, builtin) {
+                    let stripped = SdbType::new(die.clone()).strip_cvref_typedef();
+                    if stripped.is_err() { return false; }
+                    let stripped = stripped.unwrap();
+                    let die = stripped.get_die();
+                    if die.is_err() { return false; }
+                    let die = die.unwrap();
+                    let tag = die.abbrev_entry().tag;
+                    
+                    if tag == DW_TAG_base_type.0 as u64 {
+                        let encoding = die.index(DW_AT_encoding.0 as u64);
+                        if encoding.is_err() { return false; }
+                        let encoding = encoding.unwrap().as_int();
+                        if encoding.is_err() { return false; }
+                        let encoding = encoding.unwrap();
+                        
+                        match encoding as u32 {
+                            x if x == DW_ATE_boolean.0.into() => *builtin_type == BuiltinType::Boolean,
+                            x if x == DW_ATE_float.0.into() => *builtin_type == BuiltinType::FloatingPoint,
+                            x if x == DW_ATE_signed.0.into() || x == DW_ATE_unsigned.0.into() => *builtin_type == BuiltinType::Integer,
+                            x if x == DW_ATE_signed_char.0.into() || x == DW_ATE_unsigned_char.0.into() => *builtin_type == BuiltinType::Character,
+                            _ => false,
+                        }
+                    } else if tag == DW_TAG_pointer_type.0 as u64 {
+                        let pointed_type = die.index(DW_AT_type.0 as u64);
+                        if pointed_type.is_err() { return false; }
+                        let pointed_type = pointed_type.unwrap().as_type();
+                        pointed_type.is_char_type().unwrap_or(false) && *builtin_type == BuiltinType::String
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            },
+            (SdbTypeInfo::Die(a), SdbTypeInfo::Die(b)) => {
+                let lhs_stripped = SdbType::new(a.clone()).strip_all();
+                let rhs_stripped = SdbType::new(b.clone()).strip_all();
+                
+                if lhs_stripped.is_err() || rhs_stripped.is_err() { return false; }
+                let lhs_stripped = lhs_stripped.unwrap();
+                let rhs_stripped = rhs_stripped.unwrap();
+                
+                let lhs_die = lhs_stripped.get_die();
+                let rhs_die = rhs_stripped.get_die();
+                if lhs_die.is_err() || rhs_die.is_err() { return false; }
+                let lhs_die = lhs_die.unwrap();
+                let rhs_die = rhs_die.unwrap();
+                
+                let lhs_name = lhs_die.name().unwrap_or(None);
+                let rhs_name = rhs_die.name().unwrap_or(None);
+                
+                if let (Some(lhs_name), Some(rhs_name)) = (lhs_name, rhs_name) {
+                    lhs_name == rhs_name
+                } else {
+                    false
+                }
+            }
+        }
     }
 }
 
@@ -396,7 +470,28 @@ impl SdbType {
     }
     */
     pub fn alignment(&self) -> Result<usize, SdbError> {
-        todo!()
+        if !self.is_from_dwarf() {
+            return Ok(self.byte_size()?);
+        }
+        if self.is_class_type()? {
+            let mut max_alignment = 0;
+            for child in self.get_die()?.children() {
+                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
+                   (child.contains(DW_AT_data_member_location.0 as u64) ||
+                    child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                    let member_type = child.index(DW_AT_type.0 as u64)?.as_type();
+                    let member_alignment = member_type.alignment()?;
+                    if member_alignment > max_alignment {
+                        max_alignment = member_alignment;
+                    }
+                }
+            }
+            return Ok(max_alignment);
+        }
+        if self.get_die()?.abbrev_entry().tag as u16 == DW_TAG_array_type.0 {
+            return self.get_die()?.index(DW_AT_type.0 as u64)?.as_type().alignment();
+        }
+        Ok(self.byte_size()?)
     }
     // TODO
     /*
@@ -423,7 +518,25 @@ impl SdbType {
     }
     */
     pub fn has_unaligned_fields(&self) -> Result<bool, SdbError> {
-        todo!()
+        if !self.is_from_dwarf() {
+            return Ok(false);
+        }
+        if self.is_class_type()? {
+            for child in self.get_die()?.children() {
+                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
+                   child.contains(DW_AT_data_member_location.0 as u64) {
+                    let member_type = child.index(DW_AT_type.0 as u64)?.as_type();
+                    let location = child.index(DW_AT_data_member_location.0 as u64)?.as_int()? as usize;
+                    if location % member_type.alignment()? != 0 {
+                        return Ok(true);
+                    }
+                    if member_type.has_unaligned_fields()? {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
     }
     // TODO
     /*
@@ -473,7 +586,46 @@ impl SdbType {
     }
     */
     pub fn is_non_trivial_for_calls(&self) -> Result<bool, SdbError> {
-        todo!()
+        let stripped = self.strip_cv_typedef()?.get_die()?;
+        let tag = stripped.abbrev_entry().tag;
+        
+        if tag == DW_TAG_class_type.0 as u64 || tag == DW_TAG_structure_type.0 as u64 || tag == DW_TAG_union_type.0 as u64 {
+            for child in stripped.children() {
+                if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
+                   (child.contains(DW_AT_data_member_location.0 as u64) ||
+                    child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                    if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
+                        return Ok(true);
+                    }
+                }
+                if child.abbrev_entry().tag as u16 == gimli::DW_TAG_inheritance.0 {
+                    if child.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls()? {
+                        return Ok(true);
+                    }
+                }
+                if child.contains(gimli::DW_AT_virtuality.0 as u64) &&
+                   child.index(gimli::DW_AT_virtuality.0 as u64)?.as_int()? != (gimli::DW_VIRTUALITY_none.0 as i64).try_into().unwrap() {
+                    return Ok(true);
+                }
+                if child.abbrev_entry().tag as u16 == gimli::DW_TAG_subprogram.0 {
+                    if is_copy_or_move_constructor(&SdbType::new(stripped.clone()), &child)? {
+                        if !child.contains(gimli::DW_AT_defaulted.0 as u64) ||
+                           child.index(gimli::DW_AT_defaulted.0 as u64)?.as_int()? != (gimli::DW_DEFAULTED_in_class.0 as i64).try_into().unwrap() {
+                            return Ok(true);
+                        }
+                    } else if is_destructor(&child)? {
+                        if !child.contains(gimli::DW_AT_defaulted.0 as u64) ||
+                           child.index(gimli::DW_AT_defaulted.0 as u64)?.as_int()? != (gimli::DW_DEFAULTED_in_class.0 as i64).try_into().unwrap() {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        if tag == DW_TAG_array_type.0 as u64 {
+            return stripped.index(DW_AT_type.0 as u64)?.as_type().is_non_trivial_for_calls();
+        }
+        Ok(false)
     }
     // TODO
     /*
@@ -528,7 +680,50 @@ impl SdbType {
 
     */
     pub fn get_parameter_classes(&self) -> Result<[ParameterClass; 2], SdbError> {
-        todo!()
+        let mut classes = [ParameterClass::NoClass, ParameterClass::NoClass];
+
+        if !self.is_from_dwarf() {
+            match self.get_builtin_type()? {
+                BuiltinType::Boolean => classes[0] = ParameterClass::Integer,
+                BuiltinType::Character => classes[0] = ParameterClass::Integer,
+                BuiltinType::Integer => classes[0] = ParameterClass::Integer,
+                BuiltinType::FloatingPoint => classes[0] = ParameterClass::Sse,
+                BuiltinType::String => classes[0] = ParameterClass::Integer,
+            }
+            return Ok(classes);
+        }
+
+        let stripped = self.strip_cv_typedef()?;
+        let die = stripped.get_die()?;
+        let tag = die.abbrev_entry().tag;
+        
+        if tag as u16 == DW_TAG_base_type.0 && stripped.byte_size()? <= 8 {
+            let encoding = die.index(DW_AT_encoding.0 as u64)?.as_int()? as u32;
+            match encoding {
+                x if x == DW_ATE_boolean.0 as u32 => classes[0] = ParameterClass::Integer,
+                x if x == DW_ATE_float.0 as u32 => classes[0] = ParameterClass::Sse,
+                x if x == DW_ATE_signed.0 as u32 => classes[0] = ParameterClass::Integer,
+                x if x == DW_ATE_signed_char.0 as u32 => classes[0] = ParameterClass::Integer,
+                x if x == DW_ATE_unsigned.0 as u32 => classes[0] = ParameterClass::Integer,
+                x if x == DW_ATE_unsigned_char.0 as u32 => classes[0] = ParameterClass::Integer,
+                _ => return SdbError::err("Unimplemented base type encoding"),
+            }
+        } else if tag as u16 == DW_TAG_pointer_type.0 || 
+                  tag as u16 == DW_TAG_reference_type.0 ||
+                  tag as u16 == DW_TAG_rvalue_reference_type.0 {
+            classes[0] = ParameterClass::Integer;
+        } else if tag as u16 == DW_TAG_base_type.0 &&
+                  die.index(DW_AT_encoding.0 as u64)?.as_int()? as u32 == DW_ATE_float.0 as u32 &&
+                  stripped.byte_size()? == 16 {
+            classes[0] = ParameterClass::X87;
+            classes[1] = ParameterClass::X87up;
+        } else if tag as u16 == DW_TAG_class_type.0 ||
+                  tag as u16 == DW_TAG_structure_type.0 ||
+                  tag as u16 == DW_TAG_union_type.0 ||
+                  tag as u16 == DW_TAG_array_type.0 {
+            classes = classify_class_type(self)?;
+        }
+        Ok(classes)
     }
 
     pub fn new(die: Rc<Die>) -> Self {
@@ -542,6 +737,13 @@ impl SdbType {
         Self {
             byte_size: RefCell::new(None),
             info,
+        }
+    }
+
+    pub fn new_builtin(builtin_type: BuiltinType) -> Self {
+        Self {
+            byte_size: RefCell::new(None),
+            info: SdbTypeInfo::BuiltinType(builtin_type),
         }
     }
 
@@ -568,8 +770,8 @@ impl SdbType {
         }
         let encoding = stripped.index(DW_AT_encoding.0 as u64)?.as_int()? as u8;
         return Ok(stripped.abbrev_entry().tag as u16 == DW_TAG_base_type.0
-            && encoding == DW_ATE_signed_char.0
-            || encoding == DW_ATE_unsigned_char.0);
+            && encoding == DW_ATE_signed_char.0.into()
+            || encoding == DW_ATE_unsigned_char.0.into());
     }
 
     fn compute_byte_size(&self) -> Result<usize, SdbError> {
@@ -957,7 +1159,7 @@ fn visualize_class_type(proc: &Process, data: &TypedData, depth: i32) -> Result<
     Ok(ret)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BuiltinType {
     String,
     Character,
@@ -1030,7 +1232,49 @@ std::array<sdb::parameter_class, 2> classify_class_type(
 */
 
 fn classify_class_type(type_: &SdbType) -> Result<[ParameterClass; 2], SdbError> {
-    todo!()
+    let mut classes = [ParameterClass::NoClass, ParameterClass::NoClass];
+    
+    if type_.byte_size()? > 16 {
+        classes[0] = ParameterClass::Memory;
+        classes[1] = ParameterClass::Memory;
+        return Ok(classes);
+    }
+
+    if type_.is_non_trivial_for_calls()? {
+        classes[0] = ParameterClass::Memory;
+        classes[1] = ParameterClass::Memory;
+        return Ok(classes);
+    }
+
+    let stripped = type_.strip_cv_typedef()?;
+    let die = stripped.get_die()?;
+    let tag = die.abbrev_entry().tag;
+    
+    if tag as u16 == DW_TAG_array_type.0 {
+        classes[0] = ParameterClass::Memory;
+        classes[1] = ParameterClass::Memory;
+        return Ok(classes);
+    }
+
+    if tag as u16 == DW_TAG_class_type.0 || tag as u16 == DW_TAG_structure_type.0 || tag as u16 == DW_TAG_union_type.0 {
+        for child in die.children() {
+            if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
+               (child.contains(DW_AT_data_member_location.0 as u64) ||
+                child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                classify_class_field(type_, &child, &mut classes, 0)?;
+            }
+        }
+    }
+
+    if classes[0] == ParameterClass::Memory || classes[1] == ParameterClass::Memory {
+        classes[0] = ParameterClass::Memory;
+        classes[1] = ParameterClass::Memory;
+    } else if classes[1] == ParameterClass::X87up && classes[0] != ParameterClass::X87 {
+        classes[0] = ParameterClass::Memory;
+        classes[1] = ParameterClass::Memory;
+    }
+
+    Ok(classes)
 }
 
 // TODO
@@ -1077,7 +1321,44 @@ fn classify_class_field(
     classes: &mut [ParameterClass; 2],
     bit_offset: i32,
 ) -> Result<(), SdbError> {
-    todo!()
+    let bitfield_info = field.get_bitfield_information(type_.byte_size()? as u64)?;
+    let field_type = field.index(DW_AT_type.0 as u64)?.as_type();
+
+    let _bit_size = if let Some(info) = &bitfield_info {
+        info.bit_size
+    } else {
+        (field_type.byte_size()? * 8) as u64
+    };
+    
+    let current_bit_offset = if let Some(info) = &bitfield_info {
+        info.bit_offset as i32 + bit_offset
+    } else {
+        field.index(DW_AT_data_member_location.0 as u64)?.as_int()? as i32 * 8 + bit_offset
+    };
+    
+    let eightbyte_index = (current_bit_offset / 64) as usize;
+
+    if field_type.is_class_type()? {
+        for child in field_type.get_die()?.children() {
+            if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
+               (child.contains(DW_AT_data_member_location.0 as u64) ||
+                child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                classify_class_field(type_, &child, classes, current_bit_offset)?;
+            }
+        }
+    } else {
+        let field_classes = field_type.get_parameter_classes()?;
+        if eightbyte_index < 2 {
+            classes[eightbyte_index] = merge_parameter_classes(
+                classes[eightbyte_index], 
+                field_classes[0]
+            );
+        }
+        if eightbyte_index == 0 {
+            classes[1] = merge_parameter_classes(classes[1], field_classes[1]);
+        }
+    }
+    Ok(())
 }
 
 fn merge_parameter_classes(lhs: ParameterClass, rhs: ParameterClass) -> ParameterClass {
@@ -1153,7 +1434,42 @@ bool is_copy_or_move_constructor(
 */
 
 fn is_copy_or_move_constructor(class_type: &SdbType, func: &Rc<Die>) -> Result<bool, SdbError> {
-    todo!()
+    let class_name = class_type.get_die()?.name()?;
+    let func_name = func.name()?;
+    
+    if class_name != func_name {
+        return Ok(false);
+    }
+
+    let mut i = 0;
+    for child in func.children() {
+        if child.abbrev_entry().tag as u16 == gimli::DW_TAG_formal_parameter.0 {
+            if i == 0 {
+                let param_type = child.index(DW_AT_type.0 as u64)?.as_type();
+                if param_type.get_die()?.abbrev_entry().tag as u16 != DW_TAG_pointer_type.0 {
+                    return Ok(false);
+                }
+                let pointed_type = param_type.get_die()?.index(DW_AT_type.0 as u64)?.as_type().strip_cv_typedef()?;
+                if pointed_type != *class_type {
+                    return Ok(false);
+                }
+            } else if i == 1 {
+                let param_type = child.index(DW_AT_type.0 as u64)?.as_type();
+                let tag = param_type.get_die()?.abbrev_entry().tag;
+                if tag as u16 != DW_TAG_reference_type.0 && tag as u16 != DW_TAG_rvalue_reference_type.0 {
+                    return Ok(false);
+                }
+                let ref_type = param_type.get_die()?.index(DW_AT_type.0 as u64)?.as_type().strip_cv_typedef()?;
+                if ref_type != *class_type {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(false);
+            }
+            i += 1;
+        }
+    }
+    Ok(i == 2)
 }
 
 // TODO
@@ -1284,14 +1600,129 @@ void setup_arguments(
 }
 */
 
-fn setup_arguments(
+pub fn setup_arguments(
     target: &Target,
     func: &Rc<Die>,
-    args: Vec<TypedData>,
+    mut args: Vec<TypedData>,
     regs: &mut Registers,
     return_slot: Option<VirtualAddress>,
 ) -> Result<(), SdbError> {
-    todo!()
+    let int_regs = [
+        RegisterId::rdi,
+        RegisterId::rsi,
+        RegisterId::rdx,
+        RegisterId::rcx,
+        RegisterId::r8,
+        RegisterId::r9,
+    ];
+
+    let sse_regs = [
+        RegisterId::xmm0,
+        RegisterId::xmm1,
+        RegisterId::xmm2,
+        RegisterId::xmm3,
+        RegisterId::xmm4,
+        RegisterId::xmm5,
+        RegisterId::xmm6,
+        RegisterId::xmm7,
+    ];
+    
+    let mut current_int_reg = 0;
+    let mut current_sse_reg = 0;
+    let mut stack_args = Vec::<(TypedData, usize)>::new();
+    let mut rsp = regs.read_by_id_as::<u64>(RegisterId::rsp)?;
+
+    let round_up_to_eightbyte = |size: usize| -> usize {
+        (size + 7) & !7
+    };
+
+    if func.contains(DW_AT_type.0 as u64) {
+        let ret_type = func.index(DW_AT_type.0 as u64)?.as_type();
+        let ret_class = ret_type.get_parameter_classes()?[0];
+        if ret_class == ParameterClass::Memory {
+            current_int_reg += 1;
+            if let Some(slot) = return_slot {
+                regs.write_by_id(int_regs[0], slot.addr(), true)?;
+            }
+        }
+    }
+
+    let params = func.parameter_types()?;
+    for i in 0..params.len() {
+        let param = &params[i];
+        if param.is_reference_type()? {
+            if let Some(address) = args[i].address() {
+                args[i] = TypedData::builder()
+                    .data(address.addr().to_le_bytes().to_vec())
+                    .type_(SdbType::new_builtin(BuiltinType::Integer))
+                    .build();
+            } else {
+                rsp -= args[i].value_type().byte_size()? as u64;
+                rsp &= !(args[i].value_type().alignment()? as u64 - 1);
+                target.get_process().write_memory(VirtualAddress::new(rsp), args[i].data())?;
+                args[i] = TypedData::builder()
+                    .data(rsp.to_le_bytes().to_vec())
+                    .type_(SdbType::new_builtin(BuiltinType::Integer))
+                    .build();
+            }
+        }
+    }
+
+    for i in 0..params.len() {
+        let arg = &args[i];
+        let param = &params[i];
+        let param_classes = params[i].get_parameter_classes()?;
+        let param_size = param.byte_size()?;
+
+        let required_int_regs = param_classes.iter().filter(|&&c| c == ParameterClass::Integer).count();
+        let required_sse_regs = param_classes.iter().filter(|&&c| c == ParameterClass::Sse).count();
+
+        if current_int_reg + required_int_regs > int_regs.len() ||
+           current_sse_reg + required_sse_regs > sse_regs.len() ||
+           (required_int_regs == 0 && required_sse_regs == 0) {
+            let size = round_up_to_eightbyte(param_size);
+            stack_args.push((args[i].clone(), size));
+        } else {
+            for j in (0..param_size).step_by(8) {
+                let class_index = j / 8;
+                if class_index < param_classes.len() {
+                    let reg = match param_classes[class_index] {
+                        ParameterClass::Integer if current_int_reg < int_regs.len() => {
+                            let reg = int_regs[current_int_reg];
+                            current_int_reg += 1;
+                            reg
+                        },
+                        ParameterClass::Sse if current_sse_reg < sse_regs.len() => {
+                            let reg = sse_regs[current_sse_reg];
+                            current_sse_reg += 1;
+                            reg
+                        },
+                        ParameterClass::NoClass => continue,
+                        _ => return SdbError::err("Unsupported parameter class"),
+                    };
+
+                    let mut data = [0u8; 8];
+                    let end_idx = std::cmp::min(j + 8, arg.data().len());
+                    data[..end_idx - j].copy_from_slice(&arg.data()[j..end_idx]);
+                    regs.write_by_id(reg, data, true)?;
+                }
+            }
+        }
+    }
+
+    for (_, size) in &stack_args {
+        rsp -= *size as u64;
+    }
+    rsp &= !0xf;
+
+    let mut start_pos = rsp;
+    for (arg, size) in &stack_args {
+        target.get_process().write_memory(VirtualAddress::new(start_pos), arg.data())?;
+        start_pos += *size as u64;
+    }
+    regs.write_by_id(RegisterId::rax, current_sse_reg as u64, true)?;
+    regs.write_by_id(RegisterId::rsp, rsp, true)?;
+    Ok(())
 }
 
 // TODO
@@ -1348,11 +1779,63 @@ namespace {
 }
 */
 
-fn read_return_value(
+pub fn read_return_value(
     target: &Target,
     func: &Rc<Die>,
     return_slot: VirtualAddress,
     regs: &Registers,
 ) -> Result<TypedData, SdbError> {
-    todo!()
+    let ret_type = func.index(DW_AT_type.0 as u64)?.as_type();
+    let ret_classes = ret_type.get_parameter_classes()?;
+
+    let mut used_int = false;
+    let mut used_sse = false;
+
+    if ret_classes[0] == ParameterClass::Memory {
+        let value = target.get_process().read_memory(return_slot, ret_type.byte_size()?)?;
+        return Ok(TypedData::builder()
+            .data(value)
+            .type_(func.index(DW_AT_type.0 as u64)?.as_type())
+            .address(Some(return_slot))
+            .build());
+    }
+
+    if ret_classes[0] == ParameterClass::X87 {
+        let data = regs.read_by_id_as::<F80>(RegisterId::st0)?;
+        let value = unsafe { std::slice::from_raw_parts(&data as *const F80 as *const u8, std::mem::size_of::<F80>()) }.to_vec();
+        target.get_process().write_memory(return_slot, &value)?;
+        return Ok(TypedData::builder()
+            .data(value)
+            .type_(func.index(DW_AT_type.0 as u64)?.as_type())
+            .address(Some(return_slot))
+            .build());
+    }
+
+    let mut value = Vec::new();
+    for ret_class in ret_classes {
+        match ret_class {
+            ParameterClass::Integer => {
+                let reg = if used_int { RegisterId::rdx } else { RegisterId::rax };
+                used_int = true;
+                let data = regs.read_by_id_as::<u64>(reg)?;
+                let new_value = data.to_le_bytes().to_vec();
+                value.extend(new_value);
+            },
+            ParameterClass::Sse => {
+                let reg = if used_sse { RegisterId::xmm1 } else { RegisterId::xmm0 };
+                used_sse = true;
+                let data = regs.read_by_id_as::<Byte128>(reg)?;
+                value = data.to_vec();
+                target.get_process().write_memory(return_slot, &value)?;
+            },
+            ParameterClass::NoClass => {},
+            _ => return SdbError::err("Unsupported return type"),
+        }
+    }
+    target.get_process().write_memory(return_slot, &value)?;
+    Ok(TypedData::builder()
+        .data(value)
+        .type_(func.index(DW_AT_type.0 as u64)?.as_type())
+        .address(Some(return_slot))
+        .build())
 }

@@ -12,10 +12,17 @@ use nix::libc::{AT_ENTRY, SIGTRAP};
 use nix::unistd::Pid;
 use typed_builder::TypedBuilder;
 
+use super::bit::to_byte_vec;
+
+use super::breakpoint::Breakpoint;
+
 use super::dwarf::DieExt;
 
 use super::traits::FromLowerHexStr;
+use super::types::BuiltinType;
+use super::types::SdbType;
 use super::types::TypedData;
+use super::types::{read_return_value, setup_arguments};
 
 use super::bit::memcpy_bits;
 
@@ -56,21 +63,6 @@ use super::traits::StoppointTrait;
 use super::types::FileAddress;
 use super::types::VirtualAddress;
 
-/*
-    class target {
-    public:
-        --snip--
-        std::optional<evaluate_expression_result> evaluate_expression(
-            std::string_view expr,
-            std::optional<pid_t> otid = std::nullopt);
-
-        const typed_data& get_expression_result(std::size_t i) const;
-
-    private:
-        --snip--
-        mutable std::vector<typed_data> expression_results_;
-    }
-*/
 pub struct EvaluateExpressionResult {
     pub return_value: TypedData,
     pub id: u64,
@@ -131,51 +123,80 @@ pub struct ResolveIndirectNameResult {
 }
 
 impl Target {
-    // TODO
-    /*
-    std::optional<sdb::target::evaluate_expression_result>
-    sdb::target::evaluate_expression(
-          std::string_view expr, std::optional<pid_t> otid) {
-        auto tid = otid.value_or(process_->current_thread());
-        auto pc = get_pc_file_address(tid);
+    pub fn inferior_malloc(&self, size: usize) -> Result<VirtualAddress, SdbError> {
+        let saved_regs = self.process.get_registers(None);
 
-        auto paren_pos = expr.find('(');
-        if (paren_pos == std::string::npos) {
-            sdb::error::send("Invalid expression");
+        let malloc_funcs = self.find_functions("malloc")?.elf_functions;
+        let malloc_func = malloc_funcs
+            .iter()
+            .find(|(_, sym)| sym.0.st_value != 0)
+            .ok_or_else(|| SdbError::new_err("malloc not found"))?;
+
+        let malloc_addr = FileAddress::new(&malloc_func.0, malloc_func.1.0.st_value);
+        let call_addr = malloc_addr.to_virt_addr();
+
+        let entry_point = VirtualAddress::new(self.process.get_auxv()[&(AT_ENTRY as i32)]);
+        {
+            let breakpoint = self.breakpoints.borrow().get_by_address(entry_point)?;
+            let mut breakpoint = breakpoint.borrow_mut() as RefMut<dyn Any>;
+            let breakpoint = breakpoint.downcast_mut::<Breakpoint>().unwrap();
+            breakpoint.install_hit_handler(move || Ok(false));
         }
 
-        std::string name{ expr.substr(0, paren_pos + 1) };
-        auto [variable, funcs] = resolve_indirect_name(name, pc);
-        if (funcs.empty()) {
-            sdb::error::send("Invalid expression");
-        }
+        self.process.get_registers(None).borrow_mut().write_by_id(
+            RegisterId::rdi,
+            size as u64,
+            true,
+        )?;
 
-        auto entry_point = virt_addr{ process_->get_auxv()[AT_ENTRY] };
-        breakpoints_.get_by_address(entry_point).install_hit_handler([&] {
-            return false;
-        });
+        let new_regs =
+            self.process
+                .inferior_call(call_addr, entry_point, &saved_regs.borrow(), None)?;
+        let result = new_regs.read_by_id_as::<u64>(RegisterId::rax)?;
 
-        auto arg_string = expr.substr(paren_pos);
-        auto args = collect_arguments(
-            *this, tid, arg_string, funcs, variable);
-        auto func = resolve_overload(funcs, args);
-        auto ret = inferior_call_from_dwarf(
-            *this, func, args, entry_point, tid);
-        if (ret) {
-            expression_results_.push_back(*ret);
-            return evaluate_expression_result{
-                std::move(*ret), expression_results_.size() - 1
-            };
-        }
-        return std::nullopt;
+        Ok(VirtualAddress::new(result))
     }
-    */
+
     pub fn evaluate_expression(
         &self,
         expr: &str,
         otid: Option<Pid>, /* None */
     ) -> Result<Option<EvaluateExpressionResult>, SdbError> {
-        todo!()
+        let tid = otid.unwrap_or(self.process.current_thread());
+        let pc = self.get_pc_file_address(Some(tid));
+
+        let paren_pos = expr.find('(');
+        if paren_pos.is_none() {
+            return SdbError::err("Invalid expression");
+        }
+        let paren_pos = paren_pos.unwrap();
+
+        let name = &expr[..paren_pos + 1];
+        let res = self.resolve_indirect_name(name, &pc)?;
+        if res.funcs.is_empty() {
+            return SdbError::err("Invalid expression");
+        }
+
+        let entry_point = VirtualAddress::new(self.process.get_auxv()[&(AT_ENTRY as i32)]);
+        {
+            let breakpoint = self.breakpoints.borrow().get_by_address(entry_point)?;
+            let mut breakpoint = breakpoint.borrow_mut() as RefMut<dyn Any>;
+            let breakpoint = breakpoint.downcast_mut::<Breakpoint>().unwrap();
+            breakpoint.install_hit_handler(move || Ok(false));
+        }
+
+        let arg_string = &expr[paren_pos..];
+        let args = collect_arguments(self, tid, arg_string, &res.funcs, res.variable)?;
+        let func = resolve_overload(&res.funcs, &args)?;
+        let ret = inferior_call_from_dwarf(self, &func, &args, entry_point, tid)?;
+        if let Some(ret_data) = ret {
+            self.expression_results.borrow_mut().push(ret_data.clone());
+            return Ok(Some(EvaluateExpressionResult {
+                return_value: ret_data,
+                id: (self.expression_results.borrow().len() - 1) as u64,
+            }));
+        }
+        Ok(None)
     }
 
     pub fn get_expression_result(&self, index: usize) -> Result<TypedData, SdbError> {
@@ -1067,195 +1088,140 @@ impl SdbThread {
     }
 }
 
-// TODO
-/*
-sdb::typed_data parse_argument(
-    sdb::target& target, pid_t tid, std::string_view arg) {
-    if (arg.empty()) {
-        sdb::error::send("Empty argument");
-    }
-    if (arg.size() > 2 and arg[0] == '"' and arg[arg.size() - 1] == '"') {
-        auto ptr = target.inferior_malloc(arg.size() - 1);
-        std::string arg_str{ arg.substr(1, arg.size() - 2) };
-        auto data_ptr = reinterpret_cast<const std::byte*>(arg_str.data());
-        sdb::span<const std::byte> data = {
-            data_ptr, arg_str.size() + 1 };
-        target.get_process().write_memory(ptr, data);
-        return { sdb::to_byte_vec(ptr), sdb::builtin_type::string };
-    }
-    else if (arg == "true" or arg == "false") {
-        auto value = arg == "true";
-        return { sdb::to_byte_vec(value), sdb::builtin_type::boolean };
-    }
-    else if (arg[0] == '\'') {
-        if (arg.size() != 3 or arg[2] != '\'') {
-            sdb::error::send("Invalid character literal");
-        }
-        return { sdb::to_byte_vec(arg[1]), sdb::builtin_type::character };
-    }
-    else if (arg[0] == '-' or std::isdigit(arg[0])) {
-        if (arg.find(".") != std::string::npos) {
-            auto value = sdb::to_float<double>(arg);
-            if (!value) {
-                sdb::error::send("Invalid floating point literal");
-            }
-            return { sdb::to_byte_vec(*value), sdb::builtin_type::floating_point };
-        }
-        else {
-            auto value = sdb::to_integral<std::int64_t>(arg);
-            if (!value) {
-                sdb::error::send("Invalid integer literal");
-            }
-            return { sdb::to_byte_vec(*value), sdb::builtin_type::integer };
-        }
-    }
-    else {
-        auto pc = target.get_pc_file_address(tid);
-        auto res = target.resolve_indirect_name(std::string(arg), pc);
-        if (!res.funcs.empty()) {
-            sdb::error::send("Nested function calls not supported");
-        }
-        return *res.variable;
-    }
-}
-*/
-
 fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, SdbError> {
-    todo!()
-}
-
-// TODO
-/*
-std::vector<sdb::typed_data> collect_arguments(
-        sdb::target& target, pid_t tid, std::string_view arg_string,
-        const std::vector<sdb::die>& funcs,
-        std::optional<sdb::typed_data> object) {
-    std::vector<sdb::typed_data> args;
-    auto& proc = target.get_process();
-
-    if (object) {
-        std::vector<std::byte> data;
-        if (object->address()) { ➊
-            data = sdb::to_byte_vec(*object->address());
-        }
-        else { ➋
-            auto& regs = proc.get_registers(tid);
-            auto rsp = regs.read_by_id_as<std::uint64_t>(sdb::register_id::rsp);
-            rsp -= object->value_type().byte_size();
-            proc.write_memory(sdb::virt_addr{ rsp }, object->data());
-            regs.write_by_id(sdb::register_id::rsp, rsp, true);
-            data = sdb::to_byte_vec(rsp);
-        }
-        auto obj_ptr_die = funcs[0][DW_AT_object_pointer].as_reference(); ➌
-        auto this_type = obj_ptr_die[DW_AT_type].as_type();
-        args.push_back({ std::move(data), this_type });
+    if arg.is_empty() {
+        return SdbError::err("Empty argument");
     }
-
-    auto args_start = 1; ➍
-    auto args_end = arg_string.find(')');
-
-    while (args_start < args_end) {
-        auto comma_pos = arg_string.find(',', args_start);
-        if (comma_pos == std::string::npos) {
-            comma_pos = args_end;
+    if arg.len() > 2 && arg.starts_with('"') && arg.ends_with('"') {
+        let ptr = target.inferior_malloc(arg.len() - 1)?;
+        let arg_str = &arg[1..arg.len() - 1];
+        let data_bytes = arg_str.as_bytes();
+        let mut data_with_null = data_bytes.to_vec();
+        data_with_null.push(0);
+        target.process.write_memory(ptr, &data_with_null)?;
+        return Ok(TypedData::builder()
+            .data(to_byte_vec(&ptr))
+            .type_(SdbType::new_builtin(BuiltinType::String))
+            .build());
+    } else if arg == "true" || arg == "false" {
+        let value = arg == "true";
+        return Ok(TypedData::builder()
+            .data(vec![if value { 1u8 } else { 0u8 }])
+            .type_(SdbType::new_builtin(BuiltinType::Boolean))
+            .build());
+    } else if arg.starts_with('\'') {
+        if arg.len() != 3 || !arg.ends_with('\'') {
+            return SdbError::err("Invalid character literal");
         }
-        auto arg_expr = arg_string.substr(args_start, comma_pos - args_start);
-        args.push_back(parse_argument(target, tid, arg_expr));
-        args_start = comma_pos + 1;
+        let char_byte = arg.chars().nth(1).unwrap() as u8;
+        return Ok(TypedData::builder()
+            .data(vec![char_byte])
+            .type_(SdbType::new_builtin(BuiltinType::Character))
+            .build());
+    } else if arg.starts_with('-') || arg.chars().next().unwrap().is_ascii_digit() {
+        if arg.contains('.') {
+            let value: Result<f64, _> = arg.parse();
+            if value.is_err() {
+                return SdbError::err("Invalid floating point literal");
+            }
+            return Ok(TypedData::builder()
+                .data(value.unwrap().to_le_bytes().to_vec())
+                .type_(SdbType::new_builtin(BuiltinType::FloatingPoint))
+                .build());
+        } else {
+            let value: Result<i64, _> = arg.parse();
+            if value.is_err() {
+                return SdbError::err("Invalid integer literal");
+            }
+            return Ok(TypedData::builder()
+                .data(value.unwrap().to_le_bytes().to_vec())
+                .type_(SdbType::new_builtin(BuiltinType::Integer))
+                .build());
+        }
+    } else {
+        let pc = target.get_pc_file_address(Some(tid));
+        let res = target.resolve_indirect_name(arg, &pc)?;
+        if !res.funcs.is_empty() {
+            return SdbError::err("Nested function calls not supported");
+        }
+        Ok(res.variable.unwrap())
     }
-    return args;
 }
-*/
 
 fn collect_arguments(
     target: &Target,
     tid: Pid,
     arg_string: &str,
-    funcs: &[Die],
+    funcs: &[Rc<Die>],
     object: Option<TypedData>,
 ) -> Result<Vec<TypedData>, SdbError> {
-    todo!()
+    let mut args = Vec::new();
+    let proc = target.get_process();
+
+    if let Some(object) = object {
+        let data = if let Some(address) = object.address() {
+            address.addr().to_le_bytes().to_vec()
+        } else {
+            let regs = proc.get_registers(Some(tid));
+            let mut rsp = regs.borrow().read_by_id_as::<u64>(RegisterId::rsp)?;
+            rsp -= object.value_type().byte_size()? as u64;
+            proc.write_memory(VirtualAddress::new(rsp), object.data())?;
+            regs.borrow_mut().write_by_id(RegisterId::rsp, rsp, true)?;
+            rsp.to_le_bytes().to_vec()
+        };
+        let obj_ptr_die = funcs[0]
+            .index(DW_AT_object_pointer.0 as u64)?
+            .as_reference();
+        let this_type = obj_ptr_die.index(DW_AT_type.0 as u64)?.as_type();
+        args.push(TypedData::builder().data(data).type_(this_type).build());
+    }
+
+    let mut args_start = 1;
+    let args_end = arg_string.find(')').unwrap_or(arg_string.len());
+
+    while args_start < args_end {
+        let comma_pos = arg_string
+            .chars()
+            .enumerate()
+            .skip(args_start)
+            .find(|(_, c)| *c == ',')
+            .map(|(pos, _)| pos)
+            .unwrap_or(arg_string.len());
+        let arg_expr = &arg_string[args_start..comma_pos];
+        args.push(parse_argument(target, tid, arg_expr)?);
+        args_start = comma_pos + 1;
+    }
+    Ok(args)
 }
 
-// TODO
-/*
-sdb::die resolve_overload(
-        const std::vector<sdb::die>& funcs,
-        const std::vector<sdb::typed_data>& args) {
-    std::optional<sdb::die> matching_func;
-    for (auto& func : funcs) {
-        bool matches = true;
-        auto arg_it = args.begin();
-        auto params = func.parameter_types();
+fn resolve_overload(funcs: &[Rc<Die>], args: &[TypedData]) -> Result<Rc<Die>, SdbError> {
+    let mut matching_func: Option<Rc<Die>> = None;
+    for func in funcs {
+        let mut matches = true;
+        let params = func.parameter_types()?;
 
-        if (args.size() == params.size()) {
-            for (auto param_it = params.begin();
-                arg_it != args.end();
-                ++param_it, ++arg_it) {
-                if (*param_it != arg_it->value_type()) {
+        if args.len() == params.len() {
+            for (param_type, arg) in params.iter().zip(args.iter()) {
+                if *param_type != *arg.value_type() {
                     matches = false;
                     break;
                 }
             }
-        }
-        else {
+        } else {
             matches = false;
         }
 
-        ➊ if (matches) {
-            if (matching_func) sdb::error::send("Ambiguous function call");
-            matching_func = func;
-        }
-    }
-    if (!matching_func) sdb::error::send("No matching function");
-    return *matching_func;
-}
-*/
-
-fn resolve_overload(funcs: &[Die], args: &[TypedData]) -> Result<Die, SdbError> {
-    todo!()
-}
-
-// TODO
-/*
-namespace {
-    std::optional<sdb::typed_data> inferior_call_from_dwarf(
-          sdb::target& target, sdb::die func,
-          const std::vector<sdb::typed_data>& args,
-          sdb::virt_addr return_addr, pid_t tid) {
-        auto& regs = target.get_process().get_registers(tid);
-        auto saved_regs = regs;
-
-        sdb::virt_addr call_addr;
-        if (func.contains(DW_AT_low_pc) or func.contains(DW_AT_ranges)) {
-            call_addr = func.low_pc().to_virt_addr();
-        }
-        else {
-            auto def = func.cu()->dwarf_info()->get_member_function_definition(func);
-            if (!def) {
-                sdb::error::send("No function definition found");
+        if matches {
+            if matching_func.is_some() {
+                return SdbError::err("Ambiguous function call");
             }
-            call_addr = def->low_pc().to_virt_addr();
+            matching_func = Some(func.clone());
         }
-
-        std::optional<sdb::virt_addr> return_slot;
-        if (func.contains(DW_AT_type)) {
-            auto ret_type = func[DW_AT_type].as_type();
-            return_slot = target.inferior_malloc(ret_type.byte_size());
-        }
-
-        setup_arguments(target, func, args, regs, return_slot);
-        auto new_regs = target.get_process().inferior_call(
-            call_addr, return_addr, saved_regs, tid);
-
-        if (func.contains(DW_AT_type)) {
-            return read_return_value(
-                target, func, *return_slot, new_regs);
-        }
-        return std::nullopt;
     }
+
+    matching_func.ok_or_else(|| SdbError::new_err("No matching function"))
 }
-*/
+
 fn inferior_call_from_dwarf(
     target: &Target,
     func: &Rc<Die>,
@@ -1263,5 +1229,45 @@ fn inferior_call_from_dwarf(
     return_addr: VirtualAddress,
     tid: Pid,
 ) -> Result<Option<TypedData>, SdbError> {
-    todo!()
+    let regs = target.get_process().get_registers(Some(tid));
+    let saved_regs = regs.borrow().clone();
+
+    let call_addr = if func.contains(gimli::DW_AT_low_pc.0 as u64)
+        || func.contains(gimli::DW_AT_ranges.0 as u64)
+    {
+        func.low_pc()?.to_virt_addr()
+    } else {
+        let def = func
+            .cu()
+            .dwarf_info()
+            .get_member_function_definition(func)?;
+        match def {
+            Some(d) => d.low_pc()?.to_virt_addr(),
+            None => return SdbError::err("No function definition found"),
+        }
+    };
+
+    let return_slot = if func.contains(DW_AT_type.0 as u64) {
+        let ret_type = func.index(DW_AT_type.0 as u64)?.as_type();
+        Some(target.inferior_malloc(ret_type.byte_size()?)?)
+    } else {
+        None
+    };
+
+    setup_arguments(
+        target,
+        func,
+        args.to_vec(),
+        &mut regs.borrow_mut(),
+        return_slot,
+    )?;
+    let new_regs =
+        target
+            .get_process()
+            .inferior_call(call_addr, return_addr, &saved_regs, Some(tid))?;
+
+    if func.contains(DW_AT_type.0 as u64) {
+        return Ok(Some(read_return_value(target, func, return_slot.unwrap(), &new_regs)?));
+    }
+    Ok(None)
 }
