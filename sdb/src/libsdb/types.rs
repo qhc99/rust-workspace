@@ -443,32 +443,7 @@ impl SdbType {
         let tag = stripped.abbrev_entry().tag as u16;
         return Ok(tag == DW_TAG_reference_type.0 || tag == DW_TAG_rvalue_reference_type.0);
     }
-    // TODO
-    /*
-    std::size_t sdb::type::alignment() const {
-        if (!is_from_dwarf()) {
-            return byte_size();
-        }
-        if (is_class_type()) {
-            std::size_t max_alignment = 0;
-            for (auto child : get_die().children()) {
-                if (child.abbrev_entry()->tag == DW_TAG_member and
-                    child.contains(DW_AT_data_member_location) or
-                    child.contains(DW_AT_data_bit_offset)) {
-                    auto member_type = child[DW_AT_type].as_type();
-                    if (member_type.alignment() > max_alignment) {
-                        max_alignment = member_type.alignment();
-                    }
-                }
-            }
-            return max_alignment;
-        }
-        if (get_die().abbrev_entry()->tag == DW_TAG_array_type) {
-            return get_die()[DW_AT_type].as_type().alignment();
-        }
-        return byte_size();
-    }
-    */
+
     pub fn alignment(&self) -> Result<usize, SdbError> {
         if !self.is_from_dwarf() {
             return Ok(self.byte_size()?);
@@ -477,8 +452,8 @@ impl SdbType {
             let mut max_alignment = 0;
             for child in self.get_die()?.children() {
                 if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-                   (child.contains(DW_AT_data_member_location.0 as u64) ||
-                    child.contains(DW_AT_data_bit_offset.0 as u64)) {
+                   child.contains(DW_AT_data_member_location.0 as u64) ||
+                   child.contains(DW_AT_data_bit_offset.0 as u64) {
                     let member_type = child.index(DW_AT_type.0 as u64)?.as_type();
                     let member_alignment = member_type.alignment()?;
                     if member_alignment > max_alignment {
@@ -493,30 +468,7 @@ impl SdbType {
         }
         Ok(self.byte_size()?)
     }
-    // TODO
-    /*
-    bool sdb::type::has_unaligned_fields() const {
-        if (!is_from_dwarf()) {
-            return false;
-        }
-        if (is_class_type()) {
-            for (auto child : get_die().children()) {
-                if (child.abbrev_entry()->tag == DW_TAG_member and
-                    child.contains(DW_AT_data_member_location)) {
-                    auto member_type = child[DW_AT_type].as_type();
-                    if (child[DW_AT_data_member_location].as_int() %
-                        member_type.alignment() != 0) {
-                        return true;
-                    }
-                    if (member_type.has_unaligned_fields()) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-    */
+
     pub fn has_unaligned_fields(&self) -> Result<bool, SdbError> {
         if !self.is_from_dwarf() {
             return Ok(false);
@@ -1277,44 +1229,6 @@ fn classify_class_type(type_: &SdbType) -> Result<[ParameterClass; 2], SdbError>
     Ok(classes)
 }
 
-// TODO
-/*
-void classify_class_field(
-        const sdb::type& type,
-        const sdb::die& field,
-        std::array<sdb::parameter_class, 2>& classes,
-        int bit_offset) {
-    auto bitfield_info = field.get_bitfield_information(type.byte_size());
-    auto field_type = field[DW_AT_type].as_type();
-
-    auto bit_size = bitfield_info ?
-        bitfield_info->bit_size :
-        field_type.byte_size() * 8;
-    auto current_bit_offset = bitfield_info ?
-        bitfield_info->bit_offset + bit_offset :
-        field[DW_AT_data_member_location].as_int() * 8 + bit_offset;
-    auto eightbyte_index = current_bit_offset / 64;
-
-    if (field_type.is_class_type()) { ➊
-        for (auto child : field_type.get_die().children()) {
-            if (child.abbrev_entry()->tag == DW_TAG_member and
-                child.contains(DW_AT_data_member_location) or
-                child.contains(DW_AT_data_bit_offset)) {
-                classify_class_field(type, child, classes, current_bit_offset);
-            }
-        }
-    }
-    else { ➋
-        auto field_classes = field_type.get_parameter_classes();
-        classes[eightbyte_index] = merge_parameter_classes( ➌
-            classes[eightbyte_index], field_classes[0]);
-        if (eightbyte_index == 0) { ➍
-            classes[1] = merge_parameter_classes(classes[1], field_classes[1]);
-        }
-    }
-}
-*/
-
 fn classify_class_field(
     type_: &SdbType,
     field: &Rc<Die>,
@@ -1323,12 +1237,6 @@ fn classify_class_field(
 ) -> Result<(), SdbError> {
     let bitfield_info = field.get_bitfield_information(type_.byte_size()? as u64)?;
     let field_type = field.index(DW_AT_type.0 as u64)?.as_type();
-
-    let _bit_size = if let Some(info) = &bitfield_info {
-        info.bit_size
-    } else {
-        (field_type.byte_size()? * 8) as u64
-    };
     
     let current_bit_offset = if let Some(info) = &bitfield_info {
         info.bit_offset as i32 + bit_offset
@@ -1341,19 +1249,17 @@ fn classify_class_field(
     if field_type.is_class_type()? {
         for child in field_type.get_die()?.children() {
             if child.abbrev_entry().tag as u16 == DW_TAG_member.0 &&
-               (child.contains(DW_AT_data_member_location.0 as u64) ||
-                child.contains(DW_AT_data_bit_offset.0 as u64)) {
+               child.contains(DW_AT_data_member_location.0 as u64) ||
+                child.contains(DW_AT_data_bit_offset.0 as u64) {
                 classify_class_field(type_, &child, classes, current_bit_offset)?;
             }
         }
     } else {
         let field_classes = field_type.get_parameter_classes()?;
-        if eightbyte_index < 2 {
-            classes[eightbyte_index] = merge_parameter_classes(
-                classes[eightbyte_index], 
-                field_classes[0]
-            );
-        }
+        classes[eightbyte_index] = merge_parameter_classes(
+            classes[eightbyte_index], 
+            field_classes[0]
+        );
         if eightbyte_index == 0 {
             classes[1] = merge_parameter_classes(classes[1], field_classes[1]);
         }
