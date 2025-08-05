@@ -284,10 +284,10 @@ impl Target {
             true,
         )?;
 
-        let saved_regs = saved_regs.borrow().clone();
+        let saved_regs_clone = saved_regs.borrow().clone();
         let new_regs = self
             .process
-            .inferior_call(call_addr, entry_point, saved_regs, None)?;
+            .inferior_call(call_addr, entry_point, saved_regs_clone, None)?;
         let result = new_regs.read_by_id_as::<u64>(RegisterId::rax)?;
 
         Ok(VirtualAddress::new(result))
