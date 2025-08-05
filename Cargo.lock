@@ -391,6 +391,8 @@ dependencies = [
 [[package]]
 name = "libsdb_register_codegen"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e4c531beac0af89c697a8b4e67cb59e6e5154ed51f9e5f98be11d98bb4daf1a"
 dependencies = [
  "nix",
  "proc-macro2",
