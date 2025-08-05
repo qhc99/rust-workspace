@@ -552,7 +552,7 @@ impl Process {
         self: &Rc<Self>,
         func_addr: VirtualAddress,
         return_addr: VirtualAddress,
-        regs_to_restore: &Registers,
+        regs_to_restore: Registers,
         otid: Option<Pid>, /* None */
     ) -> Result<Registers, SdbError> {
         let tid = otid.unwrap_or(self.current_thread());

@@ -14,8 +14,6 @@ use typed_builder::TypedBuilder;
 
 use super::bit::to_byte_vec;
 
-use super::breakpoint::Breakpoint;
-
 use super::traits::FromLowerHexStr;
 use super::types::BuiltinType;
 use super::types::SdbType;
@@ -89,7 +87,7 @@ fn get_initial_variable_data(
 
     let var = target.find_variable(name, pc)?;
     if var.is_none() {
-        return SdbError::err("Variable not found");
+        return SdbError::err("Cannot find variable");
     }
     let var = var.unwrap();
     let var_type = var.index(DW_AT_type.0 as u64)?.as_type();
@@ -273,8 +271,11 @@ impl Target {
         {
             let breakpoint = self.breakpoints.borrow().get_by_address(entry_point)?;
             let mut breakpoint = breakpoint.borrow_mut() as RefMut<dyn Any>;
-            let breakpoint = breakpoint.downcast_mut::<Breakpoint>().unwrap();
-            breakpoint.install_hit_handler(move || Ok(false));
+            let breakpoint = breakpoint.downcast_mut::<AddressBreakpoint>().unwrap();
+            breakpoint
+                .breakpoint
+                .borrow_mut()
+                .install_hit_handler(move || Ok(false));
         }
 
         self.process.get_registers(None).borrow_mut().write_by_id(
@@ -283,9 +284,10 @@ impl Target {
             true,
         )?;
 
+        #[allow(unused_braces)]
         let new_regs =
             self.process
-                .inferior_call(call_addr, entry_point, &saved_regs.borrow(), None)?;
+                .inferior_call(call_addr, entry_point, {saved_regs.borrow().clone()}, None)?;
         let result = new_regs.read_by_id_as::<u64>(RegisterId::rax)?;
 
         Ok(VirtualAddress::new(result))
@@ -298,7 +300,7 @@ impl Target {
     ) -> Result<Option<EvaluateExpressionResult>, SdbError> {
         let tid = otid.unwrap_or(self.process.current_thread());
         let pc = self.get_pc_file_address(Some(tid));
-
+        dbg!(expr);
         let paren_pos = expr.find('(');
         if paren_pos.is_none() {
             return SdbError::err("Invalid expression");
@@ -306,6 +308,7 @@ impl Target {
         let paren_pos = paren_pos.unwrap();
 
         let name = &expr[..paren_pos + 1];
+        dbg!(name);
         let res = self.resolve_indirect_name(name, &pc)?;
         if res.funcs.is_empty() {
             return SdbError::err("Invalid expression");
@@ -315,8 +318,11 @@ impl Target {
         {
             let breakpoint = self.breakpoints.borrow().get_by_address(entry_point)?;
             let mut breakpoint = breakpoint.borrow_mut() as RefMut<dyn Any>;
-            let breakpoint = breakpoint.downcast_mut::<Breakpoint>().unwrap();
-            breakpoint.install_hit_handler(move || Ok(false));
+            let breakpoint = breakpoint.downcast_mut::<AddressBreakpoint>().unwrap();
+            breakpoint
+                .breakpoint
+                .borrow_mut()
+                .install_hit_handler(move || Ok(false));
         }
 
         let arg_string = &expr[paren_pos..];
@@ -1090,6 +1096,7 @@ fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, Sdb
     } else if arg.starts_with('-') || arg.chars().next().unwrap().is_ascii_digit() {
         if arg.contains('.') {
             let value: Result<f64, _> = arg.parse();
+            dbg!(arg);
             if value.is_err() {
                 return SdbError::err("Invalid floating point literal");
             }
@@ -1098,6 +1105,7 @@ fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, Sdb
                 .type_(SdbType::new_builtin(BuiltinType::FloatingPoint))
                 .build());
         } else {
+            dbg!(arg);
             let value: Result<i64, _> = arg.parse();
             if value.is_err() {
                 return SdbError::err("Invalid integer literal");
@@ -1155,7 +1163,7 @@ fn collect_arguments(
             .skip(args_start)
             .find(|(_, c)| *c == ',')
             .map(|(pos, _)| pos)
-            .unwrap_or(arg_string.len());
+            .unwrap_or(args_end);
         let arg_expr = &arg_string[args_start..comma_pos];
         args.push(parse_argument(target, tid, arg_expr)?);
         args_start = comma_pos + 1;
@@ -1233,7 +1241,7 @@ fn inferior_call_from_dwarf(
     let new_regs =
         target
             .get_process()
-            .inferior_call(call_addr, return_addr, &saved_regs, Some(tid))?;
+            .inferior_call(call_addr, return_addr, saved_regs.clone(), Some(tid))?;
 
     if func.contains(DW_AT_type.0 as u64) {
         return Ok(Some(read_return_value(

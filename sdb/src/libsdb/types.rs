@@ -1272,7 +1272,8 @@ pub fn setup_arguments(
                 };
 
                 let mut data = [0u8; 8];
-                data.copy_from_slice(&arg.data()[j..j + 8]);
+                let end = arg.data().len().min(j + 8);
+                data[..(end - j)].copy_from_slice(&arg.data()[j..end]);
                 regs.write_by_id(reg, data, true)?;
             }
         }
