@@ -2,6 +2,5 @@
 nand2tetris(https://www.nand2tetris.org/) projects
 
 ## sdb
-Port of sdb C++ https://github.com/TartanLlama/sdb/tree/main
 
-Target platform: x86_64_linux
+
