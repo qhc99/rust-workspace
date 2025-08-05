@@ -71,7 +71,7 @@ pub struct Target {
     threads: RefCell<HashMap<Pid, SdbThread>>,
     expression_results: RefCell<Vec<TypedData>>,
 }
-
+// TODO remove dbg! 
 fn get_initial_variable_data(
     target: &Target,
     name: &str,
@@ -85,6 +85,7 @@ fn get_initial_variable_data(
         return target.get_expression_result(index.unwrap());
     }
 
+    dbg!(name);
     let var = target.find_variable(name, pc)?;
     if var.is_none() {
         return SdbError::err("Cannot find variable");
@@ -1096,7 +1097,6 @@ fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, Sdb
     } else if arg.starts_with('-') || arg.chars().next().unwrap().is_ascii_digit() {
         if arg.contains('.') {
             let value: Result<f64, _> = arg.parse();
-            dbg!(arg);
             if value.is_err() {
                 return SdbError::err("Invalid floating point literal");
             }
@@ -1105,7 +1105,6 @@ fn parse_argument(target: &Target, tid: Pid, arg: &str) -> Result<TypedData, Sdb
                 .type_(SdbType::new_builtin(BuiltinType::FloatingPoint))
                 .build());
         } else {
-            dbg!(arg);
             let value: Result<i64, _> = arg.parse();
             if value.is_err() {
                 return SdbError::err("Invalid integer literal");
