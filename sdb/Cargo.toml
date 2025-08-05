@@ -7,6 +7,7 @@ description = "Book: Building a Debugger, rust port of C++ debugger Sdb https://
 repository = "https://github.com/qhc99/rust-workspace/tree/master/sdb"
 keywords = ["sdb", "debugger"]
 rust-version = "1.88"
+exclude = ["resource/bin/**"]
 
 [lib]
 name = "libsdb"
