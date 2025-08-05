@@ -93,6 +93,7 @@ static GLOBAL_VARIABLE_PATH: LazyLock<&Path> =
 static MEMBER_POINTER_PATH: LazyLock<&Path> =
     LazyLock::new(|| Path::new("resource/bin/member_pointer"));
 static BLOCKS_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/blocks"));
+static EXPR_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("resource/bin/expr"));
 
 #[test]
 #[serial]
@@ -1246,4 +1247,76 @@ fn member_pointers() {
         .unwrap();
     let func_vis = func_ptr.variable.unwrap().visualize(&proc, 0).unwrap();
     assert_ne!(func_vis, "0x0");
+}
+
+
+#[test]
+#[serial]
+fn eval_expression() {
+    let dev_null = OpenOptions::new().write(true).open("/dev/null").unwrap();
+    let target = Target::launch(EXPR_PATH.as_ref(), Some(dev_null.as_raw_fd())).unwrap();
+    let proc = target.get_process();
+
+    target
+        .create_function_breakpoint("main", false, false)
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .borrow_mut()
+        .enable()
+        .unwrap();
+    proc.resume(None).unwrap();
+    proc.wait_on_signal(Pid::from_raw(-1)).unwrap();
+
+    let ret = target.evaluate_expression("get_cat(\"Marshmallow\")", None).unwrap().unwrap();
+    assert_eq!(ret.id, 0);
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert!(print.contains("name: \"Marshmallow\""));
+    assert!(print.contains("age: 4"));
+
+    // let ret = target.evaluate_expression("$0.give_command(\"have a nap\")", None).unwrap().unwrap();
+    // let print = ret.return_value.visualize(&proc, 0).unwrap();
+    // assert!(print.contains("Marshmallow, have a nap"));
+    
+
+    target.evaluate_expression("$0.increase_age()", None).unwrap();
+    let name = "$0";
+    let pc = target.get_pc_file_address(None);
+    let data = target.resolve_indirect_name(name, &pc).unwrap();
+    let str = data.variable.unwrap().visualize(&target.get_process(), 0).unwrap();
+    assert!(str.contains("age: 5"));
+
+    let ret = target.evaluate_expression("print_type(42)", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 1);
+    assert!(print.contains("42"));
+
+    let ret = target.evaluate_expression("print_type(42.42)", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 2);
+    assert!(print.contains("42.42"));
+
+    let ret = target.evaluate_expression("print_type('e')", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 3);
+    assert!(print.contains("101"));
+
+    let ret = target.evaluate_expression("print_type(s)", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 4);
+    assert!(print.contains("i: 1"));
+    assert!(print.contains("j: 2"));
+
+    let ret = target.evaluate_expression("print_type(t)", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 5);
+    assert!(print.contains("i: 3"));
+    assert!(print.contains("j: 4"));
+
+    let ret = target.evaluate_expression("print_type(b)", None).unwrap().unwrap();
+    let print = ret.return_value.visualize(&proc, 0).unwrap();
+    assert_eq!(ret.id, 6);
+    assert!(print.contains("i: 5"));
+    assert!(print.contains("j: 6"));
+    assert!(print.contains("k: 7"));
 }
