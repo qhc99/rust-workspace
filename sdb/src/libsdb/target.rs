@@ -71,7 +71,7 @@ pub struct Target {
     threads: RefCell<HashMap<Pid, SdbThread>>,
     expression_results: RefCell<Vec<TypedData>>,
 }
-// TODO remove dbg! 
+
 fn get_initial_variable_data(
     target: &Target,
     name: &str,
@@ -85,7 +85,6 @@ fn get_initial_variable_data(
         return target.get_expression_result(index.unwrap());
     }
 
-    dbg!(name);
     let var = target.find_variable(name, pc)?;
     if var.is_none() {
         return SdbError::err("Cannot find variable");
@@ -301,7 +300,6 @@ impl Target {
     ) -> Result<Option<EvaluateExpressionResult>, SdbError> {
         let tid = otid.unwrap_or(self.process.current_thread());
         let pc = self.get_pc_file_address(Some(tid));
-        dbg!(expr);
         let paren_pos = expr.find('(');
         if paren_pos.is_none() {
             return SdbError::err("Invalid expression");
@@ -309,7 +307,6 @@ impl Target {
         let paren_pos = paren_pos.unwrap();
 
         let name = &expr[..paren_pos + 1];
-        dbg!(name);
         let res = self.resolve_indirect_name(name, &pc)?;
         if res.funcs.is_empty() {
             return SdbError::err("Invalid expression");
