@@ -1,6 +1,6 @@
 [package]
 name    = "libsdb_register_codegen"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Register Code generation part in the book: Building a Debugger, rust port of C++ debugger Sdb https://github.com/TartanLlama/sdb/tree/main."

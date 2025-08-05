@@ -33,7 +33,7 @@ macro_rules! fpr_size {
     };
 }
 
-generate_registers!("sdb/resource/reg_info.txt");
+generate_registers!("");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterType {

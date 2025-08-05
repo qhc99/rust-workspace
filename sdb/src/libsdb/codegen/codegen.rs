@@ -1,5 +1,3 @@
-use std::{fs, path::Path};
-
 use core::mem::offset_of;
 use libc::user;
 use nix::libc;
@@ -7,16 +5,10 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::{format_ident, quote};
 use regex::Regex;
-use syn::LitStr;
 
 #[proc_macro]
-pub fn generate_registers(input: TokenStream) -> TokenStream {
-    let arg = syn::parse_macro_input!(input as LitStr);
-    let file_path = arg.value();
-    let path = std::env::current_dir().unwrap();
-    let current_path = path.to_str().unwrap();
-    let content = fs::read_to_string(Path::new(&file_path))
-        .unwrap_or_else(|_| panic!("{current_path}, cannot read {file_path}"));
+pub fn generate_registers(_input: TokenStream) -> TokenStream {
+    let content = include_str!("reg_info.txt");
 
     let mut variants = Vec::new();
     let mut infos = Vec::new();
