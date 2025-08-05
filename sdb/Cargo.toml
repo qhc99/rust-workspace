@@ -19,7 +19,7 @@ path = "src/sdb.rs"
 [dependencies]
 rustyline = "15.0.0"
 zydis = "4.1.1"
-libsdb_register_codegen = {path = "src/libsdb/codegen", version = "0.2.0"}
+libsdb_register_codegen = "0.2.0"
 bytemuck = "1.22.0"
 num_enum = "0.7.3"
 extended = "0.1.0"
