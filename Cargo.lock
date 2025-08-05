@@ -732,7 +732,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sdb"
+name = "sdb_debugger"
 version = "0.1.0"
 dependencies = [
  "bindgen 0.72.0",
