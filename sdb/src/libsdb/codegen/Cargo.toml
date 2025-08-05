@@ -2,6 +2,11 @@
 name    = "libsdb_register_codegen"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Register Code generation part in the book: Building a Debugger, rust port of C++ debugger Sdb https://github.com/TartanLlama/sdb/tree/main."
+repository = "https://github.com/qhc99/rust-workspace/tree/master/sdb/src/libsdb/codegen"
+keywords = ["sdb", "debugger"]
+rust-version = "1.88"
 
 
 [lib]
