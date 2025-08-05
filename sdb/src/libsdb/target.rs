@@ -284,10 +284,10 @@ impl Target {
             true,
         )?;
 
-        #[allow(unused_braces)]
-        let new_regs =
-            self.process
-                .inferior_call(call_addr, entry_point, {saved_regs.borrow().clone()}, None)?;
+        let saved_regs = saved_regs.borrow().clone();
+        let new_regs = self
+            .process
+            .inferior_call(call_addr, entry_point, saved_regs, None)?;
         let result = new_regs.read_by_id_as::<u64>(RegisterId::rax)?;
 
         Ok(VirtualAddress::new(result))
@@ -1238,10 +1238,12 @@ fn inferior_call_from_dwarf(
         &mut regs.borrow_mut(),
         return_slot,
     )?;
-    let new_regs =
-        target
-            .get_process()
-            .inferior_call(call_addr, return_addr, saved_regs.clone(), Some(tid))?;
+    let new_regs = target.get_process().inferior_call(
+        call_addr,
+        return_addr,
+        saved_regs.clone(),
+        Some(tid),
+    )?;
 
     if func.contains(DW_AT_type.0 as u64) {
         return Ok(Some(read_return_value(
