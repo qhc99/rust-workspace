@@ -299,67 +299,76 @@ pub enum SdbTypeInfo {
     BuiltinType(BuiltinType),
 }
 
-// TODO
-/*
-bool sdb::type::operator==(const type& rhs) const {
-    if (!is_from_dwarf() and !rhs.is_from_dwarf()) {
-        return get_builtin_type() == rhs.get_builtin_type();
-    }
-    const sdb::type* from_dwarf = nullptr;
-    const sdb::type* builtin = nullptr;
-    if (!is_from_dwarf()) {
-        from_dwarf = &rhs;
-        builtin = this;
-    }
-    else if (!rhs.is_from_dwarf()) {
-        from_dwarf = this;
-        builtin = &rhs;
-    }
-    if (from_dwarf and builtin) {
-        auto die = from_dwarf->strip_cvref_typedef().get_die();
-        auto tag = die.abbrev_entry()->tag;
-        if (tag == DW_TAG_base_type) {
-            switch (die[DW_AT_encoding].as_int()) {
-            case DW_ATE_boolean:
-                return builtin->get_builtin_type() == builtin_type::boolean;
-            case DW_ATE_float:
-                return builtin->get_builtin_type() == builtin_type::floating_point;
-            case DW_ATE_signed:
-            case DW_ATE_unsigned:
-                return builtin->get_builtin_type() == builtin_type::integer;
-            case DW_ATE_signed_char:
-            case DW_ATE_unsigned_char:
-                return builtin->get_builtin_type() == builtin_type::character;
-            default:
-                return false;
-            }
-        }
-        if (tag == DW_TAG_pointer_type) {
-            return die[DW_AT_type].as_type().is_char_type() and
-                builtin->get_builtin_type() == builtin_type::string;
-        }
-        return false;
-    }
-    auto lhs_stripped = strip_all();
-    auto rhs_stripped = rhs.strip_all();
-
-    auto lhs_name = lhs_stripped.get_die().name();
-    auto rhs_name = rhs_stripped.get_die().name();
-    if (lhs_name and rhs_name and *lhs_name == *rhs_name)
-        return true;
-
-    return false;
-}
-*/
 impl PartialEq for SdbType {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        self.try_eq(other).unwrap_or(false)
     }
 }
 
 impl Eq for SdbType {}
 
 impl SdbType {
+    pub fn try_eq(&self, rhs: &Self) -> Result<bool, SdbError> {
+        if !self.is_from_dwarf() && !rhs.is_from_dwarf() {
+            return Ok(self.get_builtin_type()? == rhs.get_builtin_type()?);
+        }
+        let from_dwarf: Option<&SdbType>;
+        let builtin: Option<&SdbType>;
+        if !self.is_from_dwarf() {
+            from_dwarf = Some(rhs);
+            builtin = Some(self);
+        } else if !rhs.is_from_dwarf() {
+            from_dwarf = Some(self);
+            builtin = Some(rhs);
+        } else {
+            from_dwarf = None;
+            builtin = None;
+        }
+        if let (Some(from_dwarf), Some(builtin)) = (from_dwarf, builtin) {
+            let die = from_dwarf.strip_cvref_typedef()?.get_die()?;
+            let tag = die.abbrev_entry().tag as u16;
+            if tag == DW_TAG_base_type.0 {
+                let encoding = die.index(DW_AT_encoding.0 as u64)?.as_int()?;
+                #[allow(non_upper_case_globals)]
+                match DwAte(encoding as u8) {
+                    DW_ATE_boolean => {
+                        return Ok(builtin.get_builtin_type()? == BuiltinType::Boolean);
+                    }
+                    DW_ATE_float => {
+                        return Ok(builtin.get_builtin_type()? == BuiltinType::FloatingPoint);
+                    }
+                    DW_ATE_signed | DW_ATE_unsigned => {
+                        return Ok(builtin.get_builtin_type()? == BuiltinType::Integer);
+                    }
+                    DW_ATE_signed_char | DW_ATE_unsigned_char => {
+                        return Ok(builtin.get_builtin_type()? == BuiltinType::Character);
+                    }
+                    _ => {
+                        return Ok(false);
+                    }
+                }
+            }
+            if tag == DW_TAG_pointer_type.0 {
+                let type_die = die.index(DW_AT_type.0 as u64)?.as_type();
+                return Ok(
+                    type_die.is_char_type()? && builtin.get_builtin_type()? == BuiltinType::String
+                );
+            }
+            return Ok(false);
+        }
+        let lhs_stripped = self.strip_all()?;
+        let rhs_stripped = rhs.strip_all()?;
+
+        let lhs_name = lhs_stripped.get_die()?.name()?;
+        let rhs_name = rhs_stripped.get_die()?.name()?;
+        if let (Some(lhs_name), Some(rhs_name)) = (lhs_name, rhs_name)
+            && lhs_name == rhs_name
+        {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     pub fn is_class_type(&self) -> Result<bool, SdbError> {
         if !self.is_from_dwarf() {
             return Ok(false);
