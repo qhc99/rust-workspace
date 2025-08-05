@@ -390,8 +390,10 @@ impl Target {
                     .map(|(i, _)| i)
                     .or(Some(name.len()));
                 let member_name = &name[member_name_start..op_pos.unwrap()];
-                if op_pos.is_some() && op_pos.unwrap() < name.len()
-                    && name.chars().nth(op_pos.unwrap()).unwrap() == '(' {
+                if op_pos.is_some()
+                    && op_pos.unwrap() < name.len()
+                    && name.chars().nth(op_pos.unwrap()).unwrap() == '('
+                {
                     let mut funcs = Vec::new();
                     let stripped_value_type = data.value_type().strip_cvref_typedef()?;
                     for child in stripped_value_type.get_die()?.children() {
