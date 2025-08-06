@@ -1,6 +1,6 @@
 [package]
 name = "sdb_debugger"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 license = "MIT"
 description = "Book: Building a Debugger. Rust port of C++ debugger sdb"
