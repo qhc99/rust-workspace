@@ -1,6 +1,6 @@
-## asm, vm, compiler
-nand2tetris(https://www.nand2tetris.org/) projects
+# Projects
 
-## sdb
+- nand2tetris
+- sdb
 
 
