@@ -1,9 +1,9 @@
 [package]
 name = "sdb_debugger"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
-description = "Book: Building a Debugger, rust port of C++ debugger Sdb https://github.com/TartanLlama/sdb/tree/main."
+description = "Book: Building a Debugger. Rust port of C++ debugger sdb"
 repository = "https://github.com/qhc99/rust-workspace/tree/master/sdb"
 keywords = ["sdb", "debugger"]
 rust-version = "1.88"
