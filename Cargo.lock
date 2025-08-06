@@ -735,7 +735,7 @@ dependencies = [
 
 [[package]]
 name = "sdb_debugger"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bindgen 0.72.0",
  "bytemuck",

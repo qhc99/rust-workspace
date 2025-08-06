@@ -1,6 +1,6 @@
 [package]
 name = "sdb_debugger"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "Book: Building a Debugger, rust port of C++ debugger Sdb https://github.com/TartanLlama/sdb/tree/main."
@@ -47,3 +47,7 @@ version = "0.29.0"
 
 [lints.clippy]
 needless_return = "allow"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = []
