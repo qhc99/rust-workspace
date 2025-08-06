@@ -204,6 +204,7 @@ fn compile_cpp(sources: &[&str], libs: &[&str]) {
 
 #[ignore = "Manual"]
 #[test]
+#[serial]
 fn build_binaries() {
     ensure_bin_dir();
 
