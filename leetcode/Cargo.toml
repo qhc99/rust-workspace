@@ -1,9 +1,5 @@
 [package]
 name = "leetcode"
 version = "0.1.0"
-edition = "2021"
-
-
-[dependencies]
-rustc_version_runtime = "0.2.1"
-rust_libs ={ path = "../rust_libs"}
+edition = "2024"
+rust-version = "1.88"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust_libs", "sdb"]
+members = ["leetcode"]
 resolver = "3"
 
 [profile.release]
