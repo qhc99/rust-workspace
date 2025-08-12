@@ -8,52 +8,7 @@
                 "$rustc"
             ],
             "group": "build",
-            "label": "task build vm debug",
-            "args": [
-                "-p",
-                "VMTranslator"
-            ]
-        },
-        {
-            "type": "cargo",
-            "command": "build",
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "build",
-            "label": "task build compiler debug",
-            "args": [
-                "-p",
-                "compiler"
-            ]
-        },
-        {
-            "type": "cargo",
-            "command": "run",
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "none",
-            "label": "task run playground release",
-            "args": [
-                "--release",
-                "-p",
-                "playground"
-            ]
-        },
-        {
-            "type": "cargo",
-            "command": "run",
-            "problemMatcher": [
-                "$rustc"
-            ],
-            "group": "none",
-            "label": "task run cg release",
-            "args": [
-                "--release",
-                "-p",
-                "cg"
-            ]
+            "label": "rust: cargo build"
         }
     ]
 }

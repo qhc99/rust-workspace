@@ -298,9 +298,9 @@ pub fn push_dominoes(dominoes: String) -> String {
                 ans.append(&mut vec![b'L'; stack.len()]);
                 stack.clear();
             } else {
-                stack.split_off(r_pos);
+                let _ = stack.split_off(r_pos);
                 clear_stack_r_only(stack, ans);
-                let half = (l_pos - r_pos + 1) / 2;
+                let half = (l_pos - r_pos).div_ceil(2);
                 if (l_pos - r_pos) % 2 == 0 {
                     ans.append(&mut vec![b'R'; half]);
                     ans.push(b'.');

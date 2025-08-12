@@ -1,10 +1,9 @@
-struct Solution {}
+pub struct Solution {}
 
 impl Solution {
     /// 401
     pub fn read_binary_watch(turned_on: i32) -> Vec<String> {
-        let mut ret = Vec::new();
-        ret.reserve(256);
+        let mut ret = Vec::with_capacity(256);
         Solution::read_binary_watch_visit(turned_on, 0, &mut ret, 0);
         ret
     }

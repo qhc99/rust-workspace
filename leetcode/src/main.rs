@@ -4,32 +4,6 @@
 mod leetcode800;
 mod leetcode400;
 
-fn main() {}
-
-struct Solution {}
-
-impl Solution {
-    pub fn read_binary_watch(turned_on: i32) -> Vec<String> {
-        let mut ret = Vec::new();
-        ret.reserve(256);
-        Solution::visit(turned_on, 0, &mut ret, 0);
-        ret
-    }
-
-    pub fn visit(on: i32, state: u16, ret: &mut Vec<String>, start: i32) {
-        if on == 0 {
-            let m = state & 0b111111;
-            let h = (state >> 6) & 0b1111;
-            if m <= 59 && h <= 11 {
-                ret.push(format!("{h}:{m:02}"));
-            }
-            return;
-        }
-
-        for i in start..10 {
-            if 10 - i >= on {
-                Solution::visit(on - 1, state | (0b1 << i), ret, i + 1);
-            }
-        }
-    }
+fn main() {
+    leetcode800::num_buses_to_destination(vec![vec![1,2,7],vec![3,6,7]], 1, 6);
 }
